@@ -4,8 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 // Get environment variables
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ;
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 // Custom storage for Supabase (uses AsyncStorage on React Native)
 const ExpoAsyncStorage = {
@@ -27,12 +27,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export type Tables = {
   users: {
     id: string;
-    email: string;
+    email: string | null;
     phone: string;
     full_name: string;
-    city: string;
+    city: string | null;
     role: 'player' | 'vendor' | 'admin';
+    preferred_foot: 'Left' | 'Right' | 'Both' | null;
     avatar_url: string | null;
+    is_verified: boolean;
+    is_setup_complete: boolean;
     created_at: string;
     updated_at: string;
   };

@@ -1,196 +1,264 @@
-import {create} from 'zustand';
+import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '@/lib/Supabase/supabase';
-import { auth, UserProfile, UserRole } from '@/lib/Supabase/player/helpers/authHelper';
-import { User, Session } from '@supabase/supabase-js';
-import { isLoading } from 'expo-font';
+import { AuthService } from '@/lib/Supabase/services/auth';
+import { AuthState, UserProfile, AuthError } from '@/types/auth';
 
-interface AuthState {
-  user: User | null;
-  session: Session | null;
-  profile: UserProfile | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  role: UserRole;
-
+interface AuthStore extends AuthState {
   // Actions
-  sendOTP: (phone: string) => Promise<{ error: string | null }>;
-  verifyOTP: (phone: string, token: string) => Promise<{ error: string | null }>;
+  sendOTP: (phone: string) => Promise<{ error: AuthError | null }>;
+  verifyOTP: (phone: string, token: string) => Promise<{ error: AuthError | null }>;
+  completeProfile: (data: Partial<UserProfile>) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   checkAuth: () => Promise<void>;
-  setSession: (session: Session | null) => void;
-  setProfile: (profile: UserProfile | null) => void;
-  updateProfile: (data: Partial<UserProfile>) => Promise<{ error: string | null }>;
+  clearError: () => void;
+  cleanEvrything: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>()(
+const initialState: AuthState = {
+  user: null,
+  session: null,
+  profile: null,
+  isLoading: true,
+  isAuthenticated: false,
+  isNewUser: false,
+  role: null,
+  error: null,
+};
+
+export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
-      user: null,
-      session: null,
-      profile: null,
-      isLoading: true,
-      isAuthenticated: false,
-      role: null,
+      ...initialState,
 
-      // Send OTP to the user's phone number
       sendOTP: async (phone: string) => {
-        try {
+        set({ isLoading: true, error: null });
 
-          const { error } = await auth.sendOtp(phone);
+        const result = await AuthService.sendOTP(phone);
 
-          if (error) throw new Error(error);
-          return { error: null }
-        } catch (error: any) {
-          return { error: error.message }
+        set({ isLoading: false });
+
+        if (result.error) {
+          set({ error: result.error });
+          return { error: result.error };
         }
+
+        return { error: null };
       },
-      // Verify the OTP token
+
       verifyOTP: async (phone: string, token: string) => {
+        set({ isLoading: true, error: null });
+
+        const result = await AuthService.verifyOTP(phone, token);
+
+        if (result.error) {
+          set({ isLoading: false, error: result.error });
+          return { error: result.error };
+        }
+
+        if (result.data) {
+          const { user, profile, isNewUser } = result.data;
+
+          set({
+            user,
+            profile,
+            isAuthenticated: true,
+            isNewUser: isNewUser || false,
+            role: profile?.role || 'player',
+            isLoading: false,
+            error: null,
+          });
+
+          return { error: null };
+        }
+
+        set({ isLoading: false });
+        return { error: null };
+      },
+
+      completeProfile: async (data: Partial<UserProfile>) => {
+        const { user, profile } = get();
+
+        if (!user) {
+          const error: AuthError = {
+            code: 'unauthorized',
+            message: 'User not authenticated',
+          };
+          set({ error });
+          return { error };
+        }
+
+        set({ isLoading: true, error: null });
+
         try {
-          const { data, error } = await auth.verifyOtp(phone, token);
-          if (error) throw new Error(error);
+          // Update profile
+          const result = await AuthService.updateProfile(user.id, {
+            ...data,
+            is_setup_complete: true,
+          });
 
-          if (data!.user) {
+          set({ isLoading: false });
 
-            const { data: profileData, error: profileError } = await supabase
+          if (result.error) {
+            set({ error: result.error });
+            return { error: result.error };
+          }
+
+          if (result.data) {
+            set({
+              profile: result.data,
+              isNewUser: false,
+            });
+            return { error: null };
+          }
+
+          // If no data returned, try fetching the profile directly
+          const { data: freshProfile, error: fetchError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+
+          if (fetchError) {
+            // If single() fails, try without
+            const { data: profileList } = await supabase
               .from('users')
               .select('*')
-              .eq('id', data!.user.id)
-              .single();
+              .eq('id', user.id);
 
-
-            if (profileError && profileError.code !== 'PGRST116') {
-              console.error('Error fetching user profile:', profileError);
+            if (profileList && profileList.length > 0) {
+              set({
+                profile: profileList[0],
+                isNewUser: false,
+              });
+              return { error: null };
             }
 
+            return {
+              error: {
+                code: 'fetch_error',
+                message: 'Profile updated but unable to fetch latest data',
+              }
+            };
+          }
+
+          if (freshProfile) {
             set({
-              user: data!.user,
-              session: data!.session,
-              profile: profileData || null,
-              role: profileData?.role || null,
-              isAuthenticated: true,
-              isLoading: false
+              profile: freshProfile,
+              isNewUser: false,
             });
+            return { error: null };
           }
 
           return { error: null };
         } catch (error: any) {
-          return { error: error.message }
+          set({ isLoading: false });
+          const authError: AuthError = {
+            code: 'unknown_error',
+            message: error.message || 'Unable to complete profile setup',
+          };
+          set({ error: authError });
+          return { error: authError };
         }
       },
+
       signOut: async () => {
+        set({ isLoading: true });
+
+        await AuthService.signOut();
+
+        set({
+          ...initialState,
+          isLoading: false,
+        });
+
+        await AsyncStorage.removeItem('auth-storage');
+      },
+
+      checkAuth: async () => {
+        set({ isLoading: true });
+
         try {
-          await auth.signOut();
-          set({
-            user: null,
-            session: null,
-            profile: null,
-            isAuthenticated: false,
-            role: null,
-          });
-        } catch (error: any) {
-          console.error('Sign out error:', error);
-        }
-      },
-      checkAuth : async () => {
-        try{
+          const sessionResult = await AuthService.getSession();
 
-          const { session, error } = await auth.getSession();
-
-          if(error) throw new Error(error);
-          
-          if(session) {
-            const {user} = await auth.getUser();
-            
-            if(user) {
-
-              const {data : profileData, error: profileError} = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', user!.id)
-              .single();
-              
-              set({
-                user: user,
-                session: session,
-                profile: profileData || null,
-                role: profileData?.role || null,
-                isAuthenticated: true,
-                isLoading: false
-              });
-            }
-            else {
-              set({
-                isLoading: false
-              });
-            }            
-          }
-          else {
+          if (sessionResult.error || !sessionResult.data) {
             set({
-              isLoading: false
+              ...initialState,
+              isLoading: false,
             });
+            return;
           }
 
-        }catch(error :any) {
-          console.error('Auth check error:', error);
-        }
-      },
-      setSession : (session: Session | null) => {
-        set({ 
-          session,
-          user: session?.user || null,
-          isAuthenticated: true,
-          isLoading:false
-         });
-      },
-      setProfile : (profile: UserProfile | null) => {
-        set({profile,isLoading:false});
-      },
-      updateProfile: async (data: Partial<UserProfile>) => {
-        try{
+          const userResult = await AuthService.getCurrentUser();
 
-          //@ts-ignore
-          const user = await get().user;
-          if(!user) throw new Error("No user logged in");
-
-          const { error } = await supabase
-            .from('users')
-            .update(data)
-            .eq('id', user.id);
-
-          if (error) throw error;
-
-          // Update the profile in the store
-          //@ts-ignore
-          const currentProfile = get().profile;
-          if(currentProfile) {
-            set({profile : {...currentProfile,...data},isLoading:false})
+          if (userResult.error || !userResult.data) {
+            set({
+              ...initialState,
+              isLoading: false,
+            });
+            return;
           }
 
-        }catch(error : any) {
-          console.log(error);
-          return { error: error.message }
+          const { user, profile } = userResult.data;
+
+          // Check if profile setup is complete
+          const isSetupComplete = profile?.is_setup_complete || false;
+          const isNewUser = !isSetupComplete;
+
+          set({
+            user,
+            session: sessionResult.data,
+            profile: profile || null,
+            isAuthenticated: true,
+            isNewUser,
+            role: profile?.role || 'player',
+            isLoading: false,
+            error: null,
+          });
+        } catch (error) {
+          console.error('[AuthStore] Check auth error:', error);
+          set({
+            ...initialState,
+            isLoading: false,
+          });
         }
+      },
+
+      clearError: () => {
+        set({ error: null });
+      },
+      cleanEvrything: async () => {
+        set({
+          ...initialState,
+          isLoading: false,
+        });
+        await AsyncStorage.removeItem('auth-storage');
       }
-    }),{
-      name : 'auth-storage',
-      storage:createJSONStorage(() => AsyncStorage),
-      partialize: (state : any) => ({
+    }),
+    {
+      name: 'auth-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
         isAuthenticated: state.isAuthenticated,
         role: state.role,
+        profile: state.profile,
+        isNewUser: state.isNewUser,
       }),
     }
   )
 );
 
 // Auth state listener
+import { supabase } from '@/lib/Supabase/supabase';
+
 supabase.auth.onAuthStateChange((event, session) => {
   const store = useAuthStore.getState();
-  store.setSession(session);
-  
+
+  if (event === 'SIGNED_IN' && session) {
+    store.checkAuth();
+  }
+
   if (event === 'SIGNED_OUT') {
-    store.setProfile(null);
+    store.signOut();
   }
 });
