@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity,Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,10 +7,24 @@ import { useAuthStore } from '@/store/authStore';
 export default function ProfileScreen() {
   const { profile, signOut } = useAuthStore();
 
-  const handleLogout = async () => {
-    await signOut();
-    router.replace('/(auth)/phone-input');
-  };
+  // In the logout handler, use router.replace
+const handleLogout = async () => {
+  Alert.alert(
+    'Logout',
+    'Are you sure you want to logout?',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Logout', 
+        style: 'destructive',
+        onPress: async () => {
+          await signOut();
+          router.replace('/(auth)/login');
+        }
+      }
+    ]
+  );
+};
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">

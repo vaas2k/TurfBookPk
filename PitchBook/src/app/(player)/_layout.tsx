@@ -1,26 +1,154 @@
-import { Tabs } from 'expo-router';
+import { Stack, usePathname, router } from 'expo-router';
+import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// Custom Tab Bar Component
+function BottomTabBar() {
+  const pathname = usePathname();
+  const insets = useSafeAreaInsets();
+
+  console.log('Pathname:', pathname); // Debug log
+
+  // Define which paths should show the tab bar
+  const showTabBar = () => {
+    // Main routes - show tab bar
+    if (pathname === '/' || 
+        pathname === '/(player)' || 
+        pathname === '/(player)/index' || 
+        pathname === '/(player)/search' || 
+        pathname === '/(player)/bookings' || 
+        pathname === '/(player)/chat' || 
+        pathname === '/(player)/profile') {
+      return true;
+    }
+    // Check if it's a main route without the full path
+    if (pathname === '/search' || 
+        pathname === '/bookings' || 
+        pathname === '/chat' || 
+        pathname === '/profile') {
+      return true;
+    }
+    return false;
+  };
+
+  if (!showTabBar()) {
+    console.log('Hiding tab bar for:', pathname);
+    return null;
+  }
+
+  console.log('Showing tab bar for:', pathname);
+
+  const tabs = [
+    { 
+      name: 'Home', 
+      icon: 'home', 
+      route: '/(player)' 
+    },
+    { 
+      name: 'Search', 
+      icon: 'search', 
+      route: '/(player)/search' 
+    },
+    { 
+      name: 'Bookings', 
+      icon: 'calendar', 
+      route: '/(player)/bookings' 
+    },
+    { 
+      name: 'Chat', 
+      icon: 'chatbubbles', 
+      route: '/(player)/chat' 
+    },
+    { 
+      name: 'Profile', 
+      icon: 'person', 
+      route: '/(player)/profile' 
+    },
+  ];
+
+  const isActive = (route: string) => {
+    const cleanRoute = route.replace('/(player)', '');
+    const cleanPath = pathname.replace('/(player)', '');
+    
+    if (route === '/(player)' && (cleanPath === '' || cleanPath === '/' || cleanPath === '/index')) {
+      return true;
+    }
+    return cleanPath === cleanRoute || cleanPath === cleanRoute + '/';
+  };
+
+  const handlePress = (route: string) => {
+    if (!isActive(route)) {
+      const path = route.replace('/(player)', '');
+      router.push(path || '/');
+    }
+  };
+
+  return (
+    <View 
+      className="bg-white border-t border-[#E5E5E5] flex-row items-center justify-around px-2 pt-1"
+      style={{ 
+        paddingBottom: Platform.OS === 'ios' ? insets.bottom || 8 : 8,
+        height: Platform.OS === 'ios' ? 70 : 60,
+      }}
+    >
+      {tabs.map((tab) => {
+        const active = isActive(tab.route);
+        return (
+          <TouchableOpacity
+            key={tab.name}
+            className="items-center justify-center flex-1 py-1"
+            onPress={() => handlePress(tab.route)}
+            activeOpacity={0.7}
+          >
+            <Ionicons 
+              name={active ? tab.icon : `${tab.icon}-outline` as any} 
+              size={24} 
+              color={active ? '#4CAF50' : '#737373'} 
+            />
+            <Text 
+              className={`text-xs mt-0.5 ${
+                active ? 'text-[#4CAF50] font-medium' : 'text-[#737373]'
+              }`}
+            >
+              {tab.name}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
 
 export default function PlayerLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: '#4CAF50',
-        tabBarInactiveTintColor: '#737373',
-        tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#E5E5E5',
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
-        },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
-        headerShown: false,
-      }}
-    >
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} /> }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size} color={color} /> }} />
-    </Tabs>
+    <View className="flex-1 bg-[#F8F9FA]">
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: '#F8F9FA' },
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="search" />
+        <Stack.Screen name="bookings" />
+        <Stack.Screen name="chat" />
+        <Stack.Screen name="profile" />
+        <Stack.Screen name="ground/[id]" />
+        <Stack.Screen name="payment-method" />
+        <Stack.Screen name="payment-jazzcash" />
+        <Stack.Screen name="payment-easypaisa" />
+        <Stack.Screen name="payment-bank-transfer" />
+        <Stack.Screen name="payment-processing" />
+        <Stack.Screen name="booking-confirmation" />
+        <Stack.Screen name="notifications" />
+        <Stack.Screen name="wallet" />
+        <Stack.Screen name="help-support" />
+        <Stack.Screen name="reviews" />
+        <Stack.Screen name="reviews-write" />
+        <Stack.Screen name="profile-edit" />
+      </Stack>
+      <BottomTabBar />
+    </View>
   );
 }
