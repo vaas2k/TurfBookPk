@@ -10,16 +10,15 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store/authStore';
 
-type PreferredFoot = 'Left' | 'Right' | 'Both' | null;
-
 export default function ProfileSetupScreen() {
   const { profile, completeProfile } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
   
+  // Form fields
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [email, setEmail] = useState(profile?.email || '');
+  const [phone, setPhone] = useState(profile?.phone || '');
   const [city, setCity] = useState(profile?.city || '');
-  const [preferredFoot, setPreferredFoot] = useState<PreferredFoot>(null);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
@@ -38,9 +37,7 @@ export default function ProfileSetupScreen() {
       newErrors.fullName = 'Name must be at least 2 characters';
     }
 
-    if (!email.trim()) {
-      newErrors.email = 'Email address is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       newErrors.email = 'Please enter a valid email address';
     }
 
@@ -59,9 +56,9 @@ export default function ProfileSetupScreen() {
 
     const profileData = {
       full_name: fullName.trim(),
-      email: email.trim(),
+      email: email.trim() || null,
+      phone: phone.replace(/\s/g, '') || null,
       city: city,
-      preferred_foot: preferredFoot,
     };
 
     const { error } = await completeProfile(profileData);
@@ -149,14 +146,12 @@ export default function ProfileSetupScreen() {
 
               {/* Email */}
               <View>
-                <Text className="text-[#1A1A2E] font-medium mb-1.5">
-                  Email Address <Text className="text-red-500">*</Text>
-                </Text>
+                <Text className="text-[#1A1A2E] font-medium mb-1.5">Email Address</Text>
                 <TextInput
                   className={`bg-white rounded-xl px-4 py-3.5 text-[#1A1A2E] text-base border ${
                     errors.email ? 'border-red-500' : 'border-[#E5E5E5]'
                   }`}
-                  placeholder="Enter your email address"
+                  placeholder="Enter your email address (optional)"
                   placeholderTextColor="#A3A3A3"
                   value={email}
                   onChangeText={(text) => {
@@ -173,6 +168,24 @@ export default function ProfileSetupScreen() {
                   <Text className="text-red-500 text-xs mt-1">{errors.email}</Text>
                 )}
               </View>
+
+              {/* Phone Number - Only show for Google users who don't have phone */}
+              {!profile?.phone && (
+                <View>
+                  <Text className="text-[#1A1A2E] font-medium mb-1.5">Phone Number (Optional)</Text>
+                  <TextInput
+                    className="bg-white rounded-xl px-4 py-3.5 text-[#1A1A2E] text-base border border-[#E5E5E5]"
+                    placeholder="331 5139044"
+                    placeholderTextColor="#A3A3A3"
+                    value={phone}
+                    onChangeText={setPhone}
+                    keyboardType="phone-pad"
+                    maxLength={13}
+                    style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
+                  />
+                  <Text className="text-[#737373] text-xs mt-1">Optional - you can add your phone number later</Text>
+                </View>
+              )}
 
               {/* City */}
               <View>
@@ -221,32 +234,6 @@ export default function ProfileSetupScreen() {
                     </ScrollView>
                   </View>
                 )}
-              </View>
-
-              {/* Preferred Foot */}
-              <View>
-                <Text className="text-[#1A1A2E] font-medium mb-1.5">Preferred Foot</Text>
-                <View className="flex-row space-x-3">
-                  {['Left', 'Right', 'Both'].map((foot) => (
-                    <TouchableOpacity
-                      key={foot}
-                      className={`flex-1 py-3 rounded-xl border ${
-                        preferredFoot === foot 
-                          ? 'bg-[#E8F5E9] border-[#4CAF50]' 
-                          : 'bg-white border-[#E5E5E5]'
-                      }`}
-                      style={preferredFoot !== foot ? { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 } : {}}
-                      onPress={() => setPreferredFoot(foot as PreferredFoot)}
-                      activeOpacity={0.7}
-                    >
-                      <Text className={`text-center font-medium ${
-                        preferredFoot === foot ? 'text-[#4CAF50]' : 'text-[#737373]'
-                      }`}>
-                        {foot}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
               </View>
             </View>
 

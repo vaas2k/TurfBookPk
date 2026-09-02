@@ -9,7 +9,7 @@ export default function PlayerHome() {
 
   const handleLogout = async () => {
     await signOut();
-    router.replace('/(auth)/login');
+    router.replace('/(auth)/phone-input');
   };
 
   return (

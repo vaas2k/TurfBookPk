@@ -1,18 +1,22 @@
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthService } from '@/lib/Supabase/services/auth';
-import { AuthState, UserProfile, AuthError } from '@/types/auth';
+import { supabase } from '@/lib/Supabase/supabase';
+import { AuthError, AuthState, UserProfile } from '@/types/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
+import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 interface AuthStore extends AuthState {
   // Actions
   sendOTP: (phone: string) => Promise<{ error: AuthError | null }>;
   verifyOTP: (phone: string, token: string) => Promise<{ error: AuthError | null }>;
+  signInWithGoogle: () => Promise<{ error: AuthError | null }>;
   completeProfile: (data: Partial<UserProfile>) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   checkAuth: () => Promise<void>;
   clearError: () => void;
-  cleanEvrything: () => Promise<void>;
 }
 
 const initialState: AuthState = {
@@ -76,6 +80,60 @@ export const useAuthStore = create<AuthStore>()(
         return { error: null };
       },
 
+      // Google Sign In
+      signInWithGoogle: async () => {
+        set({ isLoading: true, error: null });
+
+        try {
+          console.log('[AuthStore] Starting Google sign-in...');
+
+          const result = await AuthService.signInWithGoogle();
+
+          console.log('[AuthStore] Google sign-in result:', result);
+
+          // For web, we might get a redirect error
+          if (result.error && result.error.code === 'redirect') {
+            // This is expected - we're redirecting to Google
+            set({ isLoading: false });
+            return { error: null };
+          }
+
+          if (result.error) {
+            set({ isLoading: false, error: result.error });
+            return { error: result.error };
+          }
+
+          if (result.data) {
+            const { user, profile, isNewUser } = result.data;
+
+            set({
+              user: user,
+              profile: profile,
+              isAuthenticated: true,
+              isNewUser: isNewUser,
+              role: profile?.role || 'player',
+              isLoading: false,
+              error: null,
+            });
+
+            console.log('[AuthStore] Google sign-in successful, isNewUser:', isNewUser);
+            return { error: null };
+          }
+
+          set({ isLoading: false });
+          return { error: null };
+        } catch (error: any) {
+          console.error('[AuthStore] Google sign-in error:', error);
+          set({ isLoading: false });
+          return {
+            error: {
+              code: 'google_auth_error',
+              message: error.message || 'Unable to sign in with Google',
+            },
+          };
+        }
+      },
+
       completeProfile: async (data: Partial<UserProfile>) => {
         const { user, profile } = get();
 
@@ -91,7 +149,6 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true, error: null });
 
         try {
-          // Update profile
           const result = await AuthService.updateProfile(user.id, {
             ...data,
             is_setup_complete: true,
@@ -112,35 +169,12 @@ export const useAuthStore = create<AuthStore>()(
             return { error: null };
           }
 
-          // If no data returned, try fetching the profile directly
+          // Fallback: try fetching the profile directly
           const { data: freshProfile, error: fetchError } = await supabase
             .from('users')
             .select('*')
             .eq('id', user.id)
-            .single();
-
-          if (fetchError) {
-            // If single() fails, try without
-            const { data: profileList } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', user.id);
-
-            if (profileList && profileList.length > 0) {
-              set({
-                profile: profileList[0],
-                isNewUser: false,
-              });
-              return { error: null };
-            }
-
-            return {
-              error: {
-                code: 'fetch_error',
-                message: 'Profile updated but unable to fetch latest data',
-              }
-            };
-          }
+            .maybeSingle();
 
           if (freshProfile) {
             set({
@@ -201,7 +235,6 @@ export const useAuthStore = create<AuthStore>()(
 
           const { user, profile } = userResult.data;
 
-          // Check if profile setup is complete
           const isSetupComplete = profile?.is_setup_complete || false;
           const isNewUser = !isSetupComplete;
 
@@ -227,13 +260,6 @@ export const useAuthStore = create<AuthStore>()(
       clearError: () => {
         set({ error: null });
       },
-      cleanEvrything: async () => {
-        set({
-          ...initialState,
-          isLoading: false,
-        });
-        await AsyncStorage.removeItem('auth-storage');
-      }
     }),
     {
       name: 'auth-storage',
@@ -249,8 +275,6 @@ export const useAuthStore = create<AuthStore>()(
 );
 
 // Auth state listener
-import { supabase } from '@/lib/Supabase/supabase';
-
 supabase.auth.onAuthStateChange((event, session) => {
   const store = useAuthStore.getState();
 
@@ -259,6 +283,7 @@ supabase.auth.onAuthStateChange((event, session) => {
   }
 
   if (event === 'SIGNED_OUT') {
+    console.log('[AuthStore] User signed out, clearing auth state');
     store.signOut();
   }
 });

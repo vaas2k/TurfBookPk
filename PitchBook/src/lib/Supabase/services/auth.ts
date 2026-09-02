@@ -1,5 +1,8 @@
+import { AuthResponse, UserProfile } from '@/types/auth';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../supabase';
-import { AuthError, AuthResponse, UserProfile } from '@/types/auth';
+import { Platform } from 'react-native';
 
 // Custom error codes for better UX
 export const AuthErrorCodes = {
@@ -104,7 +107,7 @@ export class AuthService {
 
       // Get or create user profile
       const profileResult = await this.getOrCreateUserProfile(data.user);
-      
+
       if (profileResult.error) {
         return { data: null, error: profileResult.error };
       }
@@ -135,7 +138,7 @@ export class AuthService {
   static async getSession(): Promise<AuthResponse<any>> {
     try {
       const { data, error } = await supabase.auth.getSession();
-      
+
       if (error) {
         const mappedError = this.mapSupabaseError(error);
         return { data: null, error: mappedError };
@@ -160,7 +163,7 @@ export class AuthService {
   static async getCurrentUser(): Promise<AuthResponse<{ user: any; profile: UserProfile | null }>> {
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
-      
+
       if (error) {
         const mappedError = this.mapSupabaseError(error);
         return { data: null, error: mappedError };
@@ -213,7 +216,7 @@ export class AuthService {
   static async signOut(): Promise<AuthResponse<null>> {
     try {
       const { error } = await supabase.auth.signOut();
-      
+
       if (error) {
         const mappedError = this.mapSupabaseError(error);
         return { data: null, error: mappedError };
@@ -232,9 +235,9 @@ export class AuthService {
     }
   }
 
-    /**
-   * Update user profile
-   */
+  /**
+ * Update user profile
+ */
   static async updateProfile(
     userId: string,
     data: Partial<UserProfile>
@@ -259,11 +262,11 @@ export class AuthService {
       if (data.full_name !== undefined) cleanData.full_name = data.full_name;
       if (data.email !== undefined) cleanData.email = data.email;
       if (data.city !== undefined) cleanData.city = data.city;
-      if (data.preferred_foot !== undefined) cleanData.preferred_foot = data.preferred_foot;
+      // if (data.preferred_foot !== undefined) cleanData.preferred_foot = data.preferred_foot;
       if (data.avatar_url !== undefined) cleanData.avatar_url = data.avatar_url;
       if (data.is_setup_complete !== undefined) cleanData.is_setup_complete = data.is_setup_complete;
       if (data.role !== undefined) cleanData.role = data.role;
-      
+
       cleanData.updated_at = new Date().toISOString();
 
       // First, update the profile
@@ -297,11 +300,11 @@ export class AuthService {
           .from('users')
           .select('*')
           .eq('id', userId);
-          
+
         if (profileData && profileData.length > 0) {
           return { data: profileData[0], error: null };
         }
-        
+
         return {
           data: null,
           error: {
@@ -324,41 +327,401 @@ export class AuthService {
     }
   }
 
+/**
+ * Sign in with Google
+ */
+/**
+ * Sign in with Google
+ */
+/**
+ * Sign in with Google
+ * Works for both Web and Mobile (Android/iOS)
+ */
+static async signInWithGoogle(): Promise<AuthResponse<{ user: any; profile: UserProfile | null; isNewUser: boolean }>> {
+  try {
+    console.log('[Auth] Starting Google sign-in...');
+    console.log('[Auth] Platform:', Platform.OS);
+
+    // ─── WEB PLATFORM ───
+    if (Platform.OS === 'web') {
+      const currentUrl = window.location.href;
+      console.log('[Auth] Current URL:', currentUrl);
+
+      // Check if we're in the callback
+      if (currentUrl.includes('auth/callback')) {
+        console.log('[Auth] Processing callback...');
+        
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('[Auth] Session error:', sessionError);
+          throw sessionError;
+        }
+
+        if (sessionData.session) {
+          console.log('[Auth] Session found!');
+          const user = sessionData.session.user;
+          
+          const { data: profileData, error: profileError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', user.id)
+            .maybeSingle();
+
+          let profile = profileData;
+          if (!profileData) {
+            console.log('[Auth] Creating new profile...');
+            const newProfile = {
+              id: user.id,
+              email: user.email || null,
+              phone: null,
+              full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
+              city: null,
+              role: 'player',
+              avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+              is_verified: true,
+              is_setup_complete: false,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+
+            const { data: createdProfile, error: insertError } = await supabase
+              .from('users')
+              .insert(newProfile)
+              .select()
+              .single();
+
+            if (!insertError) {
+              profile = createdProfile;
+              console.log('[Auth] Profile created');
+            }
+          }
+
+          const isNewUser = !profile || !profile.is_setup_complete;
+
+          return {
+            data: {
+              user: user,
+              profile: profile || null,
+              isNewUser: isNewUser,
+            },
+            error: null,
+          };
+        } else {
+          console.log('[Auth] No session found in callback');
+          return {
+            data: null,
+            error: {
+              code: AuthErrorCodes.UNAUTHORIZED,
+              message: 'No session found',
+            },
+          };
+        }
+      }
+
+      // Start OAuth flow for web
+      console.log('[Auth] Starting OAuth flow...');
+      const redirectTo = `${window.location.origin}/auth/callback`;
+      console.log('[Auth] Redirect URL:', redirectTo);
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectTo,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+
+      if (error) {
+        console.error('[Auth] SignInWithOAuth error:', error);
+        throw error;
+      }
+
+      if (!data.url) {
+        throw new Error('No OAuth URL returned');
+      }
+
+      console.log('[Auth] Redirecting to:', data.url);
+      window.location.href = data.url;
+      
+      return {
+        data: null,
+        error: {
+          code: 'redirect',
+          message: 'Redirecting to Google...',
+        },
+      };
+    }
+
+    // ─── MOBILE PLATFORMS (Android/iOS) ───
+    console.log('[Auth] Mobile platform detected');
+
+    // Get the app scheme for deep linking
+    const scheme = 'turfbookpk';
+    const redirectTo = `${scheme}://auth/callback`;
+    console.log('[Auth] Redirect URL:', redirectTo);
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectTo,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
+    });
+
+    if (error) {
+      console.error('[Auth] SignInWithOAuth error:', error);
+      throw error;
+    }
+
+    if (!data.url) {
+      throw new Error('No OAuth URL returned');
+    }
+
+    console.log('[Auth] OAuth URL generated, opening browser...');
+
+    // Open the OAuth URL in browser
+    const result = await WebBrowser.openAuthSessionAsync(
+      data.url,
+      `${scheme}://auth/callback`,
+      {
+        showInRecents: true,
+        preferEphemeralSession: false,
+        createTask: true,
+      }
+    );
+
+    console.log('[Auth] Browser result type:', result.type);
+
+    if (result.type === 'success' && result.url) {
+      console.log('[Auth] Success URL received');
+      
+      // Parse the URL to get tokens
+      const url = new URL(result.url);
+      const accessToken = url.searchParams.get('access_token');
+      const refreshToken = url.searchParams.get('refresh_token');
+      const errorParam = url.searchParams.get('error');
+
+      if (errorParam) {
+        console.error('[Auth] OAuth error:', errorParam);
+        return {
+          data: null,
+          error: {
+            code: AuthErrorCodes.UNKNOWN_ERROR,
+            message: 'OAuth error: ' + errorParam,
+          },
+        };
+      }
+
+      if (accessToken && refreshToken) {
+        console.log('[Auth] Tokens found, setting session...');
+
+        // Set the session
+        const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (sessionError) {
+          console.error('[Auth] Set session error:', sessionError);
+          throw sessionError;
+        }
+
+        console.log('[Auth] Session set successfully');
+
+        if (sessionData.user) {
+          // Get or create user profile
+          const { data: profileData, error: profileError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', sessionData.user.id)
+            .maybeSingle();
+
+          if (profileError && profileError.code !== 'PGRST116') {
+            console.error('[Auth] Profile fetch error:', profileError);
+          }
+
+          let profile = profileData;
+          if (!profileData) {
+            console.log('[Auth] Creating new profile...');
+            const newProfile = {
+              id: sessionData.user.id,
+              email: sessionData.user.email || null,
+              phone: null,
+              full_name: sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || '',
+              city: null,
+              role: 'player',
+              avatar_url: sessionData.user.user_metadata?.avatar_url || sessionData.user.user_metadata?.picture || null,
+              is_verified: true,
+              is_setup_complete: false,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+
+            const { data: createdProfile, error: insertError } = await supabase
+              .from('users')
+              .insert(newProfile)
+              .select()
+              .single();
+
+            if (insertError) {
+              console.error('[Auth] Profile creation error:', insertError);
+            } else {
+              profile = createdProfile;
+              console.log('[Auth] Profile created successfully');
+            }
+          }
+
+          const isNewUser = !profile || !profile.is_setup_complete;
+
+          return {
+            data: {
+              user: sessionData.user,
+              profile: profile || null,
+              isNewUser: isNewUser,
+            },
+            error: null,
+          };
+        }
+      } else {
+        console.log('[Auth] No tokens found in URL');
+      }
+    } else if (result.type === 'cancel') {
+      console.log('[Auth] User cancelled the sign-in');
+      return {
+        data: null,
+        error: {
+          code: AuthErrorCodes.UNKNOWN_ERROR,
+          message: 'Sign-in cancelled',
+        },
+      };
+    } else {
+      console.log('[Auth] Unexpected result:', result.type);
+    }
+
+    return {
+      data: null,
+      error: {
+        code: AuthErrorCodes.UNKNOWN_ERROR,
+        message: 'Unable to complete Google sign-in',
+      },
+    };
+  } catch (error: any) {
+    console.error('[Auth] Google sign-in error:', error);
+    return {
+      data: null,
+      error: {
+        code: AuthErrorCodes.UNKNOWN_ERROR,
+        message: error.message || 'Unable to sign in with Google',
+      },
+    };
+  }
+}
+  /**
+  * Get user from Google OAuth callback
+  */
+  static async handleGoogleCallback(url: string): Promise<AuthResponse<{ user: any; profile: UserProfile | null; isNewUser: boolean }>> {
+    try {
+      // Parse the callback URL to get session
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error) throw error;
+
+      if (!data.session) {
+        return {
+          data: null,
+          error: {
+            code: AuthErrorCodes.UNAUTHORIZED,
+            message: 'No session found',
+          },
+        };
+      }
+
+      // Get user profile
+      const user = data.session.user;
+
+      if (!user) {
+        return {
+          data: null,
+          error: {
+            code: AuthErrorCodes.UNAUTHORIZED,
+            message: 'No user found',
+          },
+        };
+      }
+
+      // Get or create user profile
+      const profileResult = await this.getOrCreateUserProfile(user);
+
+      if (profileResult.error) {
+        return { data: null, error: profileResult.error };
+      }
+
+      return {
+        data: {
+          user: user,
+          profile: profileResult.data,
+          isNewUser: profileResult.isNewUser || false,
+        },
+        error: null,
+      };
+    } catch (error: any) {
+      console.error('[Auth] Google callback error:', error);
+      return {
+        data: null,
+        error: {
+          code: AuthErrorCodes.UNKNOWN_ERROR,
+          message: 'Unable to complete Google sign-in',
+        },
+      };
+    }
+  }
+
+
+
   // ─── Private Helpers ───
 
+  /**
+   * Get or create user profile - UPDATED for Google users
+   */
   private static async getOrCreateUserProfile(
     user: any
   ): Promise<AuthResponse<UserProfile> & { isNewUser?: boolean }> {
     try {
-      // Check if profile exists
+      // Use maybeSingle() to avoid PGRST116 errors
       const { data: existingProfile, error: fetchError } = await supabase
         .from('users')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       // If profile exists, return it
-      if (!fetchError && existingProfile) {
-        // Check if profile is complete
+      if (existingProfile) {
         const isComplete = existingProfile.is_setup_complete === true;
-        return { 
-          data: existingProfile, 
+        return {
+          data: existingProfile,
           error: null,
           isNewUser: !isComplete,
         };
       }
 
-      // If profile doesn't exist (PGRST116), create one
-      if (fetchError && fetchError.code === 'PGRST116') {
+      // If no profile found, create one
+      if (!existingProfile && !fetchError) {
         const newProfile = {
           id: user.id,
-          phone: user.phone || '',
-          email: user.email || null,
-          full_name: '',
+          phone: user.phone || null,
+          email: user.email || user.user_metadata?.email || null,
+          full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
           city: null,
           role: 'player',
           preferred_foot: null,
-          avatar_url: null,
+          avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
           is_verified: true,
           is_setup_complete: false,
           created_at: new Date().toISOString(),
@@ -382,8 +745,8 @@ export class AuthService {
           };
         }
 
-        return { 
-          data: created, 
+        return {
+          data: created,
           error: null,
           isNewUser: true,
         };
@@ -412,7 +775,7 @@ export class AuthService {
 
   private static validatePhone(phone: string): { isValid: boolean; message?: string } {
     const cleanPhone = phone.replace(/\s/g, '');
-    
+
     if (!cleanPhone || cleanPhone.length === 0) {
       return { isValid: false, message: 'Phone number is required' };
     }

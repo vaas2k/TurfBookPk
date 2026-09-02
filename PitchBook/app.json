@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "PitchBook",
-    "slug": "pitchbook",
+    "name": "TurfBookPK",
+    "slug": "turfbookpk",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/images/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#4CAF50"
     },
@@ -16,7 +16,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pitchbook.app",
+      "bundleIdentifier": "com.turfbookpk.app",
       "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
@@ -24,13 +24,29 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#4CAF50"
       },
-      "package": "com.pitchbook.app",
+      "package": "com.turfbookpk.app",
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "turfbookpk",
+              "host": "auth",
+              "pathPrefix": "/callback"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {
@@ -41,7 +57,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow PitchBook to access your location to find nearby grounds."
+          "locationAlwaysAndWhenInUsePermission": "Allow TurfBookPK to access your location to find nearby grounds."
         }
       ],
       [
@@ -49,9 +65,13 @@
         {
           "icon": "./assets/notification-icon.png",
           "color": "#4CAF50",
-          "sounds": ["./assets/notification.wav"]
+          "sounds": [
+            "./assets/notification.wav"
+          ]
         }
-      ]
+      ],
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "extra": {
       "supabaseUrl": "https://mkbpajohoxdezdmiomhb.supabase.co",

@@ -11,11 +11,10 @@ export interface AuthResponse<T> {
 export interface UserProfile {
   id: string;
   email: string | null;
-  phone: string;
+  phone: string | null;
   full_name: string;
   city: string | null;
   role: 'player' | 'vendor' | 'admin';
-  preferred_foot: 'Left' | 'Right' | 'Both' | null;
   avatar_url: string | null;
   is_verified: boolean;
   is_setup_complete: boolean;
