@@ -19,7 +19,7 @@ const handleLogout = async () => {
         style: 'destructive',
         onPress: async () => {
           await signOut();
-          router.replace('/(auth)/login');
+          router.replace('/(auth)/phone-input');
         }
       }
     ]

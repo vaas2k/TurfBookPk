@@ -1,13 +1,17 @@
-import { 
-  View, Text, TextInput, TouchableOpacity, 
+import {
+  View, Text, TextInput, TouchableOpacity,
   ScrollView, Image, Dimensions, RefreshControl,
-  Platform, StatusBar, FlatList, Modal, TouchableWithoutFeedback
+  Platform, StatusBar, FlatList, Modal, TouchableWithoutFeedback,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useState, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store/authStore';
+import VendorRegistrationModal from '@/components/vendor/VendorRegistrationModal';
+import { useVendorStore } from '@/store/vendorStore';
+import { VendorFormData } from '@/components/vendor/VendorRegistrationModal';
 
 const { width } = Dimensions.get('window');
 
@@ -70,16 +74,20 @@ const mockGrounds = [
 const filterOptions = ['All', '5-a-side', '7-a-side', 'Turf'];
 
 export default function PlayerHome() {
-  const { profile } = useAuthStore();
+  const { profile, user } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Modal states
-  const [showVendorModal, setShowVendorModal] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Vendor states
+  const [showVendorModal, setShowVendorModal] = useState(false);
+  const [isVendorLoading, setIsVendorLoading] = useState(false);
+  const { registerVendor, checkVendorStatus } = useVendorStore();
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -96,16 +104,39 @@ export default function PlayerHome() {
     setTimeout(() => setToastVisible(false), 2500);
   };
 
-  const handleSwitchToVendor = () => {
-    setShowVendorModal(true);
+  const handleSwitchToVendor = async () => {
+    if (!user) {
+      Alert.alert('Error', 'Please login first');
+      return;
+    }
+
+    // Check if user is already a vendor
+    const { isVendor } = await checkVendorStatus(user.id);
+
+    if (isVendor) {
+      // Already a vendor, go to vendor dashboard
+      router.replace('/(vendor)');
+    } else {
+      // Show registration modal
+      setShowVendorModal(true);
+    }
   };
 
-  const confirmSwitchToVendor = () => {
-    setShowVendorModal(false);
-    showToast('Switching to Vendor Mode...');
-    setTimeout(() => {
-      router.replace('/(vendor)');
-    }, 500);
+  const handleVendorRegister = async (formData: VendorFormData) => {
+    setIsVendorLoading(true);
+    const { error } = await registerVendor(formData);
+    setIsVendorLoading(false);
+
+    if (error) {
+      Alert.alert('Registration Failed', error);
+    } else {
+      setShowVendorModal(false);
+      Alert.alert(
+        'Registration Successful!',
+        'Your vendor account has been created. You can now manage your grounds.',
+        [{ text: 'Continue', onPress: () => router.replace('/(vendor)') }]
+      );
+    }
   };
 
   const handleNotifications = () => {
@@ -116,7 +147,7 @@ export default function PlayerHome() {
   const filteredGrounds = mockGrounds.filter(ground => {
     const matchesFilter = selectedFilter === 'All' || ground.type === selectedFilter;
     const matchesSearch = ground.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         ground.location.toLowerCase().includes(searchQuery.toLowerCase());
+      ground.location.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
 
@@ -126,9 +157,8 @@ export default function PlayerHome() {
   const renderGroundCard = (ground: typeof mockGrounds[0], horizontal: boolean = false) => (
     <TouchableOpacity
       key={ground.id}
-      className={`bg-white rounded-2xl overflow-hidden ${
-        horizontal ? 'mr-4' : 'mb-4'
-      }`}
+      className={`bg-white rounded-2xl overflow-hidden ${horizontal ? 'mr-4' : 'mb-4'
+        }`}
       style={{
         width: horizontal ? width * 0.82 : '100%',
         shadowColor: '#000',
@@ -140,12 +170,12 @@ export default function PlayerHome() {
       onPress={() => handleGroundPress(ground.id)}
       activeOpacity={0.8}
     >
-      <Image 
+      <Image
         source={{ uri: ground.image }}
         className="w-full h-44"
         resizeMode="cover"
       />
-      
+
       <View className="absolute top-3 left-3 flex-row space-x-2">
         {ground.isAvailableNow && ground.slotsAvailable > 0 && (
           <View className="bg-[#4CAF50] px-2.5 py-1 rounded-full">
@@ -166,7 +196,7 @@ export default function PlayerHome() {
 
       <View className="p-4">
         <Text className="text-[#1A1A2E] text-base font-bold">{ground.name}</Text>
-        
+
         <View className="flex-row items-center mt-0.5">
           <Ionicons name="location-outline" size={13} color="#737373" />
           <Text className="text-[#737373] text-xs ml-1 flex-1">{ground.location}</Text>
@@ -199,7 +229,7 @@ export default function PlayerHome() {
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       <ScrollView
         className="flex-1"
         refreshControl={
@@ -225,8 +255,8 @@ export default function PlayerHome() {
               <Ionicons name="business-outline" size={14} color="#4CAF50" />
               <Text className="text-[#4CAF50] text-[10px] font-medium ml-1">Vendor</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               className="bg-white w-9 h-9 rounded-full items-center justify-center"
               style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
               onPress={handleNotifications}
@@ -234,14 +264,6 @@ export default function PlayerHome() {
               <Ionicons name="notifications-outline" size={20} color="#1A1A2E" />
               <View className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
             </TouchableOpacity>
-            
-            {/* <TouchableOpacity 
-              className="bg-white w-9 h-9 rounded-full items-center justify-center"
-              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
-              onPress={() => router.push('/(player)/profile')}
-            >
-              <Ionicons name="person-outline" size={20} color="#1A1A2E" />
-            </TouchableOpacity> */}
           </View>
         </View>
 
@@ -273,15 +295,14 @@ export default function PlayerHome() {
           {filterOptions.map((filter) => (
             <TouchableOpacity
               key={filter}
-              className={`px-5 py-2 rounded-full mr-2 ${
-                selectedFilter === filter ? 'bg-[#4CAF50]' : 'bg-white'
-              }`}
-              style={selectedFilter !== filter ? { 
-                shadowColor: '#000', 
-                shadowOffset: { width: 0, height: 2 }, 
-                shadowOpacity: 0.04, 
-                shadowRadius: 4, 
-                elevation: 1 
+              className={`px-5 py-2 rounded-full mr-2 ${selectedFilter === filter ? 'bg-[#4CAF50]' : 'bg-white'
+                }`}
+              style={selectedFilter !== filter ? {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.04,
+                shadowRadius: 4,
+                elevation: 1
               } : {}}
               onPress={() => setSelectedFilter(filter)}
             >
@@ -341,63 +362,6 @@ export default function PlayerHome() {
         </View>
       )}
 
-      {/* ─── VENDOR MODE MODAL ─── */}
-      <Modal
-        visible={showVendorModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowVendorModal(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowVendorModal(false)}>
-          <View className="flex-1 bg-black/50 items-center justify-center px-6">
-            <TouchableWithoutFeedback>
-              <View className="bg-white rounded-3xl p-6 w-full max-w-sm"
-                style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 24, elevation: 8 }}
-              >
-                {/* Icon */}
-                <View className="items-center">
-                  <View className="w-16 h-16 rounded-full bg-[#E8F5E9] items-center justify-center mb-4">
-                    <Ionicons name="business-outline" size={32} color="#4CAF50" />
-                  </View>
-                  <Text className="text-xl font-bold text-[#1A1A2E]">Switch to Vendor</Text>
-                  <Text className="text-[#737373] text-center mt-2 text-sm leading-5">
-                    Switch to vendor mode to manage your grounds, view bookings, and track earnings.
-                  </Text>
-                </View>
-
-                {/* Divider */}
-                <View className="h-px bg-[#F5F5F5] my-4" />
-
-                {/* Info Row */}
-                <View className="flex-row items-center bg-[#F8F9FA] rounded-xl p-3 mb-4">
-                  <Ionicons name="information-circle-outline" size={20} color="#4CAF50" />
-                  <Text className="text-[#737373] text-xs ml-2 flex-1">
-                    You can switch back to player mode anytime from the vendor dashboard.
-                  </Text>
-                </View>
-
-                {/* Buttons */}
-                <View className="flex-row space-x-3">
-                  <TouchableOpacity
-                    className="flex-1 py-3 rounded-xl border border-[#E5E5E5]"
-                    onPress={() => setShowVendorModal(false)}
-                  >
-                    <Text className="text-[#737373] text-center font-medium">Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    className="flex-1 py-3 rounded-xl bg-[#4CAF50]"
-                    style={{ shadowColor: '#4CAF50', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}
-                    onPress={confirmSwitchToVendor}
-                  >
-                    <Text className="text-white text-center font-medium">Switch</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
       {/* ─── NOTIFICATIONS MODAL ─── */}
       <Modal
         visible={showNotificationModal}
@@ -434,6 +398,14 @@ export default function PlayerHome() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* ─── VENDOR REGISTRATION MODAL (Full Screen) ─── */}
+      <VendorRegistrationModal
+        visible={showVendorModal}
+        onClose={() => setShowVendorModal(false)}
+        onRegister={handleVendorRegister}
+        isLoading={isVendorLoading}
+      />
     </SafeAreaView>
   );
 }

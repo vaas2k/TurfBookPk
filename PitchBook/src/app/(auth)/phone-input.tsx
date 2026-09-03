@@ -45,12 +45,17 @@ export default function PhoneInputScreen() {
       return;
     }
 
+
+    console.log('[PhoneInput] Sending OTP to:', cleanPhone);
+
     setIsLoading(true);
-    const { error: sendError } = await sendOTP(cleanPhone);
+    const { error: sendError } = await sendOTP(`92${cleanPhone}`);
     setIsLoading(false);
 
     if (sendError) {
+      console.log('[PhoneInput] Error sending OTP:', sendError);
       Alert.alert('Error', sendError.message);
+
     } else {
       router.push({
         pathname: '/(auth)/otp-verification',

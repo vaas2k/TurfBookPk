@@ -69,8 +69,10 @@ export default function OTPVerificationScreen() {
       return;
     }
 
+
+    console.log('[OTPVerification] Verifying OTP for phone:', phone, 'with code:', code);
     setIsVerifying(true);
-    const { error: verifyError } = await verifyOTP(phone, code);
+    const { error: verifyError } = await verifyOTP(`92${phone}`, code);
     setIsVerifying(false);
 
     if (verifyError) {
@@ -99,6 +101,7 @@ export default function OTPVerificationScreen() {
     setIsLoading(false);
 
     if (resendError) {
+      // console.log('[OTPVerification] Error resending OTP:', resendError);
       Alert.alert('Error', resendError.message);
     } else {
       setTimer(60);

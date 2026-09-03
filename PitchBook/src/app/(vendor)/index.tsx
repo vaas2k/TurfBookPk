@@ -1,0 +1,178 @@
+import { View, Text, TouchableOpacity, ScrollView, RefreshControl, StatusBar, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { useState, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from '@/store/authStore';
+import { useVendorStore } from '@/store/vendorStore';
+
+export default function VendorDashboard() {
+  const { profile, switchToPlayer } = useAuthStore();
+  const { vendorProfile } = useVendorStore();
+  const [refreshing, setRefreshing] = useState(false);
+
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 1500);
+  }, []);
+
+  // Mock stats - will be replaced with real data
+  const stats = {
+    totalGrounds: 0,
+    todayBookings: 0,
+    totalRevenue: 0,
+    rating: 0,
+  };
+
+
+  const handleSwitchToPlayer = async () => {
+    Alert.alert(
+      'Switch to Player Mode',
+      'You will switch back to player view. You can switch back to vendor anytime from the player home screen.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Switch',
+          onPress: async () => {
+            await switchToPlayer();
+            router.replace('/(player)');
+          }
+        }
+      ]
+    );
+  };
+  return (
+    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+
+      <ScrollView
+        className="flex-1"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4CAF50" />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View className="px-6 pt-4 pb-2 flex-row items-center justify-between">
+          <View>
+            <Text className="text-[#737373] text-sm">Welcome back,</Text>
+            <Text className="text-2xl font-bold text-[#1A1A2E]">
+              {vendorProfile?.business_name || profile?.full_name || 'Vendor'}
+            </Text>
+            <View className="flex-row items-center mt-1">
+              <View className="bg-[#E8F5E9] px-2 py-0.5 rounded-full">
+                <Text className="text-[#4CAF50] text-[10px] font-medium">Vendor</Text>
+              </View>
+              {vendorProfile?.is_verified === false && (
+                <View className="bg-[#FEF3C7] px-2 py-0.5 rounded-full ml-2">
+                  <Text className="text-[#F59E0B] text-[10px] font-medium">Pending Verification</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+
+<View className="flex-row items-center gap-3">
+
+          <TouchableOpacity
+            className="bg-white w-10 h-10 rounded-full items-center justify-center"
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
+            >
+            <Ionicons name="notifications-outline" size={20} color="#1A1A2E" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            className="bg-white w-10 h-10 rounded-full items-center justify-center"
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
+            onPress={handleSwitchToPlayer}
+          >
+            <Ionicons name="person-outline" size={20} color="#4CAF50" />
+          </TouchableOpacity>
+            </View>
+
+        </View>
+
+        {/* Stats Cards */}
+        <View className="px-6 mt-4">
+          <View className="flex-row space-x-3">
+            <View className="flex-1 bg-white rounded-2xl p-4"
+              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
+              <Text className="text-[#737373] text-xs">Total Grounds</Text>
+              <Text className="text-2xl font-bold text-[#1A1A2E] mt-1">{stats.totalGrounds}</Text>
+            </View>
+            <View className="flex-1 bg-white rounded-2xl p-4"
+              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
+              <Text className="text-[#737373] text-xs">Today's Bookings</Text>
+              <Text className="text-2xl font-bold text-[#1A1A2E] mt-1">{stats.todayBookings}</Text>
+            </View>
+          </View>
+          <View className="flex-row space-x-3 mt-3">
+            <View className="flex-1 bg-white rounded-2xl p-4"
+              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
+              <Text className="text-[#737373] text-xs">Revenue</Text>
+              <Text className="text-2xl font-bold text-[#4CAF50] mt-1">Rs {stats.totalRevenue}</Text>
+            </View>
+            <View className="flex-1 bg-white rounded-2xl p-4"
+              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
+              <Text className="text-[#737373] text-xs">Rating</Text>
+              <View className="flex-row items-center mt-1">
+                <Ionicons name="star" size={16} color="#F59E0B" />
+                <Text className="text-2xl font-bold text-[#1A1A2E] ml-1">{stats.rating || '—'}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Quick Actions */}
+        <View className="px-6 mt-6">
+          <Text className="text-[#1A1A2E] text-base font-bold mb-3">Quick Actions</Text>
+          <View className="flex-row space-x-3">
+            <TouchableOpacity
+              className="flex-1 bg-[#4CAF50] rounded-2xl p-4 items-center"
+              style={{ shadowColor: '#4CAF50', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 }}
+              onPress={() => router.push('/(vendor)/add-ground')}
+            >
+              <Ionicons name="add-circle-outline" size={28} color="white" />
+              <Text className="text-white font-medium mt-1 text-sm">Add Ground</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="flex-1 bg-white rounded-2xl p-4 items-center"
+              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
+              onPress={() => router.push('/(vendor)/bookings')}
+            >
+              <Ionicons name="calendar-outline" size={28} color="#1A1A2E" />
+              <Text className="text-[#1A1A2E] font-medium mt-1 text-sm">View Bookings</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="flex-1 bg-white rounded-2xl p-4 items-center"
+              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
+              onPress={() => router.push('/(vendor)/earnings')}
+            >
+              <Ionicons name="wallet-outline" size={28} color="#1A1A2E" />
+              <Text className="text-[#1A1A2E] font-medium mt-1 text-sm">Earnings</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Empty State for Grounds */}
+        <View className="px-6 mt-6 pb-8">
+          <View className="bg-white rounded-2xl p-8 items-center"
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
+            <Ionicons name="business-outline" size={48} color="#D4D4D4" />
+            <Text className="text-[#1A1A2E] text-lg font-bold mt-4">No Grounds Yet</Text>
+            <Text className="text-[#737373] text-sm text-center mt-1">
+              Add your first ground to start accepting bookings
+            </Text>
+            <TouchableOpacity
+              className="mt-4 bg-[#4CAF50] px-6 py-3 rounded-full"
+              style={{ shadowColor: '#4CAF50', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}
+              onPress={() => router.push('/(vendor)/add-ground')}
+            >
+              <Text className="text-white font-medium">Add Ground</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
