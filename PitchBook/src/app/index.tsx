@@ -3,29 +3,9 @@ import { View, Text } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/store/authStore';
-import { useVendorStore } from '@/store/vendorStore';
 
 export default function SplashScreen() {
-  const { isAuthenticated, isNewUser, isLoading, user, checkAuth, role } = useAuthStore();
-  const { checkVendorStatus, isVendor } = useVendorStore();
-
-  useEffect(() => {
-    const init = async () => {
-      // Check auth status
-      await checkAuth();
-      
-      // If user is authenticated, check vendor status
-      const currentUser = useAuthStore.getState().user;
-      const currentRole = useAuthStore.getState().role;
-      
-      if (currentUser) {
-        // Check vendor status (this updates the vendor store)
-        await checkVendorStatus(currentUser.id);
-      }
-    };
-    
-    init();
-  }, []);
+  const { isAuthenticated, isNewUser, isLoading, user } = useAuthStore();
 
   useEffect(() => {
     if (isLoading) return;
@@ -34,7 +14,7 @@ export default function SplashScreen() {
       if (isAuthenticated && user) {
         // Get the latest role and vendor status
         const currentRole = useAuthStore.getState().role;
-        const isUserVendor = useVendorStore.getState().isVendor;
+        const isUserVendor = currentRole === 'vendor';
         
         console.log('[Splash] Current role:', currentRole);
         console.log('[Splash] Is vendor:', isUserVendor);

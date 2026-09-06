@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase } from '@/lib/Supabase/supabase';
+import { getVendorProfile, registerVendor as registerVendorApi } from '@/lib/api/vendors';
 import { useAuthStore } from './authStore';
 
 export interface VendorProfile {
@@ -15,6 +15,7 @@ export interface VendorProfile {
   is_active: boolean;
   total_earnings: number;
   pending_earnings: number;
+  total_withdrawn: number;
   rating: number;
   total_reviews: number;
   created_at: string;
@@ -38,25 +39,18 @@ export const useVendorStore = create<VendorState>((set, get) => ({
   isLoading: false,
   isVendor: false,
 
-  checkVendorStatus: async (userId: string) => {
+  checkVendorStatus: async (_userId: string) => {
     set({ isLoading: true });
     try {
-      const { data, error } = await supabase
-        .from('vendors')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (error) throw error;
-
+      const data = await getVendorProfile();
       const isVendor = !!data;
       set({ 
-        vendorProfile: data || null, 
+        vendorProfile: data,
         isVendor: isVendor,
         isLoading: false 
       });
       
-      return { isVendor, profile: data || null };
+      return { isVendor, profile: data };
     } catch (error) {
       console.error('Check vendor status error:', error);
       set({ isLoading: false });
@@ -72,30 +66,7 @@ export const useVendorStore = create<VendorState>((set, get) => ({
         throw new Error('User not authenticated');
       }
 
-      // Insert into vendors table
-      const { data: vendorData, error: vendorError } = await supabase
-        .from('vendors')
-        .insert({
-          user_id: user.id,
-          business_name: data.business_name,
-          business_phone: data.business_phone,
-          business_city: data.business_city,
-          business_description: data.business_description || null,
-          is_verified: false,
-          is_active: true,
-        })
-        .select()
-        .single();
-
-      if (vendorError) throw vendorError;
-
-      // Update user role to vendor
-      const { error: userError } = await supabase
-        .from('users')
-        .update({ role: 'vendor' })
-        .eq('id', user.id);
-
-      if (userError) throw userError;
+      const vendorData = await registerVendorApi(data);
 
       // Update auth store role
       useAuthStore.setState({ role: 'vendor' });
@@ -116,13 +87,8 @@ export const useVendorStore = create<VendorState>((set, get) => ({
 
   getVendorProfile: async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('vendors')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (error) throw error;
+      const data = await getVendorProfile();
+      if (!data) throw new Error('Vendor profile not found');
 
       set({ vendorProfile: data, isVendor: true });
       return { profile: data, error: null };

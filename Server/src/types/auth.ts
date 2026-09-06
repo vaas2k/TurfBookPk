@@ -1,40 +1,21 @@
-export interface AuthError {
-  code: string;
-  message: string;
-}
-
-export interface AuthResponse<T> {
-  data: T | null;
-  error: AuthError | null;
-}
+export type UserRole = 'player' | 'vendor' | 'admin';
 
 export interface UserProfile {
   id: string;
-  email: string | null;
   phone: string | null;
+  email: string | null;
   full_name: string;
   city: string | null;
   bio: string | null;
   preferred_foot: 'Left' | 'Right' | 'Both' | null;
   preferred_position: string | null;
   skill_level: 'Beginner' | 'Intermediate' | 'Advanced' | 'Professional' | null;
-  role: 'player' | 'vendor';
+  role: UserRole;
   avatar_url: string | null;
   is_verified: boolean;
   is_setup_complete: boolean;
   created_at: string;
   updated_at: string;
-}
-
-export interface AuthState {
-  user: any | null;
-  session: any | null;
-  profile: UserProfile | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  isNewUser: boolean;
-  role: 'player' | 'vendor' | 'admin' | null;
-  error: AuthError | null;
 }
 
 export interface AuthUser {
@@ -53,4 +34,20 @@ export interface AuthResult {
   user: AuthUser;
   profile: UserProfile;
   session: AuthSession;
+}
+
+export interface StoredRefreshSession {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: number;
+  revokedAt: number | null;
+  createdAt: number;
+}
+
+export interface OtpChallenge {
+  phone: string;
+  codeHash: string;
+  expiresAt: number;
+  attempts: number;
 }

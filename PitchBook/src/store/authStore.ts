@@ -1,9 +1,15 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '@/lib/Supabase/supabase';
-import { User, Session } from '@supabase/supabase-js';
 import { useVendorStore } from './vendorStore';
+import {
+  refreshSession,
+  requestOtp,
+  signOut as apiSignOut,
+  updateProfile,
+  verifyOtp,
+} from '@/lib/api/auth';
+import { ApiError, setAccessToken } from '@/lib/api/client';
 
 export interface UserProfile {
   id: string;
@@ -11,6 +17,10 @@ export interface UserProfile {
   email: string | null;
   full_name: string;
   city: string | null;
+  bio: string | null;
+  preferred_foot: 'Left' | 'Right' | 'Both' | null;
+  preferred_position: string | null;
+  skill_level: 'Beginner' | 'Intermediate' | 'Advanced' | 'Professional' | null;
   role: 'player' | 'vendor';
   avatar_url: string | null;
   is_verified: boolean;
@@ -19,32 +29,42 @@ export interface UserProfile {
   updated_at: string;
 }
 
+export interface AuthUser {
+  id: string;
+  phone: string | null;
+  email: string | null;
+}
+
+export interface AuthSession {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
 interface AuthState {
-  user: User | null;
-  session: Session | null;
+  user: AuthUser | null;
+  session: AuthSession | null;
   profile: UserProfile | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   isNewUser: boolean;
   role: 'player' | 'vendor' | null;
-  error: string | null;
+  error: ApiError | null;
   lastMode?: 'player' | 'vendor' | null;
-
-  // Actions
-  sendOTP: (phone: string) => Promise<{ error: string | null }>;
-  verifyOTP: (phone: string, token: string) => Promise<{ error: string | null }>;
-  signInWithGoogle: () => Promise<{ error: string | null }>;
-  completeProfile: (data: Partial<UserProfile>) => Promise<{ error: string | null }>;
+  sendOTP: (phone: string) => Promise<{ error: ApiError | null }>;
+  verifyOTP: (phone: string, token: string) => Promise<{ error: ApiError | null }>;
+  signInWithGoogle: () => Promise<{ error: ApiError | null }>;
+  completeProfile: (data: Partial<UserProfile>) => Promise<{ error: ApiError | null }>;
   signOut: () => Promise<void>;
   checkAuth: () => Promise<void>;
   clearError: () => void;
-  setSession: (session: Session | null) => void;
-  createUserProfile: (user: User) => Promise<{ error: string | null }>;
+  setSession: (session: AuthSession | null) => void;
+  createUserProfile: (user: AuthUser) => Promise<{ error: ApiError | null }>;
   switchToPlayer: () => Promise<void>;
   setLastMode: (mode: 'player' | 'vendor') => void;
 }
 
-const initialState: AuthState = {
+const initialState = {
   user: null,
   session: null,
   profile: null,
@@ -54,338 +74,122 @@ const initialState: AuthState = {
   role: null,
   lastMode: null,
   error: null,
-  sendOTP: async () => ({ error: null }),
-  verifyOTP: async () => ({ error: null }),
-  signInWithGoogle: async () => ({ error: null }),
-  completeProfile: async () => ({ error: null }),
-  signOut: async () => { },
-  checkAuth: async () => { },
-  clearError: () => { },
-  setSession: () => { },
-  createUserProfile: async () => ({ error: null }),
-  switchToPlayer: async () => { },
-  setLastMode: (mode: 'player' | 'vendor') => { },
-};
+} satisfies Pick<AuthState, 'user' | 'session' | 'profile' | 'isLoading' | 'isAuthenticated' | 'isNewUser' | 'role' | 'lastMode' | 'error'>;
+
+function toApiError(error: unknown): ApiError {
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return {
+      code: 'code' in error && typeof error.code === 'string' ? error.code : 'unknown_error',
+      message: String(error.message),
+    };
+  }
+  return { code: 'unknown_error', message: 'Something went wrong. Please try again.' };
+}
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       ...initialState,
 
-      // Send OTP
-      sendOTP: async (phone: string) => {
+      sendOTP: async (phone) => {
         set({ isLoading: true, error: null });
         try {
-          const cleanPhone = phone.replace('+', '');
-
-          console.log('[AuthStore] Sending OTP to:', cleanPhone);
-          const { error } = await supabase.auth.signInWithOtp({
-            phone: cleanPhone,
-          });
-          if (error) throw error;
+          await requestOtp(phone);
           set({ isLoading: false });
           return { error: null };
-        } catch (error: any) {
-          set({ isLoading: false, error: error.message });
-          return { error: error.message };
-        }
-      },
-
-      // Verify OTP
-      verifyOTP: async (phone: string, token: string) => {
-        set({ isLoading: true, error: null });
-        try {
-          const cleanPhone = phone.replace('+', '');
-          const { data, error } = await supabase.auth.verifyOtp({
-            phone: cleanPhone,
-            token: token,
-            type: 'sms',
-          });
-          if (error) throw error;
-
-          if (data.user) {
-            // Check if user profile exists
-            const { data: profileData, error: profileError } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', data.user.id)
-              .maybeSingle();
-
-            // If no profile, create one
-            if (!profileData) {
-              const newProfile: UserProfile = {
-                id: data.user.id,
-                phone: data.user.phone || cleanPhone,
-                email: data.user.email || null,
-                full_name: 'Player',
-                city: null,
-                role: 'player',
-                avatar_url: null,
-                is_verified: true,
-                is_setup_complete: false,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              };
-
-              const { error: insertError } = await supabase
-                .from('users')
-                .insert(newProfile);
-
-              if (insertError) {
-                console.error('Insert profile error:', insertError);
-                throw insertError;
-              }
-
-              set({
-                user: data.user,
-                session: data.session,
-                profile: newProfile,
-                isAuthenticated: true,
-                isNewUser: true,
-                role: 'player',
-                isLoading: false,
-                error: null,
-              });
-            } else {
-              set({
-                user: data.user,
-                session: data.session,
-                profile: profileData,
-                isAuthenticated: true,
-                isNewUser: !profileData.is_setup_complete,
-                role: profileData.role || 'player',
-                isLoading: false,
-                error: null,
-              });
-            }
-          }
-
-          return { error: null };
-        } catch (error: any) {
-          console.error('Verify OTP error:', error);
-          set({ isLoading: false, error: error.message });
-          return { error: error.message };
-        }
-      },
-
-      // Create user profile (for existing auth users)
-      createUserProfile: async (user: User) => {
-        try {
-          const newProfile: UserProfile = {
-            id: user.id,
-            phone: user.phone || null,
-            email: user.email || null,
-            full_name: user.user_metadata?.full_name || 'Player',
-            city: null,
-            role: 'player',
-            avatar_url: user.user_metadata?.avatar_url || null,
-            is_verified: true,
-            is_setup_complete: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-
-          const { error } = await supabase
-            .from('users')
-            .insert(newProfile);
-
-          if (error) throw error;
-
-          set({
-            profile: newProfile,
-            isNewUser: true,
-          });
-
-          return { error: null };
-        } catch (error: any) {
-          console.error('Create profile error:', error);
-          return { error: error.message };
-        }
-      },
-
-      // Google Sign In
-      signInWithGoogle: async () => {
-        // ... existing google sign in code ...
-        return { error: null };
-      },
-
-      // Complete Profile
-      completeProfile: async (data: Partial<UserProfile>) => {
-        const { user, profile } = get();
-        if (!user) {
-          return { error: 'No user logged in' };
-        }
-
-        set({ isLoading: true, error: null });
-
-        try {
-          const { error } = await supabase
-            .from('users')
-            .update({
-              full_name: data.full_name,
-              email: data.email,
-              city: data.city,
-              is_setup_complete: true,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', user.id);
-
-          if (error) throw error;
-
-          const updatedProfile = {
-            ...profile,
-            ...data,
-            is_setup_complete: true,
-            updated_at: new Date().toISOString(),
-          } as UserProfile;
-
-          set({
-            profile: updatedProfile,
-            isNewUser: false,
-            isLoading: false,
-          });
-
-          return { error: null };
-        } catch (error: any) {
-          set({ isLoading: false, error: error.message });
-          return { error: error.message };
-        }
-      },
-
-      // Sign Out
-      signOut: async () => {
-        try {
-          set({ isLoading: true });
-          await supabase.auth.signOut();
-          await AsyncStorage.removeItem('auth-storage');
-          set({
-            ...initialState,
-            isLoading: false,
-          });
         } catch (error) {
-          console.error('Sign out error:', error);
-          set({ isLoading: false });
+          const apiError = toApiError(error);
+          set({ isLoading: false, error: apiError });
+          return { error: apiError };
         }
       },
 
-      // Check Auth
-      checkAuth: async () => {
+      verifyOTP: async (phone, token) => {
+        set({ isLoading: true, error: null });
         try {
-          console.log('[AuthStore] Checking auth...');
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-          if (sessionError) {
-            console.error('[AuthStore] Session error:', sessionError);
-            set({ isLoading: false, isAuthenticated: false });
-            return;
-          }
-
-          if (!session) {
-            console.log('[AuthStore] No session found');
-            set({ isLoading: false, isAuthenticated: false });
-            return;
-          }
-
-          console.log('[AuthStore] Session found for user:', session.user.id);
-
-          // CRITICAL: Check if profile exists in public.users
-          const { data: profileData, error: profileError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
-
-          // If profile doesn't exist, treat as NOT authenticated
-          if (!profileData) {
-            console.log('[AuthStore] No profile found - user needs to complete setup');
-
-            // Option A: Force logout and redirect to login
-            await supabase.auth.signOut();
-            await AsyncStorage.removeItem('auth-storage');
-
-            set({
-              ...initialState,
-              isLoading: false,
-              isAuthenticated: false,
-            });
-            return;
-          }
-
-          // Profile exists - user is fully authenticated
+          const result = await verifyOtp(phone, token);
           set({
-            user: session.user,
-            session: session,
-            profile: profileData,
+            user: result.user,
+            session: result.session,
+            profile: result.profile,
             isAuthenticated: true,
-            isNewUser: !profileData.is_setup_complete,
-            role: profileData.role || 'player',
+            isNewUser: !result.profile.is_setup_complete,
+            role: result.profile.role,
+            isLoading: false,
+          });
+          return { error: null };
+        } catch (error) {
+          const apiError = toApiError(error);
+          set({ isLoading: false, error: apiError });
+          return { error: apiError };
+        }
+      },
+
+      signInWithGoogle: async () => ({
+        error: { code: 'not_implemented', message: 'Google sign-in will be added after the core auth flow.' },
+      }),
+
+      completeProfile: async (data) => {
+        if (!get().user) return { error: { code: 'unauthorized', message: 'No user is logged in' } };
+        set({ isLoading: true, error: null });
+        try {
+          const result = await updateProfile({ ...data, is_setup_complete: true });
+          set({ profile: result.profile, user: result.user, isNewUser: false, isLoading: false });
+          return { error: null };
+        } catch (error) {
+          const apiError = toApiError(error);
+          set({ isLoading: false, error: apiError });
+          return { error: apiError };
+        }
+      },
+
+      signOut: async () => {
+        set({ isLoading: true });
+        try {
+          await apiSignOut();
+        } finally {
+          setAccessToken(null);
+          set({ ...initialState, isLoading: false });
+          useVendorStore.getState().clearVendor();
+        }
+      },
+
+      checkAuth: async () => {
+        set({ isLoading: true });
+        try {
+          const result = await refreshSession();
+          set({
+            user: result.user,
+            session: result.session,
+            profile: result.profile,
+            isAuthenticated: true,
+            isNewUser: !result.profile.is_setup_complete,
+            role: result.profile.role,
             isLoading: false,
             error: null,
           });
-
-          console.log('[AuthStore] Auth check complete, isAuthenticated:', true);
-        } catch (error) {
-          console.error('[AuthStore] Check auth error:', error);
-          set({ isLoading: false, isAuthenticated: false });
+        } catch {
+          set({ ...initialState, isLoading: false });
         }
       },
 
-      // Clear Error
-      clearError: () => {
-        set({ error: null });
-      },
+      clearError: () => set({ error: null }),
+      setSession: (session) => set({ session, isAuthenticated: Boolean(session) }),
+      createUserProfile: async () => ({ error: null }),
 
-      // Set Session
-      setSession: (session: Session | null) => {
-        set({ session, user: session?.user || null });
-      },
       switchToPlayer: async () => {
         const { user } = get();
         if (!user) return;
-
         try {
-          console.log('[AuthStore] Switching to player mode...');
-
-          // Update user role to player in Supabase
-          const { error } = await supabase
-            .from('users')
-            .update({
-              role: 'player',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', user.id);
-
-          if (error) {
-            console.error('[AuthStore] Switch to player error:', error);
-            throw error;
-          }
-
-          // Update local state
-          set({
-            role: 'player',
-            lastMode: 'player',
-          });
-
-          // Update profile in store
-          const currentProfile = get().profile;
-          if (currentProfile) {
-            set({
-              profile: {
-                ...currentProfile,
-                role: 'player',
-              }
-            });
-          }
-
-          // Clear vendor state
-          const { clearVendor } = useVendorStore.getState();
-          clearVendor();
-
-          console.log('[AuthStore] Switched to player mode successfully');
+          const result = await updateProfile({ role: 'player' });
+          set({ user: result.user, profile: result.profile, role: 'player', lastMode: 'player' });
+          useVendorStore.getState().clearVendor();
         } catch (error) {
-          console.error('[AuthStore] Switch to player error:', error);
+          set({ error: toApiError(error) });
         }
-      }
+      },
+
+      setLastMode: (mode) => set({ lastMode: mode }),
     }),
     {
       name: 'auth-storage',
@@ -397,6 +201,6 @@ export const useAuthStore = create<AuthState>()(
         isNewUser: state.isNewUser,
         lastMode: state.lastMode,
       }),
-    }
-  )
-);  
+    },
+  ),
+);
