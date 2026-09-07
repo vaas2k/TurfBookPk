@@ -3,9 +3,11 @@ import { View, Text } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/store/authStore';
+import { useVendorStore } from '@/store/vendorStore';
 
 export default function SplashScreen() {
-  const { isAuthenticated, isNewUser, isLoading, user } = useAuthStore();
+  const { isAuthenticated, isNewUser, isLoading, user, profile } = useAuthStore();
+  const { isVendor } = useVendorStore();
 
   useEffect(() => {
     if (isLoading) return;
@@ -13,15 +15,7 @@ export default function SplashScreen() {
     const timer = setTimeout(() => {
       if (isAuthenticated && user) {
         // Get the latest role and vendor status
-        const currentRole = useAuthStore.getState().role;
-        const isUserVendor = currentRole === 'vendor' || useAuthStore.getState().profile?.role === 'vendor';
-        
-        console.log('[Splash] Current role:', currentRole);
-        console.log('[Splash] Is vendor:', isUserVendor);
-        
-        // If role is 'player', go to player mode even if vendor record exists
-        if (isUserVendor) {
-          // Only go to vendor if role is explicitly 'vendor'
+        if (profile?.role === 'vendor' && isVendor) {
           router.replace('/(vendor)');
         } else if (isNewUser) {
           // New user needs to complete profile
@@ -37,7 +31,7 @@ export default function SplashScreen() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [isAuthenticated, isNewUser, isLoading, user]);
+  }, [isAuthenticated, isNewUser, isLoading, isVendor, profile?.role, user]);
 
   return (
     <View className="flex-1 items-center justify-center bg-[#1A1A2E]">

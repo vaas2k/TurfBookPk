@@ -34,8 +34,6 @@ export interface SlotProfile {
   price: number;
   is_booked: boolean;
   is_blocked: boolean;
-  booked_by: string | null;
-  booking_id: string | null;
   created_at: string;
   updated_at: string;
 }

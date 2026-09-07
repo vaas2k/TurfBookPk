@@ -26,6 +26,20 @@ export class VendorController {
     response.json({ profile: rows[0] ? toProfile(rows[0]) : null });
   };
 
+  activateMode = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const vendor = await db.select({ id: vendors.id })
+      .from(vendors)
+      .where(eq(vendors.userId, request.auth.userId))
+      .limit(1);
+    if (!vendor[0]) throw new AppError('vendor_required', 'A vendor profile is required', 403);
+
+    await db.update(users)
+      .set({ role: 'vendor', updatedAt: new Date() })
+      .where(eq(users.id, request.auth.userId));
+    response.json({ message: 'Vendor mode activated' });
+  };
+
   create = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const { business_name, business_phone, business_city, business_description } = request.body || {};

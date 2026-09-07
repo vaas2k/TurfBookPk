@@ -37,7 +37,7 @@ function toPlayerGround(ground: Ground) {
 }
 
 export default function PlayerHome() {
-  const { profile, user } = useAuthStore();
+  const { profile, user, switchToVendor } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,8 +92,21 @@ export default function PlayerHome() {
     const { isVendor } = await checkVendorStatus(user.id);
 
     if (isVendor) {
-      // Already a vendor, go to vendor dashboard
-      router.replace('/(vendor)');
+      Alert.alert(
+        'Switch to Vendor Mode',
+        'You can return to player mode anytime to book a ground.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Switch',
+            onPress: async () => {
+              const { error } = await switchToVendor();
+              if (error) Alert.alert('Unable to switch modes', error.message);
+              else router.replace('/(vendor)');
+            },
+          },
+        ],
+      );
     } else {
       // Show registration modal
       setShowVendorModal(true);
@@ -231,7 +244,7 @@ export default function PlayerHome() {
               onPress={handleSwitchToVendor}
             >
               <Ionicons name="business-outline" size={14} color="#4CAF50" />
-              <Text className="text-[#4CAF50] text-[10px] font-medium ml-1">Vendor</Text>
+              <Text className="text-[#4CAF50] text-[10px] font-medium ml-1">Switch</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

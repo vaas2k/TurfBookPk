@@ -20,7 +20,7 @@ export default function VendorProfile() {
           style: 'destructive',
           onPress: async () => {
             await signOut();
-            router.replace('/(auth)/login');
+            router.replace('/(auth)/phone-input');
           }
         }
       ]
@@ -36,8 +36,9 @@ export default function VendorProfile() {
         { 
           text: 'Switch', 
           onPress: async () => {
-            await switchToPlayer();
-            router.replace('/(player)');
+            const { error } = await switchToPlayer();
+            if (error) Alert.alert('Unable to switch modes', error.message);
+            else router.replace('/(player)');
           }
         }
       ]

@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, lt, ne } from 'drizzle-orm';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
@@ -40,7 +40,7 @@ function toGround(row: typeof grounds.$inferSelect) {
 }
 
 function toSlot(row: typeof slots.$inferSelect) {
-  return { id: row.id, ground_id: row.groundId, date: row.date, start_time: row.startTime, end_time: row.endTime, price: row.price, is_booked: row.isBooked, is_blocked: row.isBlocked, booked_by: row.bookedBy, booking_id: row.bookingId, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+  return { id: row.id, ground_id: row.groundId, date: row.date, start_time: row.startTime, end_time: row.endTime, price: row.price, is_booked: row.isBooked, is_blocked: row.isBlocked, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
 async function vendorIdForUser(userId: string): Promise<string> {
@@ -151,8 +151,13 @@ export class GroundController {
     const { date, start_time, end_time, price } = request.body || {};
     if (!validDate(date) || !validTime(start_time) || !validTime(end_time) || !Number.isInteger(price) || price <= 0) throw new AppError('invalid_slot', 'Use a valid date, 24-hour times, and a positive whole-number price', 422);
     if (start_time >= end_time) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
-    const conflict = await db.select({ id: slots.id }).from(slots).where(and(eq(slots.groundId, groundId), eq(slots.date, date), eq(slots.startTime, start_time), eq(slots.endTime, end_time))).limit(1);
-    if (conflict[0]) throw new AppError('slot_exists', 'This slot already exists', 409);
+    const conflict = await db.select({ id: slots.id }).from(slots).where(and(
+      eq(slots.groundId, groundId),
+      eq(slots.date, date),
+      lt(slots.startTime, end_time),
+      gt(slots.endTime, start_time),
+    )).limit(1);
+    if (conflict[0]) throw new AppError('slot_conflict', 'This slot overlaps an existing slot', 409);
     const row = (await db.insert(slots).values({ groundId, date, startTime: start_time, endTime: end_time, price }).returning())[0];
     if (!row) throw new AppError('slot_creation_failed', 'Slot could not be created', 500);
     response.status(201).json({ slot: toSlot(row) });
@@ -171,9 +176,18 @@ export class GroundController {
     if (body.date !== undefined && !validDate(body.date)) throw new AppError('invalid_slot', 'Date must use YYYY-MM-DD format', 422);
     if (body.start_time !== undefined && !validTime(body.start_time)) throw new AppError('invalid_slot', 'Start time must use HH:MM format', 422);
     if (body.end_time !== undefined && !validTime(body.end_time)) throw new AppError('invalid_slot', 'End time must use HH:MM format', 422);
+    const nextDate = body.date ?? current.date;
     const nextStart = body.start_time ?? current.startTime;
     const nextEnd = body.end_time ?? current.endTime;
     if (nextStart >= nextEnd) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
+    const conflict = await db.select({ id: slots.id }).from(slots).where(and(
+      eq(slots.groundId, groundId),
+      eq(slots.date, nextDate),
+      lt(slots.startTime, nextEnd),
+      gt(slots.endTime, nextStart),
+      ne(slots.id, current.id),
+    )).limit(1);
+    if (conflict[0]) throw new AppError('slot_conflict', 'This slot overlaps an existing slot', 409);
     if (body.date !== undefined) values.date = body.date;
     if (body.start_time !== undefined) values.startTime = body.start_time;
     if (body.end_time !== undefined) values.endTime = body.end_time;

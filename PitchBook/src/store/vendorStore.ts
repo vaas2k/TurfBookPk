@@ -72,6 +72,7 @@ export const useVendorStore = create<VendorState>((set, get) => ({
       useAuthStore.setState({
         role: 'vendor',
         profile: authState.profile ? { ...authState.profile, role: 'vendor' } : authState.profile,
+        lastMode: 'vendor',
       });
 
       set({ 

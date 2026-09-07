@@ -88,7 +88,7 @@ export default function ProfileSetupScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+      <StatusBar style="dark" />
       
       <View className="bg-white px-6 pt-4 pb-4 border-b border-[#E5E5E5] flex-row items-center">
         <TouchableOpacity 

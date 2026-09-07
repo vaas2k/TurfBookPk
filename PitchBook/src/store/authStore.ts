@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useVendorStore } from './vendorStore';
+import { activateVendorMode } from '@/lib/api/vendors';
 import {
   refreshSession,
   requestOtp,
@@ -60,7 +61,8 @@ interface AuthState {
   clearError: () => void;
   setSession: (session: AuthSession | null) => void;
   createUserProfile: (user: AuthUser) => Promise<{ error: ApiError | null }>;
-  switchToPlayer: () => Promise<void>;
+  switchToPlayer: () => Promise<{ error: ApiError | null }>;
+  switchToVendor: () => Promise<{ error: ApiError | null }>;
   setLastMode: (mode: 'player' | 'vendor') => void;
 }
 
@@ -115,6 +117,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isNewUser: !result.profile.is_setup_complete,
             role: result.profile.role,
+            lastMode: result.profile.role,
             isLoading: false,
           });
           return { error: null };
@@ -134,7 +137,7 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const result = await updateProfile({ ...data, is_setup_complete: true });
-          set({ profile: result.profile, user: result.user, role: result.profile.role, isNewUser: false, isLoading: false });
+          set({ profile: result.profile, user: result.user, role: result.profile.role, lastMode: result.profile.role, isNewUser: false, isLoading: false });
           return { error: null };
         } catch (error) {
           const apiError = toApiError(error);
@@ -165,6 +168,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isNewUser: !result.profile.is_setup_complete,
             role: result.profile.role,
+            lastMode: result.profile.role,
             isLoading: false,
             error: null,
           });
@@ -179,13 +183,29 @@ export const useAuthStore = create<AuthState>()(
 
       switchToPlayer: async () => {
         const { user } = get();
-        if (!user) return;
+        if (!user) return { error: { code: 'unauthorized', message: 'No user is logged in' } };
         try {
           const result = await updateProfile({ role: 'player' });
           set({ user: result.user, profile: result.profile, role: 'player', lastMode: 'player' });
-          useVendorStore.getState().clearVendor();
+          return { error: null };
         } catch (error) {
-          set({ error: toApiError(error) });
+          const apiError = toApiError(error);
+          set({ error: apiError });
+          return { error: apiError };
+        }
+      },
+
+      switchToVendor: async () => {
+        const { user, profile } = get();
+        if (!user || !profile) return { error: { code: 'unauthorized', message: 'No user is logged in' } };
+        try {
+          await activateVendorMode();
+          set({ role: 'vendor', profile: { ...profile, role: 'vendor' }, lastMode: 'vendor', error: null });
+          return { error: null };
+        } catch (error) {
+          const apiError = toApiError(error);
+          set({ error: apiError });
+          return { error: apiError };
         }
       },
 

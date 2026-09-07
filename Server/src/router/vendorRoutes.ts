@@ -7,6 +7,7 @@ export function createVendorRouter(controller: VendorController, tokenService: T
   const router = Router();
   router.use(requireAuth(tokenService));
   router.get('/me', controller.me);
+  router.patch('/mode', controller.activateMode);
   router.post('/', controller.create);
   return router;
 }

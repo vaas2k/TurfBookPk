@@ -44,7 +44,7 @@ export class AuthService {
     if (input.preferred_position !== undefined) changes.preferred_position = input.preferred_position || null;
     if (input.skill_level !== undefined) changes.skill_level = input.skill_level;
     if (input.avatar_url !== undefined) changes.avatar_url = input.avatar_url || null;
-    if (input.role === 'player' || input.role === 'vendor') changes.role = input.role;
+    if (input.role === 'player') changes.role = input.role;
     if (input.is_setup_complete === true) changes.is_setup_complete = true;
     return this.repository.updateUser(userId, changes);
   }

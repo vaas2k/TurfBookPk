@@ -144,7 +144,9 @@ export default function OTPVerificationScreen() {
           {[0, 1, 2, 3, 4, 5].map((index) => (
             <TextInput
               key={index}
-              ref={ref => inputs.current[index] = ref}
+              ref={(ref) => {
+                inputs.current[index] = ref;
+              }}
               className={`w-12 h-14 bg-[#F5F5F5] rounded-xl text-center text-2xl font-bold text-[#1A1A2E] border mx-1.5 ${
                 otp[index] ? 'border-[#4CAF50]' : 'border-[#E5E5E5]'
               }`}

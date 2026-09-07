@@ -12,6 +12,11 @@ function param(value: string | string[] | undefined, name: string): string {
 
 function number(): string { return `BK-${Date.now()}-${Math.floor(Math.random() * 1000)}`; }
 
+function hasStarted(date: string, time: string): boolean {
+  const seconds = time.length === 5 ? `${time}:00` : time;
+  return new Date(`${date}T${seconds}+05:00`).getTime() <= Date.now();
+}
+
 function mapBooking(row: any) {
   return {
     id: row.booking.id, booking_number: row.booking.bookingNumber, player_id: row.booking.playerId,
@@ -47,13 +52,23 @@ export class BookingController {
     const paymentReference = typeof request.body?.payment_reference === 'string' ? request.body.payment_reference.trim() : null;
     if (!slotId) throw new AppError('invalid_booking', 'A slot is required', 422);
     const row = await db.transaction(async (tx) => {
+      const player = (await tx.select({ fullName: users.fullName, role: users.role })
+        .from(users)
+        .where(eq(users.id, request.auth!.userId))
+        .limit(1))[0];
+      if (!player) throw new AppError('unauthorized', 'User account was not found', 401);
+      if (player.role !== 'player') throw new AppError('player_mode_required', 'Switch to player mode before booking a ground', 403);
+
       const slotRows = await tx.select({ slot: slots, ground: grounds }).from(slots)
         .innerJoin(grounds, eq(slots.groundId, grounds.id)).where(eq(slots.id, slotId)).limit(1);
       const selected = slotRows[0];
       if (!selected) throw new AppError('slot_not_found', 'Slot was not found', 404);
+      if (!selected.ground.isActive) throw new AppError('ground_unavailable', 'This ground is not accepting bookings', 409);
+      if (hasStarted(selected.slot.date, selected.slot.startTime)) throw new AppError('slot_expired', 'This slot has already started', 409);
       if (selected.slot.isBooked || selected.slot.isBlocked) throw new AppError('slot_unavailable', 'This slot is no longer available', 409);
       const vendorRows = await tx.select({ id: vendors.id, userId: vendors.userId }).from(vendors).where(eq(vendors.id, selected.ground.vendorId)).limit(1);
       if (!vendorRows[0]) throw new AppError('vendor_not_found', 'Ground owner was not found', 500);
+      if (vendorRows[0].userId === request.auth!.userId) throw new AppError('self_booking_not_allowed', 'You cannot book your own ground', 403);
       const platformFee = 0;
       const bookingRows = await tx.insert(bookings).values({
         bookingNumber: number(), playerId: request.auth!.userId, vendorId: selected.ground.vendorId,
@@ -66,10 +81,9 @@ export class BookingController {
       const updated = await tx.update(slots).set({ isBooked: true, bookedBy: request.auth!.userId, bookingId: booking.id, updatedAt: new Date() })
         .where(and(eq(slots.id, selected.slot.id), eq(slots.isBooked, false), eq(slots.isBlocked, false))).returning();
       if (!updated[0]) throw new AppError('slot_unavailable', 'This slot was booked by another player', 409);
-      const player = await tx.select({ fullName: users.fullName }).from(users).where(eq(users.id, request.auth!.userId)).limit(1);
       await tx.insert(notifications).values([
         { userId: request.auth!.userId, type: 'booking', title: 'Booking confirmed', message: `Your slot at ${selected.ground.title} is confirmed.`, data: { bookingId: booking.id } },
-        { userId: vendorRows[0].userId, type: 'booking', title: 'New booking', message: `${player[0]?.fullName || 'A player'} booked a slot at ${selected.ground.title}.`, data: { bookingId: booking.id } },
+        { userId: vendorRows[0].userId, type: 'booking', title: 'New booking', message: `${player.fullName || 'A player'} booked a slot at ${selected.ground.title}.`, data: { bookingId: booking.id } },
       ]);
       return booking.id;
     });
@@ -99,7 +113,16 @@ export class BookingController {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const id = param(request.params.id, 'Booking id');
     const current = await fetchBooking(id);
-    if (!current || (current.booking.playerId !== request.auth.userId && current.booking.vendorId !== request.auth.userId)) throw new AppError('not_found', 'Booking was not found', 404);
+    if (!current) throw new AppError('not_found', 'Booking was not found', 404);
+
+    const vendor = await db.select({ id: vendors.id })
+      .from(vendors)
+      .where(eq(vendors.userId, request.auth.userId))
+      .limit(1);
+    const isPlayer = current.booking.playerId === request.auth.userId;
+    const isGroundOwner = vendor[0]?.id === current.booking.vendorId;
+    if (!isPlayer && !isGroundOwner) throw new AppError('not_found', 'Booking was not found', 404);
+
     if (current.booking.status === 'cancelled') throw new AppError('already_cancelled', 'Booking is already cancelled', 409);
     await db.transaction(async (tx) => {
       await tx.update(bookings).set({ status: 'cancelled', paymentStatus: 'refunded', updatedAt: new Date() }).where(eq(bookings.id, id));

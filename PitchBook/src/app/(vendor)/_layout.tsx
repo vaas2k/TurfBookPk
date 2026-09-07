@@ -58,8 +58,9 @@ function VendorTabBar() {
         { 
           text: 'Switch', 
           onPress: async () => {
-            await switchToPlayer();
-            router.replace('/(player)');
+            const { error } = await switchToPlayer();
+            if (error) Alert.alert('Unable to switch modes', error.message);
+            else router.replace('/(player)');
           }
         }
       ]

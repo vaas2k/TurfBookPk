@@ -37,8 +37,6 @@ export interface Slot {
   price: number;
   is_booked: boolean;
   is_blocked: boolean;
-  booked_by: string | null;
-  booking_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -59,6 +57,10 @@ export async function registerVendor(data: {
     data,
   });
   return result.profile;
+}
+
+export async function activateVendorMode(): Promise<void> {
+  await apiRequest('/vendors/mode', { method: 'PATCH' });
 }
 
 export async function listVendorGrounds(): Promise<Ground[]> {
