@@ -127,6 +127,7 @@ export default function VendorLayout() {
         <Stack.Screen name="earnings" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="add-ground" />
+        <Stack.Screen name="ground-slots" />
       </Stack>
       <VendorTabBar />
     </View>

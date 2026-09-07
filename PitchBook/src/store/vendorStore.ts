@@ -68,8 +68,11 @@ export const useVendorStore = create<VendorState>((set, get) => ({
 
       const vendorData = await registerVendorApi(data);
 
-      // Update auth store role
-      useAuthStore.setState({ role: 'vendor' });
+      const authState = useAuthStore.getState();
+      useAuthStore.setState({
+        role: 'vendor',
+        profile: authState.profile ? { ...authState.profile, role: 'vendor' } : authState.profile,
+      });
 
       set({ 
         vendorProfile: vendorData, 

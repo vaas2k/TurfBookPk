@@ -1,18 +1,20 @@
 import { View, Text, TouchableOpacity, ScrollView, Platform, StatusBar, Alert, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Calendar from 'expo-calendar';
 
 export default function BookingConfirmation() {
+  const params = useLocalSearchParams<{ ground?: string; address?: string; date?: string; startTime?: string; endTime?: string; amount?: string; bookingNumber?: string }>();
   const bookingDetails = {
-    ground: 'Arena 11 Sports Complex',
-    location: 'Satellite Town, Rawalpindi • Pitch 1',
-    date: 'Sat, 16 Aug 2026',
-    time: '7:00 PM - 8:00 PM',
-    type: '5-a-side',
-    amount: 'PKR 4,000',
+    ground: params.ground || 'Ground',
+    location: params.address || 'Address unavailable',
+    date: params.date || 'Date unavailable',
+    time: `${params.startTime || ''} - ${params.endTime || ''}`,
+    type: 'Ground slot',
+    amount: `PKR ${params.amount || '0'}`,
   };
 
   const handleShare = async () => {
@@ -34,8 +36,8 @@ export default function BookingConfirmation() {
         const defaultCalendar = calendars.find(cal => cal.isPrimary) || calendars[0];
         
         // Parse date and time
-        const eventDate = new Date(2026, 7, 16, 19, 0);
-        const eventEndDate = new Date(2026, 7, 16, 20, 0);
+        const eventDate = new Date(`${params.date}T${params.startTime}`);
+        const eventEndDate = new Date(`${params.date}T${params.endTime}`);
         
         await Calendar.createEventAsync(defaultCalendar.id, {
           title: `Football at ${bookingDetails.ground}`,

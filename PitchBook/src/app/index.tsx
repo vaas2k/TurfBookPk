@@ -14,13 +14,13 @@ export default function SplashScreen() {
       if (isAuthenticated && user) {
         // Get the latest role and vendor status
         const currentRole = useAuthStore.getState().role;
-        const isUserVendor = currentRole === 'vendor';
+        const isUserVendor = currentRole === 'vendor' || useAuthStore.getState().profile?.role === 'vendor';
         
         console.log('[Splash] Current role:', currentRole);
         console.log('[Splash] Is vendor:', isUserVendor);
         
         // If role is 'player', go to player mode even if vendor record exists
-        if (currentRole === 'vendor' && isUserVendor) {
+        if (isUserVendor) {
           // Only go to vendor if role is explicitly 'vendor'
           router.replace('/(vendor)');
         } else if (isNewUser) {

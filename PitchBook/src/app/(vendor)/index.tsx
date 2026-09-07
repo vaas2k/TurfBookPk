@@ -1,25 +1,33 @@
-import { View, Text, TouchableOpacity, ScrollView, RefreshControl, StatusBar, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, RefreshControl, StatusBar, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useState, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorStore } from '@/store/vendorStore';
+import { Ground, listVendorGrounds } from '@/lib/api/vendors';
 
 export default function VendorDashboard() {
   const { profile, switchToPlayer } = useAuthStore();
   const { vendorProfile } = useVendorStore();
   const [refreshing, setRefreshing] = useState(false);
+  const [grounds, setGrounds] = useState<Ground[]>([]);
 
-
-  const onRefresh = useCallback(() => {
+  const loadGrounds = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1500);
+    try { setGrounds(await listVendorGrounds()); }
+    catch (error) { console.log('[VendorDashboard] Ground load failed:', error); }
+    finally { setRefreshing(false); }
   }, []);
 
-  // Mock stats - will be replaced with real data
+  useFocusEffect(useCallback(() => {
+    loadGrounds();
+  }, [loadGrounds]));
+
+  const onRefresh = loadGrounds;
+
   const stats = {
-    totalGrounds: 0,
+    totalGrounds: grounds.length,
     todayBookings: 0,
     totalRevenue: 0,
     rating: 0,
@@ -154,9 +162,9 @@ export default function VendorDashboard() {
           </View>
         </View>
 
-        {/* Empty State for Grounds */}
+        {/* Grounds showcase */}
         <View className="px-6 mt-6 pb-8">
-          <View className="bg-white rounded-2xl p-8 items-center"
+          {grounds.length > 0 ? <View><View className="flex-row items-center justify-between mb-3"><Text className="text-[#1A1A2E] text-base font-bold">Your Grounds</Text><TouchableOpacity onPress={() => router.push('/(vendor)/grounds')}><Text className="text-[#4CAF50] font-medium">View all</Text></TouchableOpacity></View>{grounds.slice(0, 3).map((ground) => <TouchableOpacity key={ground.id} className="bg-white rounded-2xl mb-3 overflow-hidden" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }} onPress={() => router.push({ pathname: '/(vendor)/ground-slots', params: { id: ground.id, title: ground.title } })}><View className="flex-row"><Image source={{ uri: ground.cover_image || ground.images[0] || 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800' }} className="w-24 h-24" resizeMode="cover" /><View className="flex-1 p-3"><View className="flex-row items-center justify-between"><Text className="text-[#1A1A2E] font-bold flex-1" numberOfLines={1}>{ground.title}</Text><Ionicons name="chevron-forward" size={18} color="#A3A3A3" /></View><Text className="text-[#737373] text-sm mt-1" numberOfLines={1}>{ground.city} · Rs {ground.price_per_hour}/hr</Text><Text className="text-[#4CAF50] text-xs mt-2">Manage slots</Text></View></View></TouchableOpacity>)}</View> : <View className="bg-white rounded-2xl p-8 items-center"
             style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
             <Ionicons name="business-outline" size={48} color="#D4D4D4" />
             <Text className="text-[#1A1A2E] text-lg font-bold mt-4">No Grounds Yet</Text>
@@ -170,7 +178,7 @@ export default function VendorDashboard() {
             >
               <Text className="text-white font-medium">Add Ground</Text>
             </TouchableOpacity>
-          </View>
+          </View>}
         </View>
       </ScrollView>
     </SafeAreaView>

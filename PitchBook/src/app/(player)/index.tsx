@@ -6,78 +6,42 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store/authStore';
 import VendorRegistrationModal from '@/components/vendor/VendorRegistrationModal';
 import { useVendorStore } from '@/store/vendorStore';
 import { VendorFormData } from '@/components/vendor/VendorRegistrationModal';
+import { Ground, listGroundSlots, listPublicGrounds } from '@/lib/api/vendors';
 
 const { width } = Dimensions.get('window');
 
-// Mock data - will be replaced with real API data
-const mockGrounds = [
-  {
-    id: '1',
-    name: 'Arena 11 Sports',
-    location: 'Satellite Town, Rawalpindi',
-    price: 4000,
-    rating: 4.8,
-    reviews: 42,
-    slotsAvailable: 3,
-    image: 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800',
-    type: '5-a-side',
-    distance: '0.8 km',
-    isAvailableNow: true,
-  },
-  {
-    id: '2',
-    name: 'Total Football',
-    location: 'Chaklala Scheme 3, Rawalpindi',
-    price: 4500,
-    rating: 4.9,
-    reviews: 56,
-    slotsAvailable: 2,
-    image: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800',
-    type: '5-a-side',
-    distance: '1.2 km',
-    isAvailableNow: true,
-  },
-  {
-    id: '3',
-    name: 'Green Valley Sports',
-    location: 'G-11, Islamabad',
-    price: 3500,
-    rating: 4.6,
-    reviews: 38,
-    slotsAvailable: 0,
-    image: 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800',
-    type: '7-a-side',
-    distance: '2.5 km',
-    isAvailableNow: false,
-  },
-  {
-    id: '4',
-    name: 'Kickoff Arena',
-    location: 'DHA Phase 2, Islamabad',
-    price: 5000,
-    rating: 4.7,
-    reviews: 89,
-    slotsAvailable: 4,
-    image: 'https://images.unsplash.com/photo-1517466787929-bc90951d0974?w=800',
-    type: '11-a-side',
-    distance: '3.1 km',
-    isAvailableNow: true,
-  },
-];
+type PlayerGround = ReturnType<typeof toPlayerGround>;
 
 const filterOptions = ['All', '5-a-side', '7-a-side', 'Turf'];
+
+function toPlayerGround(ground: Ground) {
+  return {
+    id: ground.id,
+    name: ground.title,
+    location: ground.location,
+    price: ground.price_per_hour,
+    rating: ground.rating,
+    reviews: ground.total_reviews,
+    slotsAvailable: ground.is_active ? 1 : 0,
+    image: ground.cover_image || ground.images[0] || 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800',
+    type: ground.pitch_type || 'Turf',
+    distance: '',
+    isAvailableNow: ground.is_active,
+  };
+}
 
 export default function PlayerHome() {
   const { profile, user } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [groundList, setGroundList] = useState<PlayerGround[]>([]);
 
   // Modal states
   const [showNotificationModal, setShowNotificationModal] = useState(false);
@@ -89,10 +53,24 @@ export default function PlayerHome() {
   const [isVendorLoading, setIsVendorLoading] = useState(false);
   const { registerVendor, checkVendorStatus } = useVendorStore();
 
-  const onRefresh = useCallback(() => {
+  const loadGrounds = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 2000);
+    try {
+      const grounds = await listPublicGrounds();
+      const withAvailability = await Promise.all(grounds.map(async (ground) => {
+        const slots = await listGroundSlots(ground.id);
+        const available = slots.filter((slot) => !slot.is_booked && !slot.is_blocked).length;
+        return { ...toPlayerGround(ground), slotsAvailable: available, isAvailableNow: ground.is_active && available > 0 };
+      }));
+      setGroundList(withAvailability);
+    } catch (error) {
+      console.log('[PlayerHome] Ground load failed:', error);
+    } finally { setRefreshing(false); }
   }, []);
+
+  useEffect(() => { loadGrounds(); }, [loadGrounds]);
+
+  const onRefresh = loadGrounds;
 
   const handleGroundPress = (groundId: string) => {
     router.push(`/ground/${groundId}`);
@@ -140,11 +118,11 @@ export default function PlayerHome() {
   };
 
   const handleNotifications = () => {
-    setShowNotificationModal(true);
+    router.push('/(player)/notifications');
   };
 
   // Filter grounds
-  const filteredGrounds = mockGrounds.filter(ground => {
+  const filteredGrounds = groundList.filter(ground => {
     const matchesFilter = selectedFilter === 'All' || ground.type === selectedFilter;
     const matchesSearch = ground.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ground.location.toLowerCase().includes(searchQuery.toLowerCase());
@@ -154,7 +132,7 @@ export default function PlayerHome() {
   const availableGrounds = filteredGrounds.filter(g => g.isAvailableNow && g.slotsAvailable > 0);
   const nearYouGrounds = filteredGrounds.filter(g => !g.isAvailableNow || g.slotsAvailable === 0);
 
-  const renderGroundCard = (ground: typeof mockGrounds[0], horizontal: boolean = false) => (
+  const renderGroundCard = (ground: PlayerGround, horizontal: boolean = false) => (
     <TouchableOpacity
       key={ground.id}
       className={`bg-white rounded-2xl overflow-hidden ${horizontal ? 'mr-4' : 'mb-4'

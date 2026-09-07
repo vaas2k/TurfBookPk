@@ -134,7 +134,7 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const result = await updateProfile({ ...data, is_setup_complete: true });
-          set({ profile: result.profile, user: result.user, isNewUser: false, isLoading: false });
+          set({ profile: result.profile, user: result.user, role: result.profile.role, isNewUser: false, isLoading: false });
           return { error: null };
         } catch (error) {
           const apiError = toApiError(error);

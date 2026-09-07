@@ -11,6 +11,10 @@ import { OtpService } from "./services/otpService.js";
 import { TokenService } from "./services/tokenService.js";
 import { VendorController } from './controllers/vendorController.js';
 import { createVendorRouter } from './router/vendorRoutes.js';
+import { GroundController } from './controllers/groundController.js';
+import { createGroundRouter } from './router/groundRoutes.js';
+import { BookingController } from './controllers/bookingController.js';
+import { createBookingRouter } from './router/bookingRoutes.js';
 
 const app = express();
 
@@ -27,9 +31,13 @@ const tokenService = new TokenService(repository);
 const authService = new AuthService(repository, otpService, tokenService);
 const authController = new AuthController(authService, tokenService);
 const vendorController = new VendorController();
+const groundController = new GroundController();
+const bookingController = new BookingController();
 
 app.use('/api/auth', createAuthRouter(authController, tokenService));
 app.use('/api/vendors', createVendorRouter(vendorController, tokenService));
+app.use('/api/grounds', createGroundRouter(groundController, tokenService));
+app.use('/api/bookings', createBookingRouter(bookingController, tokenService));
 
 app.get("/api/health", (_req, res) => {
   res.json({
