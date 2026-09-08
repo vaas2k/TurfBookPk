@@ -3,7 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import { env } from "./configs/env.js";
 import { DrizzleAuthRepository } from "./database/drizzleAuthRepository.js";
-import { getErrorMessage } from "./helpers/errors.js";
+import { databaseConstraintError, getErrorMessage } from "./helpers/errors.js";
 import { AuthController } from "./controllers/authController.js";
 import { createAuthRouter } from "./router/authRoutes.js";
 import { AuthService } from "./services/authService.js";
@@ -53,14 +53,15 @@ app.get("/api/test", async (_req, res) => {
 });
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
-  const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
-    ? Number(error.statusCode)
+  const normalizedError = databaseConstraintError(error) || error;
+  const statusCode = typeof normalizedError === 'object' && normalizedError !== null && 'statusCode' in normalizedError
+    ? Number(normalizedError.statusCode)
     : 500;
-  if (statusCode >= 500) console.error(error);
+  if (statusCode >= 500) console.error(normalizedError);
   response.status(statusCode).json({
     error: {
-      code: typeof error === 'object' && error !== null && 'code' in error ? error.code : 'internal_error',
-      message: statusCode === 500 ? 'An unexpected server error occurred' : getErrorMessage(error),
+      code: typeof normalizedError === 'object' && normalizedError !== null && 'code' in normalizedError ? normalizedError.code : 'internal_error',
+      message: statusCode === 500 ? 'An unexpected server error occurred' : getErrorMessage(normalizedError),
     },
   });
 });

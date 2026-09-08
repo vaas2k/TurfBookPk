@@ -35,12 +35,20 @@ function validTime(value: unknown): value is string {
   return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(value);
 }
 
+function hasStarted(date: string, time: string): boolean {
+  return new Date(`${date}T${time.length === 5 ? `${time}:00` : time}+05:00`).getTime() <= Date.now();
+}
+
+function isHeld(row: typeof slots.$inferSelect): boolean {
+  return Boolean(row.holdBookingId && row.holdExpiresAt && row.holdExpiresAt > new Date());
+}
+
 function toGround(row: typeof grounds.$inferSelect) {
   return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_price: row.peakPrice, is_active: row.isActive, is_verified: row.isVerified, rating: row.rating, total_reviews: row.totalReviews, operating_hours: row.operatingHours, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
 function toSlot(row: typeof slots.$inferSelect) {
-  return { id: row.id, ground_id: row.groundId, date: row.date, start_time: row.startTime, end_time: row.endTime, price: row.price, is_booked: row.isBooked, is_blocked: row.isBlocked, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+  return { id: row.id, ground_id: row.groundId, date: row.date, start_time: row.startTime, end_time: row.endTime, price: row.price, is_booked: row.isBooked, is_blocked: row.isBlocked, is_held: isHeld(row), created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
 async function vendorIdForUser(userId: string): Promise<string> {
@@ -58,15 +66,15 @@ async function ownedGround(groundId: string, userId: string) {
 
 export class GroundController {
   listPublic = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const rows = await db.select().from(grounds).where(eq(grounds.isActive, true));
-    response.json({ grounds: rows.map(toGround) });
+    const rows = await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.isActive, true), eq(vendors.isActive, true)));
+    response.json({ grounds: rows.map(({ ground }) => toGround(ground)) });
   };
 
   getPublic = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const rows = await db.select().from(grounds).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true))).limit(1);
-    if (!rows[0]) throw new AppError('not_found', 'Ground was not found', 404);
-    const groundSlots = await db.select().from(slots).where(eq(slots.groundId, rows[0].id));
-    response.json({ ground: toGround(rows[0]), slots: groundSlots.map(toSlot) });
+    const row = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(vendors.isActive, true))).limit(1))[0];
+    if (!row) throw new AppError('not_found', 'Ground was not found', 404);
+    const groundSlots = await db.select().from(slots).where(eq(slots.groundId, row.ground.id));
+    response.json({ ground: toGround(row.ground), slots: groundSlots.filter((slot) => !hasStarted(slot.date, slot.startTime)).map(toSlot) });
   };
 
   listMine = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -133,15 +141,15 @@ export class GroundController {
   remove = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const current = await ownedGround(routeParam(request.params.id, 'Ground id'), request.auth.userId);
-    const booked = await db.select({ id: slots.id }).from(slots).where(and(eq(slots.groundId, current.id), eq(slots.isBooked, true))).limit(1);
-    if (booked[0]) throw new AppError('ground_has_bookings', 'Grounds with booked slots cannot be deleted', 409);
-    await db.delete(grounds).where(eq(grounds.id, current.id));
+    await db.update(grounds).set({ isActive: false, updatedAt: new Date() }).where(eq(grounds.id, current.id));
     response.status(204).send();
   };
 
   listSlots = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const rows = await db.select().from(slots).where(eq(slots.groundId, routeParam(request.params.id, 'Ground id')));
-    response.json({ slots: rows.map(toSlot) });
+    const ground = (await db.select({ id: grounds.id }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(vendors.isActive, true))).limit(1))[0];
+    if (!ground) throw new AppError('not_found', 'Ground was not found', 404);
+    const rows = await db.select().from(slots).where(eq(slots.groundId, ground.id));
+    response.json({ slots: rows.filter((slot) => !hasStarted(slot.date, slot.startTime)).map(toSlot) });
   };
 
   createSlot = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -151,6 +159,7 @@ export class GroundController {
     const { date, start_time, end_time, price } = request.body || {};
     if (!validDate(date) || !validTime(start_time) || !validTime(end_time) || !Number.isInteger(price) || price <= 0) throw new AppError('invalid_slot', 'Use a valid date, 24-hour times, and a positive whole-number price', 422);
     if (start_time >= end_time) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
+    if (hasStarted(date, start_time)) throw new AppError('slot_expired', 'Slots must start in the future', 422);
     const conflict = await db.select({ id: slots.id }).from(slots).where(and(
       eq(slots.groundId, groundId),
       eq(slots.date, date),
@@ -170,7 +179,7 @@ export class GroundController {
     await ownedGround(groundId, request.auth.userId);
     const current = (await db.select().from(slots).where(and(eq(slots.id, slotId), eq(slots.groundId, groundId))).limit(1))[0];
     if (!current) throw new AppError('not_found', 'Slot was not found', 404);
-    if (current.isBooked) throw new AppError('slot_booked', 'Booked slots cannot be changed', 409);
+    if (current.isBooked || isHeld(current)) throw new AppError('slot_unavailable', 'Booked or payment-held slots cannot be changed', 409);
     const body = request.body || {};
     const values: Partial<typeof slots.$inferInsert> = { updatedAt: new Date() };
     if (body.date !== undefined && !validDate(body.date)) throw new AppError('invalid_slot', 'Date must use YYYY-MM-DD format', 422);
@@ -180,6 +189,7 @@ export class GroundController {
     const nextStart = body.start_time ?? current.startTime;
     const nextEnd = body.end_time ?? current.endTime;
     if (nextStart >= nextEnd) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
+    if (hasStarted(nextDate, nextStart)) throw new AppError('slot_expired', 'Slots must start in the future', 422);
     const conflict = await db.select({ id: slots.id }).from(slots).where(and(
       eq(slots.groundId, groundId),
       eq(slots.date, nextDate),
@@ -208,7 +218,7 @@ export class GroundController {
     await ownedGround(groundId, request.auth.userId);
     const current = (await db.select().from(slots).where(and(eq(slots.id, slotId), eq(slots.groundId, groundId))).limit(1))[0];
     if (!current) throw new AppError('not_found', 'Slot was not found', 404);
-    if (current.isBooked) throw new AppError('slot_booked', 'Booked slots cannot be removed', 409);
+    if (current.isBooked || isHeld(current)) throw new AppError('slot_unavailable', 'Booked or payment-held slots cannot be removed', 409);
     await db.delete(slots).where(eq(slots.id, current.id));
     response.status(204).send();
   };

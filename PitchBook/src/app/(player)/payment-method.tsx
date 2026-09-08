@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { createBooking } from '@/lib/api/bookings';
+import { confirmMockBooking, createBooking } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 
 export default function PaymentMethodScreen() {
@@ -11,12 +11,14 @@ export default function PaymentMethodScreen() {
   const [reference, setReference] = useState('');
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const idempotencyKey = useRef(`booking-${Date.now()}-${Math.random().toString(36).slice(2)}`).current;
 
   const confirm = async () => {
     if (!params.slotId) return setToast('The selected slot is missing. Please choose it again.');
     setLoading(true);
     try {
-      const booking = await createBooking(params.slotId, reference);
+      const pendingBooking = await createBooking(params.slotId, idempotencyKey);
+      const booking = await confirmMockBooking(pendingBooking.id, reference);
       router.replace({ pathname: '/(player)/booking-confirmation', params: { bookingId: booking.id, ground: booking.ground_title, address: booking.ground_address, date: booking.date, startTime: booking.start_time, endTime: booking.end_time, amount: String(booking.total_amount), bookingNumber: booking.booking_number } });
     } catch (error: any) { setToast(error?.message || 'This slot is no longer available.'); }
     finally { setLoading(false); }

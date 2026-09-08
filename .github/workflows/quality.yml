@@ -1,0 +1,63 @@
+name: Quality checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Server checks
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: turfbookpk_test
+          POSTGRES_USER: turfbookpk
+          POSTGRES_PASSWORD: turfbookpk
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U turfbookpk -d turfbookpk_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: Server
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://turfbookpk:turfbookpk@localhost:5432/turfbookpk_test
+      JWT_ACCESS_SECRET: ci-access-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Server/package-lock.json
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npm run typecheck
+      - run: npm test
+
+  mobile:
+    name: Mobile checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PitchBook
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: PitchBook/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npx expo config --type public

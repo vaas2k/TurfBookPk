@@ -13,18 +13,18 @@ export interface ApiError {
 
 let accessToken: string | null = null;
 
-async function useSecureStorage(): Promise<boolean> {
+async function isSecureStorageAvailable(): Promise<boolean> {
   return SecureStore.isAvailableAsync();
 }
 
 export async function getRefreshToken(): Promise<string | null> {
-  return (await useSecureStorage())
+  return (await isSecureStorageAvailable())
     ? SecureStore.getItemAsync(REFRESH_TOKEN_KEY)
     : AsyncStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
 export async function setRefreshToken(token: string): Promise<void> {
-  if (await useSecureStorage()) {
+  if (await isSecureStorageAvailable()) {
     await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
   } else {
     await AsyncStorage.setItem(REFRESH_TOKEN_KEY, token);
@@ -32,7 +32,7 @@ export async function setRefreshToken(token: string): Promise<void> {
 }
 
 export async function clearRefreshToken(): Promise<void> {
-  if (await useSecureStorage()) {
+  if (await isSecureStorageAvailable()) {
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
   }
   await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);

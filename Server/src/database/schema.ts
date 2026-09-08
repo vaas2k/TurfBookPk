@@ -1,4 +1,22 @@
-import { boolean, date, integer, jsonb, numeric, pgTable, text, time, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, text, time, timestamp, uuid } from 'drizzle-orm/pg-core';
+
+export const bookingStatusEnum = pgEnum('booking_status', [
+  'pending_payment',
+  'confirmed',
+  'cancelled',
+  'expired',
+  'completed',
+  'no_show',
+]);
+
+export const paymentStatusEnum = pgEnum('payment_status', [
+  'pending',
+  'paid',
+  'failed',
+  'cancelled',
+  'refund_pending',
+  'refunded',
+]);
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -93,6 +111,9 @@ export const slots = pgTable('slots', {
   isBlocked: boolean('is_blocked').notNull().default(false),
   bookedBy: uuid('booked_by').references(() => users.id),
   bookingId: uuid('booking_id'),
+  heldBy: uuid('held_by').references(() => users.id),
+  holdBookingId: uuid('hold_booking_id'),
+  holdExpiresAt: timestamp('hold_expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -110,10 +131,15 @@ export const bookings = pgTable('bookings', {
   totalAmount: integer('total_amount').notNull(),
   platformFee: integer('platform_fee').notNull().default(0),
   vendorAmount: integer('vendor_amount').notNull(),
-  status: text('status').notNull().default('confirmed'),
-  paymentStatus: text('payment_status').notNull().default('paid'),
+  status: bookingStatusEnum('status').notNull().default('pending_payment'),
+  paymentStatus: paymentStatusEnum('payment_status').notNull().default('pending'),
   paymentMethod: text('payment_method').notNull().default('mock'),
   paymentReference: text('payment_reference'),
+  idempotencyKey: text('idempotency_key').unique(),
+  holdExpiresAt: timestamp('hold_expires_at', { withTimezone: true }),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  cancelledBy: uuid('cancelled_by').references(() => users.id),
+  cancellationReason: text('cancellation_reason'),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -43,6 +43,13 @@
       "when": 1788774000000,
       "tag": "0005_slot_time_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788850000000,
+      "tag": "0006_booking_lifecycle",
+      "breakpoints": true
     }
   ]
 }

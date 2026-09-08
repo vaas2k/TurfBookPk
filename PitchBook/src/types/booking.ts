@@ -15,10 +15,13 @@ export interface BookingProfile {
   total_amount: number;
   platform_fee: number;
   vendor_amount: number;
-  status: string;
-  payment_status: string;
+  status: 'pending_payment' | 'confirmed' | 'cancelled' | 'expired' | 'completed' | 'no_show';
+  payment_status: 'pending' | 'paid' | 'failed' | 'cancelled' | 'refund_pending' | 'refunded';
   payment_method: string;
   payment_reference: string | null;
+  hold_expires_at: string | null;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

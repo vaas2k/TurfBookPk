@@ -3,8 +3,13 @@ import { BookingProfile } from '@/types/booking';
 
 export type { BookingProfile } from '@/types/booking';
 
-export async function createBooking(slotId: string, paymentReference?: string): Promise<BookingProfile> {
-  const result = await apiRequest<{ booking: BookingProfile }>('/bookings', { method: 'POST', data: { slot_id: slotId, payment_reference: paymentReference || null } });
+export async function createBooking(slotId: string, idempotencyKey: string): Promise<BookingProfile> {
+  const result = await apiRequest<{ booking: BookingProfile }>('/bookings', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, data: { slot_id: slotId, idempotency_key: idempotencyKey } });
+  return result.booking;
+}
+
+export async function confirmMockBooking(id: string, paymentReference?: string): Promise<BookingProfile> {
+  const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}/mock-confirm`, { method: 'POST', data: { payment_reference: paymentReference || null } });
   return result.booking;
 }
 
