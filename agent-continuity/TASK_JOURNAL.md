@@ -98,6 +98,27 @@
 - `npx tsc --noEmit` (PitchBook)
 - `git diff --check`
 
+## 2026-09-09 - Verified work pushed to GitHub
+
+### Accomplished
+
+- Committed the accumulated P0 authentication/API-safety and P1 core-MVP/mobile-reliability changes.
+- Pushed commit `6f184f6` to `origin/main` at `git@github.com:vaas2k/TurfBookPk.git`.
+
+### Key decisions
+
+- Kept the verified changes together in one implementation commit because they form the tested booking/auth lifecycle delivered across the current work sessions.
+
+### Next immediate step
+
+- Resume from the next incomplete P1 item after deciding whether to configure external SMS/image providers or defer those integrations.
+
+### Critical paths and commands
+
+- `agent-continuity/TASK_JOURNAL.md`
+- `git commit -m "Complete booking integrity, auth safety, and core MVP flows"`
+- `git push origin main`
+
 ## 2026-09-09 - P1 core MVP handoff audit and verification
 
 ### Accomplished
