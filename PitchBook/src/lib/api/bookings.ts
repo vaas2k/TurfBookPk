@@ -23,6 +23,17 @@ export async function listVendorBookings(): Promise<BookingProfile[]> {
   return result.bookings;
 }
 
-export async function cancelBooking(id: string): Promise<void> {
-  await apiRequest(`/bookings/${id}/cancel`, { method: 'PATCH' });
+export async function cancelBooking(id: string, reason?: string): Promise<BookingProfile> {
+  const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}/cancel`, { method: 'PATCH', data: { reason: reason || null } });
+  return result.booking;
+}
+
+export async function getBooking(id: string): Promise<BookingProfile> {
+  const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}`);
+  return result.booking;
+}
+
+export async function markBookingNoShow(id: string): Promise<BookingProfile> {
+  const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}/no-show`, { method: 'PATCH', data: {} });
+  return result.booking;
 }

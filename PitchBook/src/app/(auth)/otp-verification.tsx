@@ -70,7 +70,6 @@ export default function OTPVerificationScreen() {
     }
 
 
-    console.log('[OTPVerification] Verifying OTP for phone:', phone, 'with code:', code);
     setIsVerifying(true);
     const { error: verifyError } = await verifyOTP(`92${phone}`, code);
     setIsVerifying(false);

@@ -22,6 +22,8 @@ export interface BookingProfile {
   hold_expires_at: string | null;
   cancelled_at: string | null;
   cancellation_reason: string | null;
+  cancellation_fee: number;
+  refund_amount: number;
   notes: string | null;
   created_at: string;
   updated_at: string;

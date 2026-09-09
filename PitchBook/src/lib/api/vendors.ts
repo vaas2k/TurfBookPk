@@ -37,6 +37,7 @@ export interface Slot {
   price: number;
   is_booked: boolean;
   is_blocked: boolean;
+  is_held?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -60,7 +61,22 @@ export async function registerVendor(data: {
 }
 
 export async function activateVendorMode(): Promise<void> {
-  await apiRequest('/vendors/mode', { method: 'PATCH' });
+  await apiRequest('/vendors/mode', { method: 'PATCH', data: {} });
+}
+
+export interface EarningsEntry {
+  id: string;
+  booking_id: string;
+  type: 'booking_earning' | 'refund' | 'adjustment' | 'payout';
+  status: 'pending' | 'posted' | 'reversed';
+  amount: number;
+  description: string;
+  posted_at: string | null;
+  created_at: string;
+}
+
+export async function getVendorEarnings(): Promise<{ summary: { total_earnings: number; pending_earnings: number; total_withdrawn: number }; entries: EarningsEntry[] }> {
+  return apiRequest('/vendors/earnings');
 }
 
 export async function listVendorGrounds(): Promise<Ground[]> {

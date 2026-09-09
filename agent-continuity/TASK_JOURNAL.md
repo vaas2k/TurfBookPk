@@ -98,6 +98,48 @@
 - `npx tsc --noEmit` (PitchBook)
 - `git diff --check`
 
+## 2026-09-09 - P1 core MVP handoff audit and verification
+
+### Accomplished
+
+- Audited and preserved the mobile reliability changes made during the interrupted session.
+- Completed and checked the first nine internally actionable P1 core-MVP items: payment attempts, provider-neutral mock payment, player/vendor booking details and cancellation actions, cancellation/refund policy, counterparty notifications, completion/no-show processing, vendor ledger/balances, and the real earnings screen.
+- Fixed vendor-mode activation requests to send an explicit JSON object, satisfying the server's JSON-only mutation contract.
+- Fixed the checkout timer so the server creates the booking hold when checkout opens and the UI counts down from the returned `hold_expires_at`; checkout now revalidates the persisted booking on screen focus.
+- Fixed Pakistan-local booking grouping, corrupted separator characters, and a leftover mode-switch debug log.
+- Fixed paid cancellations with no eligible refund so they remain `paid` instead of becoming stuck in `refund_pending`.
+- Added configurable commission calculation through `PLATFORM_COMMISSION_BPS` (default `0`) and unit coverage without changing current prices silently.
+- Removed request body/content-type debug logging from the JSON validation middleware.
+- Expanded the PostgreSQL smoke test to verify vendor no-show, player notification, and pending-to-posted earnings transitions.
+- Removed duplicate P1 mobile-reliability checklist entries and reconciled completed items with verified behavior.
+
+### Key decisions
+
+- Commission uses integer basis points and is snapshotted into each booking; the default remains zero until the business chooses a rate.
+- Real SMS (P1 item 10) and cloud image storage (P1 item 11) remain intentionally incomplete because they require provider selection/contracts and credentials, and image storage was explicitly deferred. They were not falsely marked complete.
+- A checkout countdown is only presented after a real server-side hold exists; a client-only timer is not treated as reservation protection.
+
+### Next immediate step
+
+- Obtain/select the SMS provider and cloud storage configuration before P1 items 10-12, or explicitly proceed to the next independent P1 feature while those external integrations remain deferred.
+
+### Critical paths and commands
+
+- `Server/src/controllers/bookingController.ts`
+- `Server/src/services/bookingPricing.ts`
+- `Server/src/services/bookingPricing.test.ts`
+- `Server/src/services/bookingMaintenance.ts`
+- `Server/scripts/core-mvp-smoke.mjs`
+- `Server/src/configs/env.ts`
+- `PitchBook/src/app/(player)/payment-method.tsx`
+- `PitchBook/src/app/(player)/bookings.tsx`
+- `PitchBook/src/app/(vendor)/bookings.tsx`
+- `agent-continuity/CURRENT_CHECKLIST.md`
+- `npm run typecheck` and `npm test` (Server: 17/17 passed)
+- `npm run test:e2e` (PostgreSQL core-MVP smoke passed)
+- `npx tsc --noEmit` (PitchBook: passed)
+- `npm run lint` (PitchBook: 0 errors, 19 existing warnings)
+
 ## 2026-09-08 - P0 migration and test verification attempt
 
 ### Accomplished
@@ -184,3 +226,122 @@
 - `npx expo config --type public`
 - `npm run typecheck`
 - `npm test`
+
+## 2026-09-09 - P0 authentication and API safety complete
+
+### Accomplished
+
+- Added per-IP OTP request/verification limits plus persistent per-phone resend cooldown, request-window counters, and verification-attempt preservation.
+- Added migration `0007_auth_safety.sql` and applied it successfully to the running PostgreSQL database.
+- Made refresh-token rotation an atomic PostgreSQL operation so concurrent reuse has exactly one winner.
+- Changed protected API authentication to verify the backing refresh session, making logout and token rotation invalidate old access tokens immediately.
+- Connected access-token signing and response expiry to the validated `JWT_ACCESS_TTL` configuration.
+- Added mobile single-flight refresh handling and revision checks so concurrent refreshes deduplicate and stale failures cannot erase newer credentials.
+- Added startup validation and a user-readable configuration screen for missing or invalid `EXPO_PUBLIC_API_URL`.
+- Added a 32 KB JSON request limit, JSON-object/content-type validation for mutation endpoints, and consistent malformed/oversized payload errors.
+- Removed mobile debug logging that exposed phone numbers and OTP codes.
+
+### Key decisions
+
+- Logout uses immediate session invalidation rather than waiting for the access JWT to expire; protected requests now perform a database session check.
+- Rate limiting is layered: in-memory per-IP protection limits route abuse, while PostgreSQL-backed per-phone state prevents OTP re-request from resetting brute-force attempts.
+- The mobile app uses one shared refresh promise and a session revision guard; credential cleanup is conditional on the attempted token still being current.
+- API configuration failures are displayed as an actionable startup state rather than surfacing later as generic network failures.
+
+### Next immediate step
+
+- P0 booking integrity and P0 authentication/API safety are complete. Continue with the highest-priority unchecked P1 core-MVP task in the next session.
+
+### Critical paths and commands
+
+- `Server/drizzle/0007_auth_safety.sql`
+- `Server/src/services/otpService.ts`
+- `Server/src/services/tokenService.ts`
+- `Server/src/database/drizzleAuthRepository.ts`
+- `Server/src/middleware/auth.ts`
+- `Server/src/middleware/rateLimit.ts`
+- `Server/src/middleware/requestValidation.ts`
+- `Server/src/services/authSafety.test.ts`
+- `PitchBook/src/lib/api/client.ts`
+- `PitchBook/src/app/_layout.tsx`
+- `npm run db:migrate`
+- `npm test` (11/11 passed)
+- `npm run typecheck`
+- `npx tsc --noEmit`
+- `npm run lint` (0 errors; 25 warnings)
+- `npx expo config --type public`
+- `git diff --check`
+
+## 2026-09-09 - OTP verification limit window adjusted
+
+### Accomplished
+
+- Changed only the per-IP OTP verification rate-limit window from 15 minutes to 1 minute.
+
+### Key decisions
+
+- Kept the 15-attempt limit, one-minute resend cooldown, persistent five-request phone window, and five incorrect-code limit unchanged.
+
+### Next immediate step
+
+- Continue with the next prioritized checklist task.
+
+### Critical paths and commands
+
+- `Server/src/router/authRoutes.ts`
+
+## 2026-09-09 — P1 Mobile Reliability & UX Cleanup (Phase 1) Complete
+
+### Accomplished
+
+- Created reusable booking components:
+  - `CheckoutHoldTimer.tsx`: Live 10-minute hold countdown timer that notifies users before hold expiration and disables stale confirmation.
+  - `PricingBreakdown.tsx`: Clean breakdown card with slot price, platform fee, and total in PKR.
+  - `BookingStatusBadge.tsx`: Consistent color-coded lifecycle badges (`Confirmed`, `Hold Pending`, `Completed`, `Cancelled`, `Hold Expired`, `No Show`).
+- Refactored `PitchBook/src/app/(player)/payment-method.tsx` from condensed single-line JSX into structured, accessible components with hold timer, price breakdown, and single-flight confirmation protection.
+- Guarded `PitchBook/src/app/(player)/booking-confirmation.tsx` against unpersisted or missing parameters, showing helpful fallback navigation to "My Bookings" and rendering the real `bookingNumber`.
+- Isolated disconnected mock payment screens (`payment-jazzcash.tsx`, `payment-easypaisa.tsx`, `payment-bank-transfer.tsx`, `payment-processing.tsx`) with clear demo/sandbox mode notices, disconnecting fake automatic unpersisted booking completion.
+- Refactored `PitchBook/src/app/(player)/bookings.tsx` to use `SectionList` grouped into Upcoming, Pending Payment, Completed & Past, and Cancelled/Expired with count chips and pull-to-refresh.
+- Refactored `PitchBook/src/app/(vendor)/bookings.tsx` to use `SectionList` grouped into Today's Schedule, Upcoming, Past, and Cancelled, with player details and net vendor payout.
+- Refactored `PitchBook/src/app/(player)/ground/[id].tsx` to display distinct slot unavailability states (`On Hold`, `Booked`, `Unavailable`) and de-minified JSX.
+- Refactored `PitchBook/src/components/booking/BookingDetails.tsx` into clean, readable multi-line sub-components.
+- Removed spammy debug `console.log` statements from player tab bar and switched tab bar navigation in both `(player)/_layout.tsx` and `(vendor)/_layout.tsx` to `router.replace` to prevent infinite stack history buildup.
+- Validated with `npx tsc --noEmit` (PitchBook: 0 errors), `npm run lint` (PitchBook: 0 errors, 19 warnings), `npx expo config --type public`, `npm run typecheck` (Server: 0 errors), `npm test` (Server: 15/15 passed), and `git diff --check` (0 whitespace errors).
+
+### Key decisions
+
+- Isolated rather than deleted `payment-jazzcash.tsx`, `payment-easypaisa.tsx`, and `payment-bank-transfer.tsx` so visual design work is preserved for future payment gateway integration, but barred them from routing to fake confirmations without database state.
+- Grouped bookings dynamically based on both booking status and date/time comparison so confirmed bookings whose times have passed automatically show in Completed & Past.
+- Used `router.replace` on bottom tab bars to maintain proper tab switching semantics without compounding stack entries.
+
+### Next immediate step
+
+- Proceed with **Phase 2** of P1 Mobile Reliability & UX Cleanup:
+  1. Build a weekly calendar/grid for vendor slot management (`ground-slots.tsx`).
+  2. Replace raw date/time text fields with accessible date/time pickers.
+  3. Virtualize ground discovery and notification lists (`FlatList`).
+  4. Accessibility labels, scalable text, and touch target polish.
+
+### Critical paths and commands
+
+- `PitchBook/src/components/booking/CheckoutHoldTimer.tsx`
+- `PitchBook/src/components/booking/PricingBreakdown.tsx`
+- `PitchBook/src/components/booking/BookingStatusBadge.tsx`
+- `PitchBook/src/app/(player)/payment-method.tsx`
+- `PitchBook/src/app/(player)/booking-confirmation.tsx`
+- `PitchBook/src/app/(player)/bookings.tsx`
+- `PitchBook/src/app/(vendor)/bookings.tsx`
+- `PitchBook/src/app/(player)/ground/[id].tsx`
+- `PitchBook/src/components/booking/BookingDetails.tsx`
+- `PitchBook/src/app/(player)/_layout.tsx`
+- `PitchBook/src/app/(vendor)/_layout.tsx`
+- `PitchBook/src/app/(player)/payment-jazzcash.tsx`
+- `PitchBook/src/app/(player)/payment-easypaisa.tsx`
+- `PitchBook/src/app/(player)/payment-bank-transfer.tsx`
+- `PitchBook/src/app/(player)/payment-processing.tsx`
+- `npx tsc --noEmit` (PitchBook)
+- `npm run lint` (PitchBook)
+- `npx expo config --type public` (PitchBook)
+- `npm run typecheck` (Server)
+- `npm test` (Server)
+- `git diff --check`

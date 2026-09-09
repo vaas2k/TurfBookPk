@@ -37,26 +37,26 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 
 ## P0 - Authentication and API safety
 
-- [ ] Add server-side OTP request and verification rate limiting.
-- [ ] Prevent OTP re-request from indefinitely resetting brute-force protection.
-- [ ] Serialize/deduplicate concurrent mobile refresh-token attempts.
-- [ ] Ensure a failed stale refresh request cannot clear a newly rotated valid session.
-- [ ] Decide whether logout must immediately invalidate access tokens or whether the 15-minute expiry is acceptable.
-- [ ] Use `JWT_ACCESS_TTL` instead of the currently hardcoded access-token duration.
-- [ ] Validate `EXPO_PUBLIC_API_URL` at mobile startup and show a clear configuration error.
-- [ ] Add request-size limits and consistent request validation at server boundaries.
+- [x] Add server-side OTP request and verification rate limiting.
+- [x] Prevent OTP re-request from indefinitely resetting brute-force protection.
+- [x] Serialize/deduplicate concurrent mobile refresh-token attempts.
+- [x] Ensure a failed stale refresh request cannot clear a newly rotated valid session.
+- [x] Decide whether logout must immediately invalidate access tokens or whether the 15-minute expiry is acceptable. (Decision: logout immediately invalidates the backing session and therefore its access token.)
+- [x] Use `JWT_ACCESS_TTL` instead of the currently hardcoded access-token duration.
+- [x] Validate `EXPO_PUBLIC_API_URL` at mobile startup and show a clear configuration error.
+- [x] Add request-size limits and consistent request validation at server boundaries.
 
 ## P1 - Complete the core MVP
 
-- [ ] Introduce a separate payments/payment-attempts table.
-- [ ] Implement a mock payment adapter behind the same interface future real gateways will use.
-- [ ] Build booking details screens for players and vendors.
-- [ ] Add player and vendor cancellation actions to the mobile UI.
-- [ ] Implement cancellation deadlines, fees, and refund eligibility.
-- [ ] Notify the correct counterparty when either player or vendor cancels.
-- [ ] Implement scheduled booking completion and no-show handling.
-- [ ] Add vendor earnings ledger, commission calculation, and balance updates.
-- [ ] Build the vendor earnings screen using real ledger data.
+- [x] Introduce a separate payments/payment-attempts table.
+- [x] Implement a mock payment adapter behind the same interface future real gateways will use.
+- [x] Build booking details screens for players and vendors.
+- [x] Add player and vendor cancellation actions to the mobile UI.
+- [x] Implement cancellation deadlines, fees, and refund eligibility.
+- [x] Notify the correct counterparty when either player or vendor cancels.
+- [x] Implement scheduled booking completion and no-show handling.
+- [x] Add vendor earnings ledger, commission calculation, and balance updates.
+- [x] Build the vendor earnings screen using real ledger data.
 - [ ] Integrate a real SMS provider for OTP delivery.
 - [ ] Implement cloud image upload/storage and stop persisting local device URIs.
 - [ ] Add image validation, ownership, replacement, and deletion behavior.
@@ -87,21 +87,23 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 
 ## P1 - Mobile reliability and UX cleanup
 
-- [ ] Remove or clearly isolate disconnected JazzCash, Easypaisa, bank-transfer, and payment-processing mock screens.
-- [ ] Ensure no payment screen can show booking confirmation without a persisted booking.
-- [ ] Remove hardcoded payment amounts, account details, references, and timers from production UI paths.
-- [ ] Group player bookings into upcoming, completed, cancelled, and payment-pending sections.
-- [ ] Group vendor bookings by date/status and provide actionable booking details.
+- [x] Remove or clearly isolate disconnected JazzCash, Easypaisa, bank-transfer, and payment-processing mock screens.
+- [x] Ensure no payment screen can show booking confirmation without a persisted booking.
+- [x] Remove hardcoded payment amounts, account details, references, and timers from production UI paths.
+- [x] Group player bookings into upcoming, completed, cancelled, and payment-pending sections.
+- [x] Group vendor bookings by date/status and provide actionable booking details.
 - [ ] Replace raw date/time text fields with accessible date/time pickers.
 - [ ] Build a weekly calendar/grid for vendor slot management.
-- [ ] Show unavailable slot reasons: booked, blocked, held, or expired.
-- [ ] Add checkout hold countdown and revalidate when checkout regains focus.
-- [ ] Show complete pricing breakdown before confirmation.
+- [x] Show unavailable slot reasons: booked, blocked, held, or expired.
+- [x] Add checkout hold countdown and revalidate when checkout regains focus.
+- [x] Show complete pricing breakdown before confirmation.
 - [ ] Add consistent loading, retry, empty, offline, and error states.
 - [ ] Use `FlatList`/`SectionList` for potentially large ground, slot, booking, and notification lists.
 - [ ] Use replace/tab navigation semantics to avoid growing navigation history on tab switches.
+- [x] Use replace/tab navigation semantics to avoid growing navigation history on tab switches.
 - [ ] Remove corrupted UI characters and remaining debug logs containing phone/OTP data.
 - [ ] Break large one-line JSX screens into reusable, testable components.
+- [x] Break large one-line JSX screens into reusable, testable components.
 - [ ] Add accessibility labels, scalable text, contrast checks, and adequate touch targets.
 
 ## P2 - Marketplace functionality

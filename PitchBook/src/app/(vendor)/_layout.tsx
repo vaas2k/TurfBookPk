@@ -3,14 +3,12 @@ import { View, Text, TouchableOpacity, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/store/authStore';
-import { useVendorStore } from '@/store/vendorStore';
 
 // Custom Tab Bar Component for Vendor
 function VendorTabBar() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { switchToPlayer, profile } = useAuthStore();
-  const { vendorProfile } = useVendorStore();
+  const { switchToPlayer } = useAuthStore();
 
   const showTabBar = () => {
     const mainRoutes = [
@@ -45,8 +43,9 @@ function VendorTabBar() {
   };
 
   const handlePress = (route: string) => {
-    const path = route.replace('/(vendor)', '');
-    router.push(path || '/');
+    if (!isActive(route)) {
+      router.replace(route as any);
+    }
   };
 
   const handleSwitchToPlayer = async () => {
@@ -80,6 +79,9 @@ function VendorTabBar() {
           return (
             <TouchableOpacity
               key={tab.name}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={tab.name}
               className="items-center justify-center flex-1 py-1"
               onPress={() => handlePress(tab.route)}
               activeOpacity={0.7}
@@ -103,6 +105,8 @@ function VendorTabBar() {
       
       {/* Switch to Player Button */}
       <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="Switch to Player mode"
         className="flex-row items-center justify-center py-2 mx-4 mt-1 bg-[#F5F5F5] rounded-full border border-[#E5E5E5]"
         onPress={handleSwitchToPlayer}
       >
@@ -129,6 +133,7 @@ export default function VendorLayout() {
         <Stack.Screen name="profile" />
         <Stack.Screen name="add-ground" />
         <Stack.Screen name="ground-slots" />
+        <Stack.Screen name="booking/[id]" />
       </Stack>
       <VendorTabBar />
     </View>

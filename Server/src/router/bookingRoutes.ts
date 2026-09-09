@@ -11,6 +11,8 @@ export function createBookingRouter(controller: BookingController, tokenService:
   router.get('/notifications', controller.notifications);
   router.get('/mine', controller.playerList);
   router.get('/vendor', controller.vendorList);
+  router.get('/:id', controller.detail);
   router.patch('/:id/cancel', controller.cancel);
+  router.patch('/:id/no-show', controller.markNoShow);
   return router;
 }

@@ -46,14 +46,11 @@ export default function PhoneInputScreen() {
     }
 
 
-    console.log('[PhoneInput] Sending OTP to:', cleanPhone);
-
     setIsLoading(true);
     const { error: sendError } = await sendOTP(`92${cleanPhone}`);
     setIsLoading(false);
 
     if (sendError) {
-      console.log('[PhoneInput] Error sending OTP:', sendError);
       Alert.alert('Error', sendError.message);
 
     } else {
@@ -65,7 +62,6 @@ export default function PhoneInputScreen() {
   };
 
   const handleGoogleSignIn = async () => {
-  console.log('[PhoneInput] Google sign-in button pressed');
   setIsGoogleLoading(true);
   
   const { error } = await signInWithGoogle();
@@ -73,15 +69,12 @@ export default function PhoneInputScreen() {
   setIsGoogleLoading(false);
 
   if (error && error.code !== 'redirect') {
-    console.log('[PhoneInput] Google sign-in error:', error);
     Alert.alert('Error', error.message);
   } else {
     // For web, the page will redirect - we don't need to navigate
     if (Platform.OS !== 'web') {
       // Check if the user is already authenticated
       const { isAuthenticated, isNewUser } = useAuthStore.getState();
-      console.log('[PhoneInput] Auth state:', { isAuthenticated, isNewUser });
-      
       if (isAuthenticated) {
         if (isNewUser) {
           router.replace('/(auth)/profile-setup');

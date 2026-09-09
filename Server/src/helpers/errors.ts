@@ -28,3 +28,15 @@ export function databaseConstraintError(error: unknown): AppError | null {
   }
   return null;
 }
+
+export function requestParsingError(error: unknown): AppError | null {
+  if (!error || typeof error !== 'object') return null;
+  const candidate = error as { status?: number; type?: string };
+  if (candidate.status === 413 || candidate.type === 'entity.too.large') {
+    return new AppError('request_too_large', 'Request body exceeds the 32 KB limit', 413);
+  }
+  if (candidate.status === 400 || candidate.type === 'entity.parse.failed') {
+    return new AppError('invalid_json', 'Request body contains invalid JSON', 400);
+  }
+  return null;
+}

@@ -7,11 +7,11 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export function requireAuth(tokenService: TokenService) {
-  return (request: AuthenticatedRequest, _response: Response, next: NextFunction): void => {
+  return async (request: AuthenticatedRequest, _response: Response, next: NextFunction): Promise<void> => {
     try {
       const header = request.header('authorization');
       if (!header?.startsWith('Bearer ')) throw new AppError('unauthorized', 'Authentication is required', 401);
-      request.auth = tokenService.verifyAccessToken(header.slice(7));
+      request.auth = await tokenService.authenticateAccessToken(header.slice(7));
       next();
     } catch (error) {
       next(error);

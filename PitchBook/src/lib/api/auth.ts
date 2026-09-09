@@ -1,4 +1,4 @@
-import { apiRequest, ApiError, clearRefreshToken, getRefreshToken, setAccessToken, setRefreshToken } from './client';
+import { apiRequest, clearRefreshToken, getRefreshToken, refreshStoredSession, setAccessToken, setRefreshToken } from './client';
 import { AuthResult, AuthSession, AuthUser, UserProfile } from '@/types/auth';
 
 interface AuthPayload {
@@ -24,14 +24,7 @@ export async function verifyOtp(phone: string, code: string): Promise<AuthPayloa
 }
 
 export async function refreshSession(): Promise<AuthPayload> {
-  const refreshToken = await getRefreshToken();
-  if (!refreshToken) throw { code: 'unauthorized', message: 'No saved session' } satisfies ApiError;
-  const result = await apiRequest<AuthPayload>('/auth/refresh', {
-    method: 'POST',
-    data: { refreshToken },
-  }, false);
-  await saveSession(result.session);
-  return result;
+  return refreshStoredSession<AuthPayload>();
 }
 
 export async function getCurrentUser(): Promise<Pick<AuthPayload, 'user' | 'profile'>> {

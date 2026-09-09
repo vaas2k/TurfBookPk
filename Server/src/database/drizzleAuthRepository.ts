@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { AuthRepository } from './authRepository.js';
 import { db } from './client.js';
@@ -56,12 +56,18 @@ export class DrizzleAuthRepository implements AuthRepository {
       codeHash: challenge.codeHash,
       expiresAt: new Date(challenge.expiresAt),
       attempts: challenge.attempts,
+      requestCount: challenge.requestCount,
+      requestWindowStartedAt: new Date(challenge.requestWindowStartedAt),
+      lastSentAt: new Date(challenge.lastSentAt),
     }).onConflictDoUpdate({
       target: otpChallenges.phone,
       set: {
         codeHash: challenge.codeHash,
         expiresAt: new Date(challenge.expiresAt),
         attempts: challenge.attempts,
+        requestCount: challenge.requestCount,
+        requestWindowStartedAt: new Date(challenge.requestWindowStartedAt),
+        lastSentAt: new Date(challenge.lastSentAt),
       },
     });
   }
@@ -75,6 +81,9 @@ export class DrizzleAuthRepository implements AuthRepository {
       codeHash: challenge.codeHash,
       expiresAt: challenge.expiresAt.getTime(),
       attempts: challenge.attempts,
+      requestCount: challenge.requestCount,
+      requestWindowStartedAt: challenge.requestWindowStartedAt.getTime(),
+      lastSentAt: challenge.lastSentAt.getTime(),
     };
   }
 
@@ -107,10 +116,43 @@ export class DrizzleAuthRepository implements AuthRepository {
     };
   }
 
+  async findRefreshSessionById(id: string): Promise<StoredRefreshSession | null> {
+    const rows = await db.select().from(refreshSessions).where(eq(refreshSessions.id, id)).limit(1);
+    const session = rows[0];
+    if (!session) return null;
+    return {
+      id: session.id,
+      userId: session.userId,
+      tokenHash: session.tokenHash,
+      expiresAt: session.expiresAt.getTime(),
+      revokedAt: session.revokedAt?.getTime() || null,
+      createdAt: session.createdAt.getTime(),
+    };
+  }
+
   async revokeRefreshSession(id: string): Promise<void> {
     await db.update(refreshSessions)
       .set({ revokedAt: new Date() })
       .where(eq(refreshSessions.id, id));
+  }
+
+  async rotateRefreshSession(existingId: string, expectedTokenHash: string, replacement: StoredRefreshSession): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const revoked = await tx.update(refreshSessions)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(refreshSessions.id, existingId), eq(refreshSessions.tokenHash, expectedTokenHash), isNull(refreshSessions.revokedAt)))
+        .returning({ id: refreshSessions.id });
+      if (!revoked[0]) return false;
+      await tx.insert(refreshSessions).values({
+        id: replacement.id,
+        userId: replacement.userId,
+        tokenHash: replacement.tokenHash,
+        expiresAt: new Date(replacement.expiresAt),
+        revokedAt: null,
+        createdAt: new Date(replacement.createdAt),
+      });
+      return true;
+    });
   }
 
   private toUserProfile(user: typeof users.$inferSelect): UserProfile {

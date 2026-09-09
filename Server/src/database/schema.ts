@@ -18,6 +18,9 @@ export const paymentStatusEnum = pgEnum('payment_status', [
   'refunded',
 ]);
 
+export const ledgerEntryTypeEnum = pgEnum('ledger_entry_type', ['booking_earning', 'refund', 'adjustment', 'payout']);
+export const ledgerEntryStatusEnum = pgEnum('ledger_entry_status', ['pending', 'posted', 'reversed']);
+
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   phone: text('phone').unique(),
@@ -41,6 +44,9 @@ export const otpChallenges = pgTable('otp_challenges', {
   codeHash: text('code_hash').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   attempts: integer('attempts').notNull().default(0),
+  requestCount: integer('request_count').notNull().default(1),
+  requestWindowStartedAt: timestamp('request_window_started_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSentAt: timestamp('last_sent_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -140,7 +146,40 @@ export const bookings = pgTable('bookings', {
   cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   cancelledBy: uuid('cancelled_by').references(() => users.id),
   cancellationReason: text('cancellation_reason'),
+  cancellationFee: integer('cancellation_fee').notNull().default(0),
+  refundAmount: integer('refund_amount').notNull().default(0),
   notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const paymentAttempts = pgTable('payment_attempts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  bookingId: uuid('booking_id').notNull().references(() => bookings.id),
+  playerId: uuid('player_id').notNull().references(() => users.id),
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
+  provider: text('provider').notNull(),
+  providerReference: text('provider_reference'),
+  amount: integer('amount').notNull(),
+  status: paymentStatusEnum('status').notNull().default('pending'),
+  idempotencyKey: text('idempotency_key').notNull().unique(),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  failedAt: timestamp('failed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const ledgerEntries = pgTable('ledger_entries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
+  bookingId: uuid('booking_id').notNull().references(() => bookings.id),
+  paymentAttemptId: uuid('payment_attempt_id').references(() => paymentAttempts.id),
+  type: ledgerEntryTypeEnum('type').notNull(),
+  status: ledgerEntryStatusEnum('status').notNull().default('pending'),
+  amount: integer('amount').notNull(),
+  description: text('description').notNull(),
+  idempotencyKey: text('idempotency_key').notNull().unique(),
+  postedAt: timestamp('posted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

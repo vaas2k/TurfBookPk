@@ -50,4 +50,7 @@ export interface OtpChallenge {
   codeHash: string;
   expiresAt: number;
   attempts: number;
+  requestCount: number;
+  requestWindowStartedAt: number;
+  lastSentAt: number;
 }

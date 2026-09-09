@@ -8,8 +8,6 @@ function BottomTabBar() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
 
-  console.log('Pathname:', pathname); // Debug log
-
   // Define which paths should show the tab bar
   const showTabBar = () => {
     // Main routes - show tab bar
@@ -33,11 +31,8 @@ function BottomTabBar() {
   };
 
   if (!showTabBar()) {
-    console.log('Hiding tab bar for:', pathname);
     return null;
   }
-
-  console.log('Showing tab bar for:', pathname);
 
   const tabs = [
     { 
@@ -79,8 +74,7 @@ function BottomTabBar() {
 
   const handlePress = (route: string) => {
     if (!isActive(route)) {
-      const path = route.replace('/(player)', '');
-      router.push(path || '/');
+      router.replace(route as any);
     }
   };
 
@@ -97,6 +91,9 @@ function BottomTabBar() {
         return (
           <TouchableOpacity
             key={tab.name}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={tab.name}
             className="items-center justify-center flex-1 py-1"
             onPress={() => handlePress(tab.route)}
             activeOpacity={0.7}
@@ -141,6 +138,7 @@ export default function PlayerLayout() {
         <Stack.Screen name="payment-bank-transfer" />
         <Stack.Screen name="payment-processing" />
         <Stack.Screen name="booking-confirmation" />
+        <Stack.Screen name="booking/[id]" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="wallet" />
         <Stack.Screen name="help-support" />

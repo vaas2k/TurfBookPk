@@ -9,9 +9,10 @@ test('only pending payment and confirmed bookings can be cancelled', () => {
   assert.equal(canCancelBooking('cancelled'), false);
 });
 
-test('cancellation never marks unpaid or paid bookings as refunded', () => {
+test('cancellation only enters refund-pending when money must be returned', () => {
   assert.equal(paymentStatusForCancellation('pending'), 'cancelled');
-  assert.equal(paymentStatusForCancellation('paid'), 'refund_pending');
+  assert.equal(paymentStatusForCancellation('paid'), 'paid');
+  assert.equal(paymentStatusForCancellation('paid', true), 'refund_pending');
   assert.equal(paymentStatusForCancellation('failed'), 'failed');
 });
 

@@ -10,5 +10,7 @@ export interface AuthRepository {
   deleteOtp(phone: string): Promise<void>;
   saveRefreshSession(session: StoredRefreshSession): Promise<void>;
   findRefreshSession(tokenHash: string): Promise<StoredRefreshSession | null>;
+  findRefreshSessionById(id: string): Promise<StoredRefreshSession | null>;
   revokeRefreshSession(id: string): Promise<void>;
+  rotateRefreshSession(existingId: string, expectedTokenHash: string, replacement: StoredRefreshSession): Promise<boolean>;
 }

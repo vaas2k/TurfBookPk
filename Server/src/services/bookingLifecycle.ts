@@ -26,8 +26,8 @@ export function canCancelBooking(status: BookingStatus): boolean {
   return status === 'pending_payment' || status === 'confirmed';
 }
 
-export function paymentStatusForCancellation(paymentStatus: PaymentStatus): PaymentStatus {
-  if (paymentStatus === 'paid') return 'refund_pending';
+export function paymentStatusForCancellation(paymentStatus: PaymentStatus, refundRequired = false): PaymentStatus {
+  if (paymentStatus === 'paid') return refundRequired ? 'refund_pending' : 'paid';
   if (paymentStatus === 'pending') return 'cancelled';
   return paymentStatus;
 }

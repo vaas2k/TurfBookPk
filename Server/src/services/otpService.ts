@@ -7,6 +7,11 @@ function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+const OTP_REQUEST_WINDOW_MS = 15 * 60_000;
+const OTP_REQUEST_COOLDOWN_MS = 60_000;
+const OTP_REQUEST_LIMIT = 5;
+const OTP_VERIFICATION_LIMIT = 5;
+
 export function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   const local = digits.startsWith('92') ? digits.slice(2) : digits;
@@ -21,6 +26,15 @@ export class OtpService {
 
   async issue(phoneInput: string): Promise<void> {
     const phone = normalizePhone(phoneInput);
+    const now = Date.now();
+    const existing = await this.repository.getOtp(phone);
+    const inCurrentWindow = Boolean(existing && now - existing.requestWindowStartedAt < OTP_REQUEST_WINDOW_MS);
+    if (existing && now - existing.lastSentAt < OTP_REQUEST_COOLDOWN_MS) {
+      throw new AppError('otp_request_too_soon', 'Please wait one minute before requesting another code', 429);
+    }
+    if (existing && inCurrentWindow && existing.requestCount >= OTP_REQUEST_LIMIT) {
+      throw new AppError('too_many_otp_requests', 'Too many verification codes requested. Please try again later.', 429);
+    }
     const code = env.otpFixedCode && env.nodeEnv !== 'production'
       ? env.otpFixedCode
       : String(randomInt(100000, 1000000));
@@ -28,13 +42,15 @@ export class OtpService {
     await this.repository.saveOtp({
       phone,
       codeHash: hash(code),
-      expiresAt: Date.now() + env.otpTtlMinutes * 60_000,
-      attempts: 0,
+      expiresAt: now + env.otpTtlMinutes * 60_000,
+      attempts: inCurrentWindow ? existing?.attempts || 0 : 0,
+      requestCount: inCurrentWindow ? (existing?.requestCount || 0) + 1 : 1,
+      requestWindowStartedAt: inCurrentWindow ? existing!.requestWindowStartedAt : now,
+      lastSentAt: now,
     });
 
-    // Replace this log with an SMS provider adapter before production deployment.
     if (env.nodeEnv !== 'production') {
-      console.info(`[OTP][development] ${phone}: ${code}`);
+      console.info('[OTP][development] Verification code issued');
     }
   }
 
@@ -48,7 +64,7 @@ export class OtpService {
     if (!challenge || challenge.expiresAt < Date.now()) {
       throw new AppError('otp_expired', 'This verification code has expired', 401);
     }
-    if (challenge.attempts >= 5) {
+    if (challenge.attempts >= OTP_VERIFICATION_LIMIT) {
       throw new AppError('too_many_attempts', 'Too many verification attempts', 429);
     }
 

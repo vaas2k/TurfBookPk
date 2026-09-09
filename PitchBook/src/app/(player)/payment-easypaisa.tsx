@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function PaymentEasypaisa() {
   const [phoneNumber, setPhoneNumber] = useState('345 1234567');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading] = useState(false);
   const [timer] = useState(600);
 
   const handlePhoneChange = (text: string) => {
@@ -26,11 +26,14 @@ export default function PaymentEasypaisa() {
       return;
     }
 
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      router.push('/(player)/payment-processing');
-    }, 1500);
+    Alert.alert(
+      'Easypaisa Gateway Notice',
+      'Easypaisa direct merchant payment integration is in sandbox testing. Please use standard checkout to confirm your booking.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Go to Checkout', onPress: () => router.back() }
+      ]
+    );
   };
 
   const formatTime = (seconds: number) => {
@@ -42,9 +45,11 @@ export default function PaymentEasypaisa() {
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       <View className="bg-white px-6 pt-4 pb-4 border-b border-[#E5E5E5] flex-row items-center">
-        <TouchableOpacity 
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
           className="w-10 h-10 rounded-full bg-[#F5F5F5] items-center justify-center"
           onPress={() => router.back()}
         >
@@ -54,21 +59,38 @@ export default function PaymentEasypaisa() {
       </View>
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View className="px-4 pt-6">
+        <View className="px-4 pt-4">
+          {/* Demo Mode Notice */}
+          <View className="bg-[#FFF8E1] border border-[#FDE68A] rounded-2xl p-4 mb-4 flex-row items-start">
+            <Ionicons name="information-circle" size={22} color="#B45309" />
+            <View className="ml-3 flex-1">
+              <Text className="text-[#92400E] font-bold text-sm">Preview / Sandbox Screen</Text>
+              <Text className="text-[#92400E] text-xs mt-1 leading-4">
+                Automated Easypaisa mobile payments are scheduled for an upcoming release. To book turf slots right now, please use the standard checkout flow.
+              </Text>
+            </View>
+          </View>
+
+          {/* Icon */}
           <View className="items-center mb-6">
-            <View className="w-20 h-20 rounded-2xl bg-[#00BCD4] items-center justify-center"
-              style={{ shadowColor: '#00BCD4', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}>
+            <View
+              className="w-20 h-20 rounded-2xl bg-[#00BCD4] items-center justify-center"
+              style={{ shadowColor: '#00BCD4', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}
+            >
               <Text className="text-white text-2xl font-bold">EP</Text>
             </View>
           </View>
 
-          <View className="bg-white rounded-2xl p-6"
-            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
+          {/* Phone Input */}
+          <View
+            className="bg-white rounded-2xl p-6"
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}
+          >
             <Text className="text-[#1A1A2E] text-base font-semibold mb-2">MOBILE NUMBER</Text>
             <Text className="text-[#737373] text-sm mb-4">
               Enter your Easypaisa registered mobile number to receive a secure payment request.
             </Text>
-            
+
             <View className="flex-row items-center bg-[#F5F5F5] rounded-xl px-4 border border-[#E5E5E5]">
               <Text className="text-[#1A1A2E] font-medium py-4">+92</Text>
               <View className="w-px h-6 bg-[#D4D4D4] mx-3" />
@@ -85,16 +107,11 @@ export default function PaymentEasypaisa() {
             </View>
           </View>
 
-          <View className="bg-white rounded-2xl p-6 mt-4"
-            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-[#737373] text-sm">TOTAL AMOUNT</Text>
-              <Text className="text-[#1A1A2E] text-2xl font-bold">RS 3,150</Text>
-            </View>
-          </View>
-
-          <View className="bg-white rounded-2xl p-6 mt-4"
-            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
+          {/* How it works */}
+          <View
+            className="bg-white rounded-2xl p-6 mt-4"
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}
+          >
             <Text className="text-[#1A1A2E] text-base font-semibold mb-3">How it works</Text>
             <View className="space-y-3">
               <View className="flex-row items-start">
@@ -102,7 +119,7 @@ export default function PaymentEasypaisa() {
                   <Text className="text-[#4CAF50] font-bold text-xs">1</Text>
                 </View>
                 <Text className="text-[#737373] text-sm ml-3 flex-1">
-                  Enter your Easypaisa number.
+                  Submit your Easypaisa mobile number above.
                 </Text>
               </View>
               <View className="flex-row items-start">
@@ -110,7 +127,7 @@ export default function PaymentEasypaisa() {
                   <Text className="text-[#4CAF50] font-bold text-xs">2</Text>
                 </View>
                 <Text className="text-[#737373] text-sm ml-3 flex-1">
-                  You'll receive a payment request on your phone.
+                  You will receive a direct push-popup payment prompt on your phone.
                 </Text>
               </View>
               <View className="flex-row items-start">
@@ -118,14 +135,17 @@ export default function PaymentEasypaisa() {
                   <Text className="text-[#4CAF50] font-bold text-xs">3</Text>
                 </View>
                 <Text className="text-[#737373] text-sm ml-3 flex-1">
-                  Approve the payment in your Easypaisa app.
+                  Enter your 5-digit Easypaisa PIN to approve the transaction securely.
                 </Text>
               </View>
             </View>
           </View>
 
-          <View className="bg-white rounded-2xl p-4 mt-4 flex-row items-center justify-between"
-            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
+          {/* Timer */}
+          <View
+            className="bg-white rounded-2xl p-4 mt-4 flex-row items-center justify-between"
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}
+          >
             <View className="flex-row items-center">
               <View className="w-8 h-8 rounded-full bg-red-50 items-center justify-center">
                 <Ionicons name="timer-outline" size={18} color="#EF4444" />
@@ -136,24 +156,25 @@ export default function PaymentEasypaisa() {
           </View>
         </View>
 
-        <View className="h-8" />
+        <View className="h-28" />
       </ScrollView>
 
       <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-[#E5E5E5] px-6 pt-4 pb-6">
         <TouchableOpacity
-          className={`py-4 rounded-full ${isLoading ? 'bg-[#E5E5E5]' : 'bg-[#4CAF50]'}`}
-          style={!isLoading ? { 
-            shadowColor: '#4CAF50', 
-            shadowOffset: { width: 0, height: 4 }, 
-            shadowOpacity: 0.3, 
-            shadowRadius: 8, 
-            elevation: 4 
-          } : {}}
+          accessibilityRole="button"
+          className="py-4 rounded-full bg-[#4CAF50]"
+          style={{
+            shadowColor: '#4CAF50',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            elevation: 4,
+          }}
           onPress={handleSendRequest}
           disabled={isLoading}
         >
-          <Text className={`text-center font-bold text-base ${isLoading ? 'text-[#737373]' : 'text-white'}`}>
-            {isLoading ? 'Processing...' : 'Send Payment Request'}
+          <Text className="text-center font-bold text-base text-white">
+            Send Payment Request
           </Text>
         </TouchableOpacity>
       </View>

@@ -8,6 +8,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/**/*.test.ts",
+    "test:e2e": "npm run build && node scripts/core-mvp-smoke.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },

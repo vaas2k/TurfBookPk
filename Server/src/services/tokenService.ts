@@ -13,11 +13,17 @@ export class TokenService {
   constructor(private readonly repository: AuthRepository) {}
 
   async createSession(user: UserProfile): Promise<AuthSession> {
+    const created = this.buildSession(user);
+    await this.repository.saveRefreshSession(created.storedSession);
+    return created.session;
+  }
+
+  private buildSession(user: UserProfile): { session: AuthSession; storedSession: StoredRefreshSession } {
     const sessionId = randomUUID();
     const refreshToken = randomBytes(48).toString('base64url');
     const expiresAt = Date.now() + env.refreshTokenDays * 86_400_000;
     const accessToken = jwt.sign({ sub: user.id, sid: sessionId }, env.jwtAccessSecret, {
-      expiresIn: 15 * 60,
+      expiresIn: env.accessTokenSeconds,
     });
 
     const session: StoredRefreshSession = {
@@ -28,8 +34,7 @@ export class TokenService {
       revokedAt: null,
       createdAt: Date.now(),
     };
-    await this.repository.saveRefreshSession(session);
-    return { accessToken, refreshToken, expiresIn: 15 * 60 };
+    return { session: { accessToken, refreshToken, expiresIn: env.accessTokenSeconds }, storedSession: session };
   }
 
   verifyAccessToken(token: string): { userId: string; sessionId: string } {
@@ -42,6 +47,15 @@ export class TokenService {
     }
   }
 
+  async authenticateAccessToken(token: string): Promise<{ userId: string; sessionId: string }> {
+    const claims = this.verifyAccessToken(token);
+    const session = await this.repository.findRefreshSessionById(claims.sessionId);
+    if (!session || session.userId !== claims.userId || session.revokedAt || session.expiresAt <= Date.now()) {
+      throw new AppError('unauthorized', 'Your session has been logged out or expired', 401);
+    }
+    return claims;
+  }
+
   async refresh(refreshToken: string): Promise<{ user: UserProfile; session: AuthSession }> {
     const existing = await this.repository.findRefreshSession(hashToken(refreshToken));
     if (!existing || existing.revokedAt || existing.expiresAt < Date.now()) {
@@ -49,8 +63,10 @@ export class TokenService {
     }
     const user = await this.repository.findUserById(existing.userId);
     if (!user) throw new AppError('unauthorized', 'User account was not found', 401);
-    await this.repository.revokeRefreshSession(existing.id);
-    return { user, session: await this.createSession(user) };
+    const replacement = this.buildSession(user);
+    const rotated = await this.repository.rotateRefreshSession(existing.id, hashToken(refreshToken), replacement.storedSession);
+    if (!rotated) throw new AppError('unauthorized', 'This refresh token has already been used', 401);
+    return { user, session: replacement.session };
   }
 
   async revoke(refreshToken: string): Promise<void> {
