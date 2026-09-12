@@ -1,8 +1,9 @@
-import { View, Text, TouchableOpacity, ScrollView, StatusBar, Alert, Share } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StatusBar, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Calendar from 'expo-calendar';
+import { appDialog } from '@/components/ui/app-dialog';
 
 export default function BookingConfirmation() {
   const params = useLocalSearchParams<{
@@ -82,12 +83,12 @@ export default function BookingConfirmation() {
           alarms: [{ relativeOffset: -30 }],
         });
 
-        Alert.alert('Success', 'Event added to your calendar!');
+        appDialog.alert('Success', 'Event added to your calendar!');
       } else {
-        Alert.alert('Permission Denied', 'Please allow calendar access in settings to add events.');
+        appDialog.alert('Permission Denied', 'Please allow calendar access in settings to add events.');
       }
     } catch {
-      Alert.alert('Error', 'Failed to add event to calendar.');
+      appDialog.alert('Error', 'Failed to add event to calendar.');
     }
   };
 

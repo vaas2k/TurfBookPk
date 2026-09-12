@@ -12,6 +12,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getPublicGround, Ground, Slot } from '@/lib/api/vendors';
 import { Toast } from '@/components/ui/toast';
+import { goBackOrReplace } from '@/lib/navigation';
 
 const fallbackImage = 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200';
 
@@ -97,7 +98,7 @@ export default function GroundDetail() {
         </Text>
         <TouchableOpacity
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackOrReplace('/(player)')}
           className="mt-6 bg-[#4CAF50] rounded-full px-8 py-3.5"
         >
           <Text className="text-white font-bold">Go Back</Text>
@@ -114,7 +115,7 @@ export default function GroundDetail() {
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={() => router.back()}
+          onPress={() => goBackOrReplace('/(player)')}
           className="w-10 h-10 rounded-full bg-[#F5F5F5] items-center justify-center"
         >
           <Ionicons name="arrow-back" size={22} color="#1A1A2E" />

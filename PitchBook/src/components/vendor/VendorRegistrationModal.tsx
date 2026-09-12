@@ -1,6 +1,6 @@
 import { 
   View, Text, TextInput, TouchableOpacity, 
-  Modal, ScrollView, ActivityIndicator, Alert,
+  Modal, ScrollView, ActivityIndicator,
   KeyboardAvoidingView, Platform, Dimensions
 } from 'react-native';
 import { useState } from 'react';
@@ -107,7 +107,7 @@ export default function VendorRegistrationModal({
           {/* Header */}
           <View className="pt-12 pb-4 px-6 flex-row items-center justify-between border-b border-[#E5E5E5] bg-white">
             <Text className="text-xl font-bold text-[#1A1A2E]">Become a Vendor</Text>
-            <TouchableOpacity onPress={handleClose} disabled={isLoading}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close vendor registration" className="h-11 w-11 items-center justify-center" onPress={handleClose} disabled={isLoading}>
               <Ionicons name="close" size={24} color="#737373" />
             </TouchableOpacity>
           </View>

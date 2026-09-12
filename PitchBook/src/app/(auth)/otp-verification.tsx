@@ -1,6 +1,6 @@
 import { 
   View, Text, TouchableOpacity, ActivityIndicator, 
-  Alert, TextInput, Keyboard 
+  TextInput, Keyboard
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -8,6 +8,8 @@ import { useState, useRef, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store/authStore';
+import { appDialog } from '@/components/ui/app-dialog';
+import { goBackOrReplace } from '@/lib/navigation';
 
 export default function OTPVerificationScreen() {
   const { phone } = useLocalSearchParams<{ phone: string }>();
@@ -60,12 +62,12 @@ export default function OTPVerificationScreen() {
   const handleVerify = async () => {
     const code = otp.join('');
     if (code.length < 6) {
-      Alert.alert('Error', 'Please enter the 6-digit verification code');
+      appDialog.alert('Error', 'Please enter the 6-digit verification code');
       return;
     }
 
     if (!phone) {
-      Alert.alert('Error', 'Phone number not found');
+      appDialog.alert('Error', 'Phone number not found');
       return;
     }
 
@@ -75,7 +77,7 @@ export default function OTPVerificationScreen() {
     setIsVerifying(false);
 
     if (verifyError) {
-      Alert.alert('Verification Failed', verifyError.message);
+      appDialog.alert('Verification Failed', verifyError.message);
       setOtp(['', '', '', '', '', '']);
       inputs.current[0]?.focus();
     } else {
@@ -101,11 +103,11 @@ export default function OTPVerificationScreen() {
 
     if (resendError) {
       // console.log('[OTPVerification] Error resending OTP:', resendError);
-      Alert.alert('Error', resendError.message);
+      appDialog.alert('Error', resendError.message);
     } else {
       setTimer(60);
       setCanResend(false);
-      Alert.alert('Code Sent', 'A new verification code has been sent to your phone');
+      appDialog.alert('Code Sent', 'A new verification code has been sent to your phone');
       setOtp(['', '', '', '', '', '']);
       inputs.current[0]?.focus();
     }
@@ -117,9 +119,11 @@ export default function OTPVerificationScreen() {
     <SafeAreaView className="flex-1 bg-white">
       <StatusBar style="dark" />
       
-      <TouchableOpacity 
-        className="px-6 pt-4" 
-        onPress={() => router.back()} 
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        className="ml-4 mt-2 h-11 w-11 items-center justify-center rounded-full bg-[#F5F5F5]"
+        onPress={() => goBackOrReplace('/(auth)/phone-input')}
         activeOpacity={0.7}
       >
         <Ionicons name="arrow-back" size={24} color="#1A1A2E" />
@@ -134,7 +138,7 @@ export default function OTPVerificationScreen() {
           <Text className="text-[#737373] text-center mt-2 text-base">
             We sent a 6-digit code to +92{phone}
           </Text>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace('/(auth)/phone-input')} activeOpacity={0.7} className="h-11 w-11 items-center justify-center rounded-full bg-[#F5F5F5]">
             <Text className="text-[#4CAF50] font-medium mt-1">Edit Number</Text>
           </TouchableOpacity>
         </View>

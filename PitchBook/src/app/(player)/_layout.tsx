@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 function BottomTabBar() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, 8);
 
   // Define which paths should show the tab bar
   const showTabBar = () => {
@@ -80,10 +81,15 @@ function BottomTabBar() {
 
   return (
     <View 
-      className="bg-white border-t border-[#E5E5E5] flex-row items-center justify-around px-2 pt-1"
+      className="bg-white border-t border-[#E5E5E5] flex-row items-center justify-around px-2 pt-2"
       style={{ 
-        paddingBottom: Platform.OS === 'ios' ? insets.bottom || 8 : 8,
-        height: Platform.OS === 'ios' ? 70 : 60,
+        paddingBottom: bottomPadding,
+        minHeight: 64 + bottomPadding,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: Platform.OS === 'ios' ? 0.06 : 0.12,
+        shadowRadius: 8,
+        elevation: 10,
       }}
     >
       {tabs.map((tab) => {
@@ -94,7 +100,7 @@ function BottomTabBar() {
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
             accessibilityLabel={tab.name}
-            className="items-center justify-center flex-1 py-1"
+            className={`items-center justify-center flex-1 min-h-[44px] rounded-2xl py-1 ${active ? 'bg-[#E8F5E9]' : ''}`}
             onPress={() => handlePress(tab.route)}
             activeOpacity={0.7}
           >
@@ -104,7 +110,7 @@ function BottomTabBar() {
               color={active ? '#4CAF50' : '#737373'} 
             />
             <Text 
-              className={`text-xs mt-0.5 ${
+              className={`text-[11px] mt-0.5 ${
                 active ? 'text-[#4CAF50] font-medium' : 'text-[#737373]'
               }`}
             >

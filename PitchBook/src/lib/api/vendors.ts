@@ -23,6 +23,7 @@ export interface Ground {
   rating: number;
   total_reviews: number;
   operating_hours: { open: string; close: string };
+  scheduling_policy: { max_slot_duration_minutes: number; max_advance_booking_days: number };
   rules: string[];
   cancellation_policy: string | null;
   created_at: string;
@@ -79,11 +80,20 @@ export interface EarningsEntry {
   status: 'pending' | 'posted' | 'reversed';
   amount: number;
   description: string;
+  booking_number: string;
+  ground_title: string;
   posted_at: string | null;
   created_at: string;
 }
 
-export async function getVendorEarnings(): Promise<{ summary: { total_earnings: number; pending_earnings: number; total_withdrawn: number }; entries: EarningsEntry[] }> {
+export interface EarningsSummary {
+  available_to_withdraw: number;
+  pending_earnings: number;
+  total_paid_out: number;
+  pending_refunds: number;
+}
+
+export async function getVendorEarnings(): Promise<{ summary: EarningsSummary; entries: EarningsEntry[] }> {
   return apiRequest('/vendors/earnings');
 }
 

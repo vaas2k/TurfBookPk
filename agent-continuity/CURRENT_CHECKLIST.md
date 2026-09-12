@@ -75,14 +75,14 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 ## P0 - Mobile UI/UX correctness and navigation
 
 - [ ] Add a consistent accessible back button/header to every pushed player and vendor screen, starting with player notifications, booking lists reached from deep links, and profile edit flows.
-- [ ] Connect player and vendor notification screens to the new notification API: unread badge/count, visible read state, mark-one-read, mark-all-read, pull-to-refresh, and booking deep links.
-- [ ] Remove the disconnected player-home notification modal so the notification bell has one reliable destination.
-- [ ] Wire or remove player discovery filter/settings controls that currently render without an action.
-- [ ] Replace hardcoded vendor dashboard statistics (`todayBookings`, revenue, rating) with real data or an explicit “not available yet” state.
-- [ ] Add loading/disabled states and duplicate-submit prevention to vendor ground, slot, recurrence, activation, and profile actions.
+- [x] Connect player and vendor notification screens to the new notification API: unread badge/count, visible read state, mark-one-read, mark-all-read, pull-to-refresh, and booking deep links.
+- [x] Remove the disconnected player-home notification modal so the notification bell has one reliable destination.
+- [x] Wire or remove player discovery filter/settings controls that currently render without an action.
+- [x] Replace hardcoded vendor dashboard statistics (`todayBookings`, revenue, rating) with real data or an explicit “not available yet” state.
+- [x] Add loading/disabled states and duplicate-submit prevention to vendor ground, slot, recurrence, activation, and profile actions.
 - [ ] Ensure all icon-only/touchable controls have accessibility labels, 44px minimum touch targets, and visible pressed/disabled states.
-- [ ] Add confirmation dialogs for ground activation/deactivation and destructive slot/ground actions, including a clear player-visibility consequence.
-- [ ] Show server policy constraints (operating hours, max duration, advance window) in vendor slot creation/edit UI before submission.
+- [x] Add confirmation dialogs for ground activation/deactivation and destructive slot/ground actions, including a clear player-visibility consequence.
+- [x] Show server policy constraints (operating hours, max duration, advance window) in vendor slot creation/edit UI before submission.
 
 ## P1 - Mobile UI/UX completeness
 

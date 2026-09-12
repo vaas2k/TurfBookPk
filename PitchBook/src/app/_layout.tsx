@@ -8,6 +8,7 @@ import {useVendorStore} from '@/store/vendorStore';
 import { useFonts } from 'expo-font';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { getApiConfigurationError } from '@/lib/api/client';
+import { AppDialogHost } from '@/components/ui/app-dialog';
 
 //@ts-ignore
 import '../global.css';
@@ -67,6 +68,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <Slot />
+      <AppDialogHost />
     </SafeAreaProvider>
   );
 }

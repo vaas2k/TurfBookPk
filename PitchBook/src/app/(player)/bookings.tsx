@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BookingProfile, listPlayerBookings } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
+import { goBackOrReplace } from '@/lib/navigation';
 
 interface BookingSection {
   title: string;
@@ -144,11 +145,16 @@ export default function BookingsScreen() {
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">
       {/* Top Header */}
-      <View className="bg-white px-6 py-4 border-b border-[#E5E5E5]">
-        <Text className="text-2xl font-bold text-[#1A1A2E]">MY BOOKINGS</Text>
-        <Text className="text-[#737373] text-xs mt-0.5">
-          {bookings.length} {bookings.length === 1 ? 'total reservation' : 'total reservations'}
-        </Text>
+      <View className="bg-white px-5 py-3 border-b border-[#E5E5E5] flex-row items-center">
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace('/(player)')} className="w-11 h-11 rounded-full bg-[#F5F5F5] items-center justify-center mr-3">
+          <Ionicons name="arrow-back" size={20} color="#1A1A2E" />
+        </TouchableOpacity>
+        <View className="flex-1">
+          <Text className="text-2xl font-bold text-[#1A1A2E]">MY BOOKINGS</Text>
+          <Text className="text-[#737373] text-xs mt-0.5">
+            {bookings.length} {bookings.length === 1 ? 'total reservation' : 'total reservations'}
+          </Text>
+        </View>
       </View>
 
       {loading && bookings.length === 0 ? (

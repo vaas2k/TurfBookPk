@@ -14,6 +14,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { confirmMockBooking, confirmMockBookingOrder, createBooking, createBookingOrder } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
+import { goBackOrReplace } from '@/lib/navigation';
 import { PricingBreakdown } from '@/components/booking/PricingBreakdown';
 
 type CheckoutSlot = { id: string; date: string; startTime: string; endTime: string; price: number };
@@ -107,7 +108,7 @@ export default function PaymentMethodScreen() {
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={() => router.back()}
+          onPress={() => goBackOrReplace('/(player)')}
           className="w-10 h-10 rounded-full bg-[#F5F5F5] items-center justify-center"
         >
           <Ionicons name="arrow-back" size={22} color="#1A1A2E" />

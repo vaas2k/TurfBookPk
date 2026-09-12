@@ -1,6 +1,6 @@
 import { apiRequest } from './client';
 
-export interface AppNotification { id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string; }
+export interface AppNotification { id: string; type: string; title: string; message: string; data?: { bookingId?: string; orderId?: string } | null; isRead: boolean; createdAt: string; }
 
 export interface NotificationList { notifications: AppNotification[]; unread_count: number; }
 

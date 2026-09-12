@@ -1,6 +1,6 @@
 import { 
   View, Text, TextInput, TouchableOpacity, 
-  ScrollView, Platform, Alert, ActivityIndicator,
+  ScrollView, Platform, ActivityIndicator,
   KeyboardAvoidingView 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +9,8 @@ import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store/authStore';
+import { appDialog } from '@/components/ui/app-dialog';
+import { goBackOrReplace } from '@/lib/navigation';
 
 export default function ProfileSetupScreen() {
   const { profile, completeProfile } = useAuthStore();
@@ -65,9 +67,9 @@ export default function ProfileSetupScreen() {
     setIsLoading(false);
 
     if (error) {
-      Alert.alert('Error', error.message);
+      appDialog.alert('Error', error.message);
     } else {
-      Alert.alert(
+      appDialog.alert(
         'Profile Complete!',
         'Your account has been set up successfully.',
         [{ text: 'Continue', onPress: () => router.replace('/(player)') }]
@@ -76,7 +78,7 @@ export default function ProfileSetupScreen() {
   };
 
   const handleSkip = () => {
-    Alert.alert(
+    appDialog.alert(
       'Skip Profile Setup',
       'You can complete your profile later from settings.',
       [
@@ -92,8 +94,10 @@ export default function ProfileSetupScreen() {
       
       <View className="bg-white px-6 pt-4 pb-4 border-b border-[#E5E5E5] flex-row items-center">
         <TouchableOpacity 
-          className="w-10 h-10 rounded-full bg-[#F5F5F5] items-center justify-center"
-          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          className="w-11 h-11 rounded-full bg-[#F5F5F5] items-center justify-center"
+          onPress={() => goBackOrReplace('/(auth)/phone-input')}
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-back" size={22} color="#1A1A2E" />

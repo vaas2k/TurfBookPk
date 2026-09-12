@@ -1,8 +1,7 @@
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, Image, Dimensions, RefreshControl,
-  Platform, StatusBar, FlatList, Modal, TouchableWithoutFeedback,
-  Alert
+  Platform, StatusBar, FlatList
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -13,6 +12,8 @@ import VendorRegistrationModal from '@/components/vendor/VendorRegistrationModal
 import { useVendorStore } from '@/store/vendorStore';
 import { VendorFormData } from '@/components/vendor/VendorRegistrationModal';
 import { Ground, listGroundSlots, listPublicGrounds } from '@/lib/api/vendors';
+import { getNotifications } from '@/lib/api/notifications';
+import { appDialog } from '@/components/ui/app-dialog';
 
 const { width } = Dimensions.get('window');
 
@@ -42,9 +43,9 @@ export default function PlayerHome() {
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [groundList, setGroundList] = useState<PlayerGround[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   // Modal states
-  const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
@@ -56,7 +57,8 @@ export default function PlayerHome() {
   const loadGrounds = useCallback(async () => {
     setRefreshing(true);
     try {
-      const grounds = await listPublicGrounds();
+      const [grounds, notifications] = await Promise.all([listPublicGrounds(), getNotifications()]);
+      setUnreadNotifications(notifications.unread_count);
       const withAvailability = await Promise.all(grounds.map(async (ground) => {
         const slots = await listGroundSlots(ground.id);
         const available = slots.filter((slot) => !slot.is_booked && !slot.is_blocked).length;
@@ -84,7 +86,7 @@ export default function PlayerHome() {
 
   const handleSwitchToVendor = async () => {
     if (!user) {
-      Alert.alert('Error', 'Please login first');
+      appDialog.alert('Error', 'Please login first');
       return;
     }
 
@@ -92,7 +94,7 @@ export default function PlayerHome() {
     const { isVendor } = await checkVendorStatus(user.id);
 
     if (isVendor) {
-      Alert.alert(
+      appDialog.alert(
         'Switch to Vendor Mode',
         'You can return to player mode anytime to book a ground.',
         [
@@ -101,7 +103,7 @@ export default function PlayerHome() {
             text: 'Switch',
             onPress: async () => {
               const { error } = await switchToVendor();
-              if (error) Alert.alert('Unable to switch modes', error.message);
+              if (error) appDialog.alert('Unable to switch modes', error.message);
               else router.replace('/(vendor)');
             },
           },
@@ -119,10 +121,10 @@ export default function PlayerHome() {
     setIsVendorLoading(false);
 
     if (error) {
-      Alert.alert('Registration Failed', error);
+      appDialog.alert('Registration Failed', error);
     } else {
       setShowVendorModal(false);
-      Alert.alert(
+      appDialog.alert(
         'Registration Successful!',
         'Your vendor account has been created. You can now manage your grounds.',
         [{ text: 'Continue', onPress: () => router.replace('/(vendor)') }]
@@ -231,16 +233,17 @@ export default function PlayerHome() {
         {/* ─── Header ─── */}
         <View className="px-6 pt-2 pb-2 flex-row items-center justify-between">
           <View className="flex-row items-center">
-            <TouchableOpacity className="flex-row items-center">
+            <View accessibilityLabel="Current city: Rawalpindi" className="flex-row items-center">
               <Ionicons name="location-outline" size={20} color="#4CAF50" />
               <Text className="text-[#1A1A2E] font-semibold ml-1">Rawalpindi</Text>
-              <Ionicons name="chevron-down" size={16} color="#737373" />
-            </TouchableOpacity>
+            </View>
           </View>
           <View className="flex-row items-center space-x-2">
             {/* Switch to Vendor Button */}
             <TouchableOpacity
-              className="bg-[#F5F5F5] px-3 py-1.5 rounded-full flex-row items-center border border-[#E5E5E5]"
+              accessibilityRole="button"
+              accessibilityLabel="Switch to vendor mode"
+              className="bg-[#F5F5F5] min-h-[44px] px-3 rounded-full flex-row items-center border border-[#E5E5E5]"
               onPress={handleSwitchToVendor}
             >
               <Ionicons name="business-outline" size={14} color="#4CAF50" />
@@ -248,12 +251,14 @@ export default function PlayerHome() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              className="bg-white w-9 h-9 rounded-full items-center justify-center"
+              className="bg-white w-11 h-11 rounded-full items-center justify-center"
               style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
               onPress={handleNotifications}
+              accessibilityRole="button"
+              accessibilityLabel={unreadNotifications ? `${unreadNotifications} unread notifications` : 'Notifications'}
             >
               <Ionicons name="notifications-outline" size={20} color="#1A1A2E" />
-              <View className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
+              {unreadNotifications > 0 && <View className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#DC2626] items-center justify-center"><Text className="text-white text-[9px] font-bold">{unreadNotifications > 9 ? '9+' : unreadNotifications}</Text></View>}
             </TouchableOpacity>
           </View>
         </View>
@@ -271,9 +276,6 @@ export default function PlayerHome() {
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
-            <TouchableOpacity className="bg-[#F5F5F5] p-2 rounded-xl">
-              <Ionicons name="options-outline" size={18} color="#737373" />
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -354,42 +356,6 @@ export default function PlayerHome() {
       )}
 
       {/* ─── NOTIFICATIONS MODAL ─── */}
-      <Modal
-        visible={showNotificationModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowNotificationModal(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowNotificationModal(false)}>
-          <View className="flex-1 bg-black/50 justify-end">
-            <TouchableWithoutFeedback>
-              <View className="bg-white rounded-t-3xl p-6 min-h-[40%]">
-                <View className="items-center mb-4">
-                  <View className="w-12 h-1 bg-[#E5E5E5] rounded-full" />
-                </View>
-
-                <View className="flex-row items-center justify-between mb-4">
-                  <Text className="text-xl font-bold text-[#1A1A2E]">Notifications</Text>
-                  <TouchableOpacity onPress={() => setShowNotificationModal(false)}>
-                    <Ionicons name="close" size={24} color="#737373" />
-                  </TouchableOpacity>
-                </View>
-
-                <View className="flex-1 items-center justify-center py-8">
-                  <View className="w-20 h-20 rounded-full bg-[#F5F5F5] items-center justify-center mb-4">
-                    <Ionicons name="notifications-off-outline" size={40} color="#D4D4D4" />
-                  </View>
-                  <Text className="text-[#1A1A2E] font-semibold">No Notifications</Text>
-                  <Text className="text-[#737373] text-sm mt-1 text-center">
-                    We'll notify you when something needs your attention
-                  </Text>
-                </View>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
       {/* ─── VENDOR REGISTRATION MODAL (Full Screen) ─── */}
       <VendorRegistrationModal
         visible={showVendorModal}

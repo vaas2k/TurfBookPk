@@ -1,6 +1,6 @@
 import {
   View, Text, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, Alert, ActivityIndicator
+  KeyboardAvoidingView, Platform, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store/authStore';
+import { appDialog } from '@/components/ui/app-dialog';
 
 export default function PhoneInputScreen() {
   const [phone, setPhone] = useState('');
@@ -41,7 +42,7 @@ export default function PhoneInputScreen() {
     const cleanPhone = phone.replace(/\s/g, '');
 
     if (cleanPhone.length < 10) {
-      Alert.alert('Invalid Number', 'Please enter a valid 10-digit phone number');
+      appDialog.alert('Invalid Number', 'Please enter a valid 10-digit phone number');
       return;
     }
 
@@ -51,7 +52,7 @@ export default function PhoneInputScreen() {
     setIsLoading(false);
 
     if (sendError) {
-      Alert.alert('Error', sendError.message);
+      appDialog.alert('Error', sendError.message);
 
     } else {
       router.push({
@@ -69,7 +70,7 @@ export default function PhoneInputScreen() {
   setIsGoogleLoading(false);
 
   if (error && error.code !== 'redirect') {
-    Alert.alert('Error', error.message);
+    appDialog.alert('Error', error.message);
   } else {
     // For web, the page will redirect - we don't need to navigate
     if (Platform.OS !== 'web') {

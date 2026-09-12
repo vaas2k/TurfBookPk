@@ -1,9 +1,9 @@
 import { Response } from 'express';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
-import { ledgerEntries, users, vendors } from '../database/schema.js';
+import { bookings, grounds, ledgerEntries, users, vendors } from '../database/schema.js';
 
 function toProfile(row: typeof vendors.$inferSelect) {
   return {
@@ -52,9 +52,25 @@ export class VendorController {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const vendor = (await db.select().from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
     if (!vendor) throw new AppError('vendor_required', 'A vendor profile is required', 403);
-    const entries = await db.select().from(ledgerEntries).where(eq(ledgerEntries.vendorId, vendor.id));
+    const entries = await db.select({
+      id: ledgerEntries.id, bookingId: ledgerEntries.bookingId, type: ledgerEntries.type, status: ledgerEntries.status,
+      amount: ledgerEntries.amount, description: ledgerEntries.description, postedAt: ledgerEntries.postedAt, createdAt: ledgerEntries.createdAt,
+      bookingNumber: bookings.bookingNumber, groundTitle: grounds.title,
+    }).from(ledgerEntries)
+      .innerJoin(bookings, eq(ledgerEntries.bookingId, bookings.id))
+      .innerJoin(grounds, eq(bookings.groundId, grounds.id))
+      .where(eq(ledgerEntries.vendorId, vendor.id))
+      .orderBy(desc(ledgerEntries.createdAt));
+    const pendingRefunds = entries
+      .filter((entry) => entry.type === 'refund' && entry.status === 'pending')
+      .reduce((total, entry) => total + Math.abs(entry.amount), 0);
     response.json({
-      summary: { total_earnings: vendor.totalEarnings, pending_earnings: vendor.pendingEarnings, total_withdrawn: vendor.totalWithdrawn },
+      summary: {
+        available_to_withdraw: Math.max(0, vendor.totalEarnings - vendor.totalWithdrawn),
+        pending_earnings: vendor.pendingEarnings,
+        total_paid_out: vendor.totalWithdrawn,
+        pending_refunds: pendingRefunds,
+      },
       entries: entries.map((entry) => ({
         id: entry.id,
         booking_id: entry.bookingId,
@@ -62,6 +78,8 @@ export class VendorController {
         status: entry.status,
         amount: entry.amount,
         description: entry.description,
+        booking_number: entry.bookingNumber,
+        ground_title: entry.groundTitle,
         posted_at: entry.postedAt?.toISOString() || null,
         created_at: entry.createdAt.toISOString(),
       })),

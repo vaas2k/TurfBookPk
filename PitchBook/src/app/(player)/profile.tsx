@@ -1,15 +1,16 @@
-import { View, Text, TouchableOpacity,Alert } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store/authStore';
+import { appDialog } from '@/components/ui/app-dialog';
 
 export default function ProfileScreen() {
   const { profile, signOut } = useAuthStore();
 
   // In the logout handler, use router.replace
 const handleLogout = async () => {
-  Alert.alert(
+  appDialog.alert(
     'Logout',
     'Are you sure you want to logout?',
     [

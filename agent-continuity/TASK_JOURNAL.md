@@ -1,5 +1,303 @@
 # TurfBookPK Task Journal
 
+## 2026-09-12 - Final verification and release preparation
+
+### Accomplished
+
+- Replaced legacy payment-flow back handlers with safe fallback navigation.
+- Ran mobile TypeScript, mobile lint, server typecheck, server test suite, and Core MVP PostgreSQL smoke test.
+- Reproduced and corrected the smoke-test contract mismatch caused by the earnings API redesign: it now asserts `available_to_withdraw` rather than the removed `total_earnings` summary field.
+
+### Key decisions
+
+- The earnings API remains intentionally explicit, avoiding a misleading generic total in favor of balances a vendor can act on.
+
+### Next immediate step
+
+- Commit the verified working tree and push the release to `origin/main`.
+
+### Critical paths and commands
+
+- `Server/scripts/core-mvp-smoke.mjs`
+- `PitchBook/src/lib/navigation.ts`
+- `npx tsc --noEmit` (passed)
+- `npx eslint src --no-cache` (0 errors, 24 warnings)
+- `npm run typecheck` (passed), `npm test` (18/18 passed), `npm run test:e2e` (passed)
+
+## 2026-09-12 - Safe back-navigation repair
+
+### Accomplished
+
+- Diagnosed back-button failures as an empty navigation history caused by primary tab navigation using `router.replace` and by direct/deep-linked screen entry.
+- Added `goBackOrReplace`, which returns normally when history exists and otherwise opens a deliberate safe destination.
+- Applied the safe fallback to core vendor management, booking details, player ground details, primary booking screens, and authentication back flows.
+
+### Key decisions
+
+- Back actions now preserve history when available; a fallback is only used when there is genuinely nowhere to return to.
+- Fallbacks reflect the owning workflow: vendor ground forms return to Grounds, slot management returns to Grounds, booking details return to the relevant booking list, and auth verification returns to phone entry.
+
+### Next immediate step
+
+- Continue replacing the remaining isolated legacy payment-screen back handlers, then test direct navigation and tab navigation on device.
+
+### Critical paths and commands
+
+- `PitchBook/src/lib/navigation.ts`
+- `PitchBook/src/components/booking/BookingDetails.tsx`
+- `PitchBook/src/app/(vendor)/grounds.tsx`
+- `PitchBook/src/app/(vendor)/ground-slots.tsx`
+- `PitchBook/src/app/(vendor)/add-ground.tsx`
+- `npx tsc --noEmit` (passed), `git diff --check` (passed)
+
+## 2026-09-12 - Vendor dashboard redesigned for operational clarity
+
+### Accomplished
+
+- Rebuilt the vendor home as a focused venue overview: available balance, today’s bookings, active grounds, notifications, and short, labelled management actions.
+- Made All grounds, Booking schedule, and Earnings & payouts explicit dashboard actions rather than functionality hidden behind a text link.
+- Updated the vendor bottom bar labels to `Overview`, `Grounds`, `Schedule`, `Money`, and `Profile`, making Grounds and Money permanent one-tap destinations.
+- Kept only two current-ground previews on the overview; the full management inventory belongs in the dedicated Grounds screen.
+
+### Key decisions
+
+- The bottom bar has five distinct operational destinations and uses `router.replace`, so switching primary work areas does not create a confusing back-stack.
+- Sign-out and player-mode switching are intentionally placed below core venue actions to keep daily operations clean while remaining reachable.
+
+### Next immediate step
+
+- Run the redesigned vendor flow on an iOS and Android device, then continue the P1 vendor scheduling/slot-management UX work.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(vendor)/index.tsx`
+- `PitchBook/src/app/(vendor)/_layout.tsx`
+- `npx tsc --noEmit` (passed), `npx eslint src --no-cache` (0 errors, 18 existing warnings), `git diff --check` (passed)
+
+## 2026-09-12 - Vendor earnings semantics and activity redesign
+
+### Accomplished
+
+- Replaced the ambiguous earnings card with distinct available-to-withdraw, pending-after-match, paid-out, and pending-player-refund balances.
+- Enriched ledger API entries with ground title and booking number and sorted them newest-first.
+- Replaced raw ledger descriptions with plain-language activity cards that explain pending earnings, reversals, refunds, payouts, adjustments, and available earnings.
+- Updated the vendor dashboard balance to use the same server-calculated available-to-withdraw value.
+
+### Key decisions
+
+- A pending player refund is displayed separately from available funds. It is not shown as an additional deduction because the original pending earning is already reversed during cancellation.
+- Payout capability remains visibly future-facing because the payment/payout provider is not integrated; the screen does not pretend that payouts can be initiated yet.
+
+### Next immediate step
+
+- Add a manual mobile verification checklist for the new dialog/accessibility work and earnings scenarios, then proceed with the next P1 product workflow.
+
+### Critical paths and commands
+
+- `Server/src/controllers/vendorController.ts`
+- `PitchBook/src/lib/api/vendors.ts`
+- `PitchBook/src/app/(vendor)/earnings.tsx`
+- `PitchBook/src/app/(vendor)/index.tsx`
+- `npm run typecheck` (server passed), `npx tsc --noEmit` (mobile passed), `npm test` (18/18 passed)
+
+## 2026-09-12 - Remaining P0 code accessibility controls completed
+
+### Accomplished
+
+- Added labelled, minimum-size back controls to OTP and profile-setup flows.
+- Made vendor registration close, vendor role/sign-out actions, and player mode switching accessible with clear labels.
+- Removed the misleading non-functional city dropdown treatment from player home.
+- Added labels and adequate touch targets to vendor ground tag/image management controls and the add-ground header.
+
+### Key decisions
+
+- The static P0 implementation work is complete. Real-device validation remains explicitly open because it is the only reliable way to verify VoiceOver/TalkBack, text scaling, keyboard overlap, and safe-area behavior.
+
+### Next immediate step
+
+- Redesign vendor earnings and ledger activity using the actual ledger states and amounts, then add the required manual device test checklist.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(auth)/otp-verification.tsx`
+- `PitchBook/src/app/(auth)/profile-setup.tsx`
+- `PitchBook/src/app/(player)/index.tsx`
+- `PitchBook/src/app/(vendor)/add-ground.tsx`
+- `npx tsc --noEmit` (passed), `npx eslint src --no-cache` (0 errors), `git diff --check` (passed)
+
+## 2026-09-12 - Navigation and profile-form accessibility increment
+
+### Accomplished
+
+- Added a consistent 44px accessible back control to the player bookings header.
+- Reworked player and vendor profile-edit headers to use visible 44px back controls instead of text-only cancel actions.
+- Added accessibility labels to profile form fields and save actions, with visible disabled-save treatment.
+
+### Key decisions
+
+- Kept physical screen-reader, font-scaling, keyboard, and device safe-area validation as a manual/device-only follow-up; code review cannot reliably certify those behaviors.
+
+### Next immediate step
+
+- Continue the accessibility audit through remaining icon-only controls and then start the next P1 user-facing workflow task: vendor earnings clarity.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(player)/bookings.tsx`
+- `PitchBook/src/app/(player)/edit-profile.tsx`
+- `PitchBook/src/app/(vendor)/edit-profile.tsx`
+- `npx tsc --noEmit`
+
+## 2026-09-12 - Modern cross-platform dialogs implemented
+
+### Accomplished
+
+- Replaced every React Native `Alert.alert` call with a shared, accessible app dialog across auth, booking, role switching, ground availability, logout, calendar, and isolated legacy payment screens.
+- Mounted the dialog host at the app root so confirmation and informational dialogs have the same visual treatment on iOS and Android.
+- Dialog actions use 48px touch targets, destructive styling, a dismissible backdrop, and prevent duplicate action taps while an async action is running.
+
+### Key decisions
+
+- Used one small app-level dialog service instead of duplicating modal state in every screen; this preserves existing flows while making future dialog styling and accessibility changes centralized.
+- Kept the final physical-device accessibility audit open: static checks can verify labels and target sizes in changed controls, but cannot prove screen-reader, text-scaling, and device safe-area behavior.
+
+### Next immediate step
+
+- Perform the physical iOS/Android dialog, back-navigation, and bottom-bar pass; code-level and backend verification are complete.
+
+### Critical paths and commands
+
+- `PitchBook/src/components/ui/app-dialog.tsx`
+- `PitchBook/src/app/_layout.tsx`
+- `PitchBook/src/app/(auth)/*`, `PitchBook/src/app/(player)/*`, `PitchBook/src/app/(vendor)/*`
+- `npx tsc --noEmit`, `npx eslint src --no-cache`, `npm test`
+
+### Verification
+
+- Mobile TypeScript passed.
+- Mobile lint passed with 0 errors and 18 pre-existing warnings. The normal lint command could not write its Expo cache in the sandbox, so lint was rerun successfully with `--no-cache`.
+- Server typecheck passed; backend tests passed 18/18; Core MVP PostgreSQL smoke test passed.
+
+## 2026-09-12 - Final code-side P0 UX controls completed
+
+### Accomplished
+
+- Removed the disconnected player discovery settings control.
+- Added an accessible earnings back header.
+- Added vendor-ground action labels and destructive-action loading/disabled feedback.
+- Marked disconnected discovery controls and vendor action-state work complete.
+
+### Key decisions
+
+- Retained the remaining global header/accessibility checklist items for device verification rather than falsely asserting full screen-reader, font scaling, and touch-target coverage from static inspection alone.
+
+### Next immediate step
+
+- Perform the physical iOS/Android navigation/accessibility test pass, then close the audit items if it succeeds.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(player)/index.tsx`
+- `PitchBook/src/app/(vendor)/earnings.tsx`
+- `PitchBook/src/app/(vendor)/grounds.tsx`
+- `npx tsc --noEmit` (passed)
+- `npm run lint` (0 errors; 19 existing warnings)
+
+## 2026-09-12 - Bottom navigation cross-platform responsiveness improved
+
+### Accomplished
+
+- Updated player and vendor tab bars to use safe-area-aware minimum heights and bottom padding on both iOS and Android.
+- Added clear active-tab pills, consistent 44px minimum tab touch targets, and elevated visual separation from screen content.
+- Removed the extra vendor mode-switch control from the tab bar to prevent excess height; vendor-to-player switching remains available from vendor UI actions.
+
+### Key decisions
+
+- Static type checking confirms the layout implementation, but iOS device/simulator and Android device/emulator checks remain required to validate home-indicator spacing, gesture navigation, font scaling, and keyboard interaction physically.
+
+### Next immediate step
+
+- Run mobile platform checks for the bottom bars and complete manual accessibility/navigation verification before closing the final audit checklist items.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(player)/_layout.tsx`
+- `PitchBook/src/app/(vendor)/_layout.tsx`
+- `npx tsc --noEmit` (passed)
+
+## 2026-09-12 - Next priority recommendation
+
+### Accomplished
+
+- Identified the remaining P0 UI/UX audit as the next priority after implementing real dashboard data and slot-policy guidance.
+
+### Key decisions
+
+- Do not treat a code-only review as proof of complete accessibility or navigation correctness; validate the primary player and vendor routes on a device before closing the final P0 audit items.
+
+### Next immediate step
+
+- Perform the on-device navigation/accessibility pass, then implement the P1 vendor earnings redesign already captured in the checklist.
+
+### Critical paths and commands
+
+- `agent-continuity/CURRENT_CHECKLIST.md`
+- `PitchBook/src/app/(player)/`
+- `PitchBook/src/app/(vendor)/`
+
+## 2026-09-12 - Remaining P0 vendor dashboard and slot-policy UX completed
+
+### Accomplished
+
+- Replaced vendor dashboard placeholder figures with live ground count, confirmed-today booking count, available balance, and vendor rating.
+- Returned the authoritative scheduling policy with ground responses and displayed operating hours, maximum slot duration, and advance-window limits before vendor slot creation/editing.
+- Added duplicate-submit prevention and accessible labels to the primary vendor slot form and recurrence actions.
+- Added an accessible back header to vendor bookings.
+
+### Key decisions
+
+- A truly complete device accessibility audit (screen-reader traversal, dynamic type, contrast under platform settings) cannot be asserted from static code checks, so that cross-screen P0 checklist item remains open for manual on-device verification.
+
+### Next immediate step
+
+- Run manual accessibility checks on physical devices, then complete the remaining cross-screen header and touch-target audit.
+
+### Critical paths and commands
+
+- `Server/src/controllers/groundController.ts`
+- `PitchBook/src/app/(vendor)/index.tsx`
+- `PitchBook/src/app/(vendor)/ground-slots.tsx`
+- `PitchBook/src/app/(vendor)/bookings.tsx`
+- `npm run test:e2e` (passed)
+- `npx tsc --noEmit` (passed)
+- `npm run lint` (0 errors; 21 warnings before import cleanup)
+
+## 2026-09-12 - P0 notification and destructive-action UX completed
+
+### Accomplished
+
+- Connected player and vendor notification screens to persisted notification data with unread visual state, count badges, mark-one/read-all actions, pull-to-refresh, timestamps, and booking deep links.
+- Removed the disconnected player-home notification modal; both bells now lead to the dedicated notification resource.
+- Added clear activation/deactivation confirmation copy explaining player discovery/booking consequences.
+
+### Key decisions
+
+- Kept remaining P0 UX items unchecked because dashboard accuracy, global accessibility, policy guidance, and every pushed-screen header require separate work; completion status remains evidence-based.
+
+### Next immediate step
+
+- Continue P0 UX work with replacing hardcoded vendor dashboard figures and exposing slot policy guidance, then finish the global navigation/accessibility audit.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(player)/notifications.tsx`
+- `PitchBook/src/app/(vendor)/notifications.tsx`
+- `PitchBook/src/app/(player)/index.tsx`
+- `PitchBook/src/app/(vendor)/index.tsx`
+- `PitchBook/src/app/(vendor)/grounds.tsx`
+- `npx tsc --noEmit` (passed)
+- `npm run lint` (0 errors; 19 existing warnings)
+
 ## 2026-09-12 - Peak pricing converted to percentage uplift and verified
 
 ### Accomplished

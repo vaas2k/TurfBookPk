@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -13,6 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { BookingProfile, cancelBooking, getBooking, markBookingNoShow } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
+import { appDialog } from '@/components/ui/app-dialog';
+import { goBackOrReplace } from '@/lib/navigation';
 
 export function BookingDetails({ id, vendorView }: { id: string; vendorView: boolean }) {
   const [booking, setBooking] = useState<BookingProfile | null>(null);
@@ -35,7 +36,7 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
   }, [load]);
 
   const handleCancel = () => {
-    Alert.alert(
+    appDialog.alert(
       'Cancel booking?',
       vendorView
         ? 'The player will receive a full refund if payment was already completed.'
@@ -65,7 +66,7 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
   };
 
   const handleNoShow = () => {
-    Alert.alert(
+    appDialog.alert(
       'Mark player as no-show?',
       'Only mark no-show if the booked slot has ended and the squad did not arrive.',
       [
@@ -103,7 +104,7 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
         <Text className="text-[#1A1A2E] text-xl font-bold mt-4">Booking Not Found</Text>
         <TouchableOpacity
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackOrReplace(vendorView ? '/(vendor)/bookings' : '/(player)/bookings')}
           className="mt-6 bg-[#4CAF50] rounded-full px-8 py-3.5"
         >
           <Text className="text-white font-bold">Go Back</Text>
@@ -123,7 +124,7 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={() => router.back()}
+          onPress={() => goBackOrReplace(vendorView ? '/(vendor)/bookings' : '/(player)/bookings')}
           className="w-10 h-10 rounded-full bg-[#F5F5F5] items-center justify-center"
         >
           <Ionicons name="arrow-back" size={22} color="#1A1A2E" />

@@ -1,8 +1,9 @@
-import { View, Text, TouchableOpacity, ScrollView, StatusBar, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorStore } from '@/store/vendorStore';
+import { appDialog } from '@/components/ui/app-dialog';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function VendorProfile() {
@@ -10,7 +11,7 @@ export default function VendorProfile() {
   const { vendorProfile } = useVendorStore();
 
   const handleLogout = async () => {
-    Alert.alert(
+    appDialog.alert(
       'Logout',
       'Are you sure you want to logout?',
       [
@@ -28,7 +29,7 @@ export default function VendorProfile() {
   };
 
   const handleSwitchToPlayer = () => {
-    Alert.alert(
+    appDialog.alert(
       'Switch to Player Mode',
       'You will switch back to player view. You can switch back to vendor anytime from the player home screen.',
       [
@@ -37,7 +38,7 @@ export default function VendorProfile() {
           text: 'Switch', 
           onPress: async () => {
             const { error } = await switchToPlayer();
-            if (error) Alert.alert('Unable to switch modes', error.message);
+            if (error) appDialog.alert('Unable to switch modes', error.message);
             else router.replace('/(player)');
           }
         }
@@ -122,6 +123,8 @@ export default function VendorProfile() {
         {/* Switch to Player Button */}
         <View className="mx-4 mt-6">
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Switch to player mode"
             className="flex-row items-center justify-center bg-[#E8F5E9] py-4 rounded-xl border border-[#4CAF50]"
             onPress={handleSwitchToPlayer}
           >
@@ -136,6 +139,8 @@ export default function VendorProfile() {
         {/* Logout Button */}
         <View className="mx-4 mt-6 mb-8">
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
             className="bg-red-500 py-4 rounded-full"
             style={{ shadowColor: '#EF4444', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}
             onPress={handleLogout}

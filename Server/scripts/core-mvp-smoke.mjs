@@ -110,7 +110,7 @@ try {
   const noShow = await request(`/bookings/${ids.noShowBooking}/no-show`, { method: 'PATCH', token: vendorToken, body: {} });
   if (noShow.booking.status !== 'no_show') throw new Error('Vendor no-show transition failed');
   const afterNoShow = await request('/vendors/earnings', { token: vendorToken });
-  if (afterNoShow.summary.pending_earnings !== 0 || afterNoShow.summary.total_earnings !== 1500) throw new Error('No-show did not post vendor earnings');
+  if (afterNoShow.summary.pending_earnings !== 0 || afterNoShow.summary.available_to_withdraw !== 1500) throw new Error('No-show did not post vendor earnings');
   const playerNotifications = await request('/bookings/notifications', { token: playerToken });
   if (!playerNotifications.notifications.some((notification) => notification.data?.bookingId === ids.noShowBooking && notification.title === 'Booking marked as no-show')) throw new Error('Player no-show notification missing');
   console.log('Core MVP smoke test passed');

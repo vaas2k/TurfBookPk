@@ -1,8 +1,10 @@
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StatusBar, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { appDialog } from '@/components/ui/app-dialog';
+import { goBackOrReplace } from '@/lib/navigation';
 import * as Clipboard from 'expo-clipboard';
 
 export default function PaymentBankTransfer() {
@@ -25,12 +27,12 @@ export default function PaymentBankTransfer() {
   };
 
   const handleTransferComplete = () => {
-    Alert.alert(
+    appDialog.alert(
       'Bank Transfer Verification Notice',
       'Automated IBFT slip verification is scheduled for an upcoming release. Please use standard checkout to confirm your active booking immediately.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Go to Checkout', onPress: () => router.back() }
+        { text: 'Go to Checkout', onPress: () => goBackOrReplace('/(player)/payment-method') }
       ]
     );
   };
@@ -44,7 +46,7 @@ export default function PaymentBankTransfer() {
           accessibilityRole="button"
           accessibilityLabel="Go back"
           className="w-10 h-10 rounded-full bg-[#F5F5F5] items-center justify-center"
-          onPress={() => router.back()}
+          onPress={() => goBackOrReplace('/(player)/payment-method')}
         >
           <Ionicons name="arrow-back" size={22} color="#1A1A2E" />
         </TouchableOpacity>

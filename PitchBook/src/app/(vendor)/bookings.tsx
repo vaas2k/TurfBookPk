@@ -12,6 +12,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookingProfile, listVendorBookings } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
+import { goBackOrReplace } from '@/lib/navigation';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 
 interface VendorBookingSection {
@@ -151,11 +152,12 @@ export default function VendorBookings() {
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">
       {/* Top Header */}
-      <View className="px-6 py-4 bg-white border-b border-[#E5E5E5]">
-        <Text className="text-2xl font-bold text-[#1A1A2E]">VENDOR BOOKINGS</Text>
+      <View className="px-5 py-4 bg-white border-b border-[#E5E5E5] flex-row items-center">
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace('/(vendor)')} className="w-11 h-11 rounded-full bg-[#F5F5F5] items-center justify-center mr-3"><Ionicons name="arrow-back" size={20} color="#1A1A2E" /></TouchableOpacity>
+        <View className="flex-1"><Text className="text-2xl font-bold text-[#1A1A2E]">VENDOR BOOKINGS</Text>
         <Text className="text-[#737373] text-xs mt-0.5">
           {bookings.length} {bookings.length === 1 ? 'total booking' : 'total bookings across your venues'}
-        </Text>
+        </Text></View>
       </View>
 
       {loading && bookings.length === 0 ? (

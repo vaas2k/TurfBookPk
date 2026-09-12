@@ -1,14 +1,13 @@
 import { Stack, usePathname, router } from 'expo-router';
-import { View, Text, TouchableOpacity, Platform, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuthStore } from '@/store/authStore';
 
 // Custom Tab Bar Component for Vendor
 function VendorTabBar() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { switchToPlayer } = useAuthStore();
+  const bottomPadding = Math.max(insets.bottom, 8);
 
   const showTabBar = () => {
     const mainRoutes = [
@@ -25,10 +24,10 @@ function VendorTabBar() {
   if (!showTabBar()) return null;
 
   const tabs = [
-    { name: 'Home', icon: 'grid', route: '/(vendor)' },
+    { name: 'Overview', icon: 'grid', route: '/(vendor)' },
     { name: 'Grounds', icon: 'business', route: '/(vendor)/grounds' },
-    { name: 'Bookings', icon: 'calendar', route: '/(vendor)/bookings' },
-    { name: 'Earnings', icon: 'wallet', route: '/(vendor)/earnings' },
+    { name: 'Schedule', icon: 'calendar', route: '/(vendor)/bookings' },
+    { name: 'Money', icon: 'wallet', route: '/(vendor)/earnings' },
     { name: 'Profile', icon: 'person', route: '/(vendor)/profile' },
   ];
 
@@ -48,32 +47,20 @@ function VendorTabBar() {
     }
   };
 
-  const handleSwitchToPlayer = async () => {
-    Alert.alert(
-      'Switch to Player Mode',
-      'You will switch back to player view. You can switch back to vendor anytime from the player home screen.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Switch', 
-          onPress: async () => {
-            const { error } = await switchToPlayer();
-            if (error) Alert.alert('Unable to switch modes', error.message);
-            else router.replace('/(player)');
-          }
-        }
-      ]
-    );
-  };
-
   return (
     <View 
       className="bg-white border-t border-[#E5E5E5]"
       style={{ 
-        paddingBottom: Platform.OS === 'ios' ? insets.bottom || 8 : 8,
+        paddingBottom: bottomPadding,
+        minHeight: 64 + bottomPadding,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: Platform.OS === 'ios' ? 0.06 : 0.12,
+        shadowRadius: 8,
+        elevation: 10,
       }}
     >
-      <View className="flex-row items-center justify-around px-2 pt-1">
+      <View className="flex-row items-center justify-around px-2 pt-2">
         {tabs.map((tab) => {
           const active = isActive(tab.route);
           return (
@@ -82,7 +69,7 @@ function VendorTabBar() {
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               accessibilityLabel={tab.name}
-              className="items-center justify-center flex-1 py-1"
+              className={`items-center justify-center flex-1 min-h-[44px] rounded-2xl py-1 ${active ? 'bg-[#E8F5E9]' : ''}`}
               onPress={() => handlePress(tab.route)}
               activeOpacity={0.7}
             >
@@ -92,7 +79,7 @@ function VendorTabBar() {
                 color={active ? '#4CAF50' : '#737373'} 
               />
               <Text 
-                className={`text-xs mt-0.5 ${
+                className={`text-[11px] mt-0.5 ${
                   active ? 'text-[#4CAF50] font-medium' : 'text-[#737373]'
                 }`}
               >
@@ -102,17 +89,6 @@ function VendorTabBar() {
           );
         })}
       </View>
-      
-      {/* Switch to Player Button */}
-      <TouchableOpacity
-        accessibilityRole="button"
-        accessibilityLabel="Switch to Player mode"
-        className="flex-row items-center justify-center py-2 mx-4 mt-1 bg-[#F5F5F5] rounded-full border border-[#E5E5E5]"
-        onPress={handleSwitchToPlayer}
-      >
-        <Ionicons name="person-outline" size={16} color="#4CAF50" />
-        <Text className="text-[#4CAF50] text-xs font-medium ml-1">Switch to Player</Text>
-      </TouchableOpacity>
     </View>
   );
 }

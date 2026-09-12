@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity, StatusBar, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { goBackOrReplace } from '@/lib/navigation';
 import { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -22,7 +23,7 @@ export default function PaymentProcessing() {
   };
 
   const handleBack = () => {
-    router.back();
+    goBackOrReplace('/(player)/payment-method');
   };
 
   if (status === 'processing') {

@@ -5,6 +5,8 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { deleteGround, Ground, listGroundSlots, listVendorGrounds, Slot, updateGround } from '@/lib/api/vendors';
 import { Toast } from '@/components/ui/toast';
+import { goBackOrReplace } from '@/lib/navigation';
+import { appDialog } from '@/components/ui/app-dialog';
 
 export default function VendorGrounds() {
   const [grounds, setGrounds] = useState<Ground[]>([]);
@@ -12,6 +14,7 @@ export default function VendorGrounds() {
   const [toast, setToast] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Ground | null>(null);
   const [updatingGroundId, setUpdatingGroundId] = useState<string | null>(null);
+  const [deletingGroundId, setDeletingGroundId] = useState<string | null>(null);
   const [slotsByGround, setSlotsByGround] = useState<Record<string, Slot[]>>({});
 
   const loadGrounds = useCallback(async () => {
@@ -28,8 +31,9 @@ export default function VendorGrounds() {
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
+    setDeletingGroundId(pendingDelete.id);
     try { await deleteGround(pendingDelete.id); setPendingDelete(null); await loadGrounds(); setToast('Ground deleted.'); }
-    catch (error: any) { setPendingDelete(null); setToast(error?.message || 'Unable to delete ground.'); }
+    catch (error: any) { setPendingDelete(null); setToast(error?.message || 'Unable to delete ground.'); } finally { setDeletingGroundId(null); }
   };
 
   const setGroundActive = async (ground: Ground, isActive: boolean) => {
@@ -44,14 +48,21 @@ export default function VendorGrounds() {
       setUpdatingGroundId(null);
     }
   };
+  const confirmGroundAvailability = (ground: Ground) => {
+    const willActivate = !ground.is_active;
+    appDialog.alert(willActivate ? 'Activate ground?' : 'Deactivate ground?', willActivate ? 'Players will be able to find and book this ground.' : 'Players will no longer be able to find or book this ground. Existing bookings remain visible.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: willActivate ? 'Activate' : 'Deactivate', style: willActivate ? 'default' : 'destructive', onPress: () => setGroundActive(ground, willActivate) },
+    ]);
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">
       <ScrollView className="flex-1 px-6" refreshControl={<RefreshControl refreshing={loading} onRefresh={loadGrounds} />}>
         <View className="flex-row items-center py-4">
-          <TouchableOpacity className="w-10 h-10 rounded-full bg-white items-center justify-center mr-3 border border-[#E5E5E5]" onPress={() => router.back()}><Ionicons name="arrow-back" size={20} color="#1A1A2E" /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" className="w-11 h-11 rounded-full bg-white items-center justify-center mr-3 border border-[#E5E5E5]" onPress={() => goBackOrReplace('/(vendor)')}><Ionicons name="arrow-back" size={20} color="#1A1A2E" /></TouchableOpacity>
           <View className="flex-1"><Text className="text-2xl font-bold text-[#1A1A2E]">My Grounds</Text><Text className="text-[#737373] text-sm mt-1">{grounds.length} {grounds.length === 1 ? 'ground' : 'grounds'} · manage availability</Text></View>
-          <TouchableOpacity className="bg-[#4CAF50] rounded-full px-4 py-2" onPress={() => router.push('/(vendor)/add-ground')}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add ground" className="bg-[#4CAF50] rounded-full px-4 py-3" onPress={() => router.push('/(vendor)/add-ground')}>
             <Ionicons name="add" size={20} color="white" />
           </TouchableOpacity>
         </View>
@@ -69,12 +80,14 @@ export default function VendorGrounds() {
             <View className="flex-row items-center mt-3"><Ionicons name="calendar-outline" size={16} color="#4CAF50" /><Text className="text-[#4CAF50] text-sm font-medium ml-2">{(slotsByGround[ground.id] || []).filter((slot) => !slot.is_booked && !slot.is_blocked).length} available</Text><Text className="text-[#A3A3A3] mx-2">·</Text><Text className="text-[#737373] text-sm">{(slotsByGround[ground.id] || []).filter((slot) => slot.is_booked).length} booked</Text></View>
             <View className="flex-row mt-4">
               <TouchableOpacity className="flex-1 bg-[#E8F5E9] rounded-xl py-3 mr-2 items-center" onPress={() => router.push({ pathname: '/(vendor)/ground-slots', params: { id: ground.id, title: ground.title } })}><Text className="text-[#4CAF50] font-bold">Manage Slots</Text></TouchableOpacity>
-              <TouchableOpacity className="w-12 items-center justify-center" onPress={() => router.push({ pathname: '/(vendor)/add-ground', params: { id: ground.id } })}><Ionicons name="create-outline" size={22} color="#1A1A2E" /></TouchableOpacity>
-              <TouchableOpacity className="w-12 items-center justify-center" onPress={() => setPendingDelete(ground)}><Ionicons name="trash-outline" size={22} color="#DC2626" /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Edit ${ground.title}`} className="w-12 items-center justify-center" onPress={() => router.push({ pathname: '/(vendor)/add-ground', params: { id: ground.id } })}><Ionicons name="create-outline" size={22} color="#1A1A2E" /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Delete ${ground.title}`} className="w-12 items-center justify-center" onPress={() => setPendingDelete(ground)}><Ionicons name="trash-outline" size={22} color="#DC2626" /></TouchableOpacity>
             </View>
             <TouchableOpacity
               disabled={updatingGroundId === ground.id}
-              onPress={() => setGroundActive(ground, !ground.is_active)}
+              onPress={() => confirmGroundAvailability(ground)}
+              accessibilityRole="button"
+              accessibilityLabel={ground.is_active ? `Deactivate ${ground.title}` : `Activate ${ground.title}`}
               className={`mt-3 rounded-xl py-3 items-center ${ground.is_active ? 'bg-[#FEF2F2]' : 'bg-[#E8F5E9]'}`}
             >
               <Text className={`font-bold ${ground.is_active ? 'text-[#DC2626]' : 'text-[#2E7D32]'}`}>
@@ -84,7 +97,7 @@ export default function VendorGrounds() {
             </View></View>
         ))}
       </ScrollView>
-      <Modal visible={Boolean(pendingDelete)} transparent animationType="fade" onRequestClose={() => setPendingDelete(null)}><View className="flex-1 bg-black/40 items-center justify-center px-8"><View className="bg-white rounded-2xl p-6 w-full"><Text className="text-xl font-bold text-[#1A1A2E]">Delete ground?</Text><Text className="text-[#737373] mt-2">Grounds with booked slots cannot be deleted.</Text><View className="flex-row justify-end mt-6"><TouchableOpacity onPress={() => setPendingDelete(null)} className="px-4 py-3"><Text className="text-[#737373] font-medium">Cancel</Text></TouchableOpacity><TouchableOpacity onPress={handleDelete} className="bg-[#DC2626] rounded-xl px-4 py-3"><Text className="text-white font-bold">Delete</Text></TouchableOpacity></View></View></View></Modal>
+      <Modal visible={Boolean(pendingDelete)} transparent animationType="fade" onRequestClose={() => setPendingDelete(null)}><View className="flex-1 bg-black/40 items-center justify-center px-8"><View className="bg-white rounded-2xl p-6 w-full"><Text className="text-xl font-bold text-[#1A1A2E]">Delete ground?</Text><Text className="text-[#737373] mt-2">Grounds with booked slots cannot be deleted.</Text><View className="flex-row justify-end mt-6"><TouchableOpacity disabled={Boolean(deletingGroundId)} onPress={() => setPendingDelete(null)} className="px-4 py-3"><Text className="text-[#737373] font-medium">Cancel</Text></TouchableOpacity><TouchableOpacity disabled={Boolean(deletingGroundId)} onPress={handleDelete} className={`rounded-xl px-4 py-3 ${deletingGroundId ? 'bg-[#9CA3AF]' : 'bg-[#DC2626]'}`}><Text className="text-white font-bold">{deletingGroundId ? 'Deleting...' : 'Delete'}</Text></TouchableOpacity></View></View></View></Modal>
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
     </SafeAreaView>
   );
