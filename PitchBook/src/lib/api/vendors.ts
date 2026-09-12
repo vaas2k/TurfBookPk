@@ -16,7 +16,8 @@ export interface Ground {
   cover_image: string | null;
   pitch_type: string | null;
   price_per_hour: number;
-  peak_price: number | null;
+  peak_percentage: number | null;
+  peak_windows: { days: number[]; start_time: string; end_time: string }[];
   is_active: boolean;
   is_verified: boolean;
   rating: number;
@@ -35,6 +36,8 @@ export interface Slot {
   start_time: string;
   end_time: string;
   price: number;
+  base_price?: number;
+  is_peak?: boolean;
   is_booked: boolean;
   is_blocked: boolean;
   is_held?: boolean;

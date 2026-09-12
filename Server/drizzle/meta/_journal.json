@@ -71,6 +71,20 @@
       "when": 1789100000000,
       "tag": "0009_booking_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789186400000,
+      "tag": "0010_peak_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789190000000,
+      "tag": "0011_peak_percentage",
+      "breakpoints": true
     }
   ]
 }

@@ -125,6 +125,7 @@ Current API groups:
 10. Cancellation releases the slot and marks the booking refunded.
 11. Booking notifications are stored for both player and vendor.
 12. Players can view persisted notifications and add a booking to their calendar.
+13. Vendors can configure peak day/time windows and a percentage uplift; eligible slots display and book at the calculated increased price.
 
 ## Database Tables
 

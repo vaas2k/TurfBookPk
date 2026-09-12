@@ -10,6 +10,7 @@ import { bookingStart, cancellationQuote } from '../services/cancellationPolicy.
 import { MockPaymentProvider } from '../services/paymentProvider.js';
 import { BookingMaintenanceService } from '../services/bookingMaintenance.js';
 import { calculateBookingPrice } from '../services/bookingPricing.js';
+import { effectiveSlotPrice } from '../services/peakPricing.js';
 import { env } from '../configs/env.js';
 
 function param(value: string | string[] | undefined, name: string): string {
@@ -100,12 +101,14 @@ export class BookingController {
       for (const item of selected) {
         if (!item.ground.isActive || !item.vendor.isActive || item.slot.isBooked || item.slot.isBlocked || (item.slot.holdExpiresAt && item.slot.holdExpiresAt > now) || hasStarted(item.slot.date, item.slot.startTime)) throw new AppError('slot_unavailable', 'One or more selected slots are unavailable', 409);
         if (item.vendor.userId === request.auth!.userId) throw new AppError('self_booking_not_allowed', 'You cannot book your own ground', 403);
-        const price = calculateBookingPrice(item.slot.price, env.platformCommissionBps); totalAmount += price.totalAmount; platformFee += price.platformFee;
+        const effective = effectiveSlotPrice(item.slot.date, item.slot.startTime, item.slot.endTime, { basePrice: item.slot.price, peakPercentage: item.ground.peakPercentage, peakWindows: item.ground.peakWindows });
+        const price = calculateBookingPrice(effective.amount, env.platformCommissionBps); totalAmount += price.totalAmount; platformFee += price.platformFee;
       }
       const [created] = await tx.insert(bookingOrders).values({ orderNumber: orderNumber(), playerId: request.auth!.userId, totalAmount, platformFee, idempotencyKey: key }).returning();
       if (!created) throw new AppError('order_creation_failed', 'Unable to create booking order', 500);
       for (const item of selected) {
-        const price = calculateBookingPrice(item.slot.price, env.platformCommissionBps);
+        const effective = effectiveSlotPrice(item.slot.date, item.slot.startTime, item.slot.endTime, { basePrice: item.slot.price, peakPercentage: item.ground.peakPercentage, peakWindows: item.ground.peakWindows });
+        const price = calculateBookingPrice(effective.amount, env.platformCommissionBps);
         const [booking] = await tx.insert(bookings).values({ bookingNumber: bookingNumber(), orderId: created.id, playerId: request.auth!.userId, vendorId: item.ground.vendorId, groundId: item.slot.groundId, slotId: item.slot.id, date: item.slot.date, startTime: item.slot.startTime, endTime: item.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee, vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: 'mock', idempotencyKey: `${key}:${item.slot.id}`, holdExpiresAt }).returning();
         if (!booking) throw new AppError('booking_failed', 'Unable to create order bookings', 500);
         const held = await tx.update(slots).set({ heldBy: request.auth!.userId, holdBookingId: booking.id, holdExpiresAt, updatedAt: now }).where(and(eq(slots.id, item.slot.id), eq(slots.isBooked, false), eq(slots.isBlocked, false), or(isNull(slots.holdExpiresAt), lte(slots.holdExpiresAt, now)))).returning({ id: slots.id });
@@ -152,7 +155,8 @@ export class BookingController {
       if (selected.slot.holdBookingId) {
         await tx.update(bookings).set({ status: 'expired', updatedAt: now }).where(and(eq(bookings.id, selected.slot.holdBookingId), eq(bookings.status, 'pending_payment')));
       }
-      const price = calculateBookingPrice(selected.slot.price, env.platformCommissionBps);
+      const effective = effectiveSlotPrice(selected.slot.date, selected.slot.startTime, selected.slot.endTime, { basePrice: selected.slot.price, peakPercentage: selected.ground.peakPercentage, peakWindows: selected.ground.peakWindows });
+      const price = calculateBookingPrice(effective.amount, env.platformCommissionBps);
       const booking = (await tx.insert(bookings).values({
         bookingNumber: bookingNumber(), playerId: request.auth!.userId,
         vendorId: selected.ground.vendorId, groundId: selected.slot.groundId, slotId: selected.slot.id, date: selected.slot.date,

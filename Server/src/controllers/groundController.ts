@@ -5,6 +5,7 @@ import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
 import { grounds, slots, vendors } from '../database/schema.js';
 import { env } from '../configs/env.js';
+import { PeakWindow, effectiveSlotPrice } from '../services/peakPricing.js';
 
 function textArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()) : [];
@@ -51,6 +52,28 @@ function normalizedDate(value: unknown): string | null {
   return validDate(clean) ? clean : null;
 }
 
+function peakWindows(value: unknown): PeakWindow[] {
+  if (!Array.isArray(value)) throw new AppError('invalid_peak_windows', 'Peak windows must be a list', 422);
+  if (value.length > 12) throw new AppError('invalid_peak_windows', 'You can configure at most 12 peak windows', 422);
+  return value.map((window) => {
+    if (!window || typeof window !== 'object') throw new AppError('invalid_peak_windows', 'Each peak window must include days and times', 422);
+    const record = window as Record<string, unknown>;
+    const days = Array.isArray(record.days) ? [...new Set(record.days)] : [];
+    const startTime = normalizedTime(record.start_time ?? record.startTime);
+    const endTime = normalizedTime(record.end_time ?? record.endTime);
+    if (!days.length || days.some((day) => !Number.isInteger(day) || day < 0 || day > 6) || !startTime || !endTime || startTime >= endTime) {
+      throw new AppError('invalid_peak_windows', 'Each peak window needs days (0-6) and valid start/end times', 422);
+    }
+    return { days: days as number[], startTime, endTime };
+  });
+}
+
+function validatePeakConfig(peakPercentage: number | null, windows: PeakWindow[]): void {
+  if ((peakPercentage === null) !== (windows.length === 0)) {
+    throw new AppError('invalid_peak_pricing', 'Set both a peak percentage and at least one peak window, or clear both', 422);
+  }
+}
+
 function hasStarted(date: string, time: string): boolean {
   return new Date(`${date}T${time.length === 5 ? `${time}:00` : time}+05:00`).getTime() <= Date.now();
 }
@@ -68,11 +91,12 @@ function isHeld(row: typeof slots.$inferSelect): boolean {
 }
 
 function toGround(row: typeof grounds.$inferSelect) {
-  return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_price: row.peakPrice, is_active: row.isActive, is_verified: row.isVerified, rating: row.rating, total_reviews: row.totalReviews, operating_hours: row.operatingHours, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+  return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_percentage: row.peakPercentage, peak_windows: row.peakWindows.map((window) => ({ days: window.days, start_time: window.startTime, end_time: window.endTime })), is_active: row.isActive, is_verified: row.isVerified, rating: row.rating, total_reviews: row.totalReviews, operating_hours: row.operatingHours, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
-function toSlot(row: typeof slots.$inferSelect) {
-  return { id: row.id, ground_id: row.groundId, date: row.date, start_time: row.startTime, end_time: row.endTime, price: row.price, is_booked: row.isBooked, is_blocked: row.isBlocked, is_held: isHeld(row), created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+function toSlot(row: typeof slots.$inferSelect, ground?: typeof grounds.$inferSelect) {
+  const effective = ground ? effectiveSlotPrice(row.date, row.startTime, row.endTime, { basePrice: row.price, peakPercentage: ground.peakPercentage, peakWindows: ground.peakWindows }) : { amount: row.price, isPeak: false };
+  return { id: row.id, ground_id: row.groundId, date: row.date, start_time: row.startTime, end_time: row.endTime, price: effective.amount, base_price: row.price, is_peak: effective.isPeak, is_booked: row.isBooked, is_blocked: row.isBlocked, is_held: isHeld(row), created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
 async function vendorIdForUser(userId: string): Promise<string> {
@@ -98,7 +122,7 @@ export class GroundController {
     const row = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(vendors.isActive, true))).limit(1))[0];
     if (!row) throw new AppError('not_found', 'Ground was not found', 404);
     const groundSlots = await db.select().from(slots).where(eq(slots.groundId, row.ground.id));
-    response.json({ ground: toGround(row.ground), slots: groundSlots.filter((slot) => !hasStarted(slot.date, slot.startTime)).map(toSlot) });
+    response.json({ ground: toGround(row.ground), slots: groundSlots.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, row.ground)) });
   };
 
   listMine = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -116,14 +140,17 @@ export class GroundController {
     const city = requiredText(body.city, 'City');
     const address = requiredText(body.address, 'Address');
     if (!Number.isInteger(body.price_per_hour) || body.price_per_hour <= 0) throw new AppError('invalid_ground', 'Price per hour must be a positive whole number', 422);
-    if (body.peak_price !== undefined && body.peak_price !== null && (!Number.isInteger(body.peak_price) || body.peak_price <= 0)) throw new AppError('invalid_ground', 'Peak price must be a positive whole number', 422);
+    if (body.peak_percentage !== undefined && body.peak_percentage !== null && (!Number.isInteger(body.peak_percentage) || body.peak_percentage < 1 || body.peak_percentage > 500)) throw new AppError('invalid_ground', 'Peak percentage must be a whole number between 1 and 500', 422);
+    const configuredPeakWindows = body.peak_windows === undefined ? [] : peakWindows(body.peak_windows);
+    const configuredPeakPercentage = Number.isInteger(body.peak_percentage) ? body.peak_percentage : null;
+    validatePeakConfig(configuredPeakPercentage, configuredPeakWindows);
     const latitude = coordinate(body.latitude, 'Latitude', -90, 90);
     const longitude = coordinate(body.longitude, 'Longitude', -180, 180);
     const row = (await db.insert(grounds).values({
       vendorId: await vendorIdForUser(request.auth.userId), title, description: body.description?.trim() || null,
       location, city, address, latitude, longitude,
       amenities: textArray(body.amenities), images: textArray(body.images), coverImage: typeof body.cover_image === 'string' ? body.cover_image.trim() || null : null,
-      pitchType: body.pitch_type?.trim() || null, pricePerHour: body.price_per_hour, peakPrice: Number.isInteger(body.peak_price) ? body.peak_price : null,
+      pitchType: body.pitch_type?.trim() || null, pricePerHour: body.price_per_hour, peakPercentage: configuredPeakPercentage, peakWindows: configuredPeakWindows,
       rules: textArray(body.rules), cancellationPolicy: body.cancellation_policy?.trim() || null,
     }).returning())[0];
     if (!row) throw new AppError('ground_creation_failed', 'Ground could not be created', 500);
@@ -150,10 +177,12 @@ export class GroundController {
       if (!Number.isInteger(body.price_per_hour) || body.price_per_hour <= 0) throw new AppError('invalid_ground', 'Price per hour must be a positive whole number', 422);
       values.pricePerHour = body.price_per_hour;
     }
-    if (body.peak_price !== undefined) {
-      if (body.peak_price !== null && (!Number.isInteger(body.peak_price) || body.peak_price <= 0)) throw new AppError('invalid_ground', 'Peak price must be a positive whole number', 422);
-      values.peakPrice = body.peak_price;
+    if (body.peak_percentage !== undefined) {
+      if (body.peak_percentage !== null && (!Number.isInteger(body.peak_percentage) || body.peak_percentage < 1 || body.peak_percentage > 500)) throw new AppError('invalid_ground', 'Peak percentage must be a whole number between 1 and 500', 422);
+      values.peakPercentage = body.peak_percentage;
     }
+    if (body.peak_windows !== undefined) values.peakWindows = peakWindows(body.peak_windows);
+    validatePeakConfig(values.peakPercentage === undefined ? current.peakPercentage : values.peakPercentage, values.peakWindows === undefined ? current.peakWindows : values.peakWindows);
     if (body.is_active !== undefined) values.isActive = Boolean(body.is_active);
     if (body.rules !== undefined) values.rules = textArray(body.rules);
     if (body.cancellation_policy !== undefined) values.cancellationPolicy = body.cancellation_policy?.trim() || null;
@@ -170,10 +199,10 @@ export class GroundController {
   };
 
   listSlots = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const ground = (await db.select({ id: grounds.id }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(vendors.isActive, true))).limit(1))[0];
+    const ground = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(vendors.isActive, true))).limit(1))[0];
     if (!ground) throw new AppError('not_found', 'Ground was not found', 404);
-    const rows = await db.select().from(slots).where(eq(slots.groundId, ground.id));
-    response.json({ slots: rows.filter((slot) => !hasStarted(slot.date, slot.startTime)).map(toSlot) });
+    const rows = await db.select().from(slots).where(eq(slots.groundId, ground.ground.id));
+    response.json({ slots: rows.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, ground.ground)) });
   };
 
   createSlot = async (request: AuthenticatedRequest, response: Response): Promise<void> => {

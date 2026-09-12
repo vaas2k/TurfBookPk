@@ -69,7 +69,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Add atomic multi-slot orders: player multi-select across dates/times, weekly-repeat shortcut, one payment attempt, all-or-nothing confirmation, and independent per-booking cancellation/refund.
 - [x] Add full slot editing for date, time, and price.
 - [x] Enforce operating hours, maximum slot duration, and advance-booking windows.
-- [ ] Define and apply vendor-configured peak windows: `peak_price` overrides the base price only within the ground's configured peak days/times.
+- [x] Define and apply vendor-configured peak windows: a vendor-configured percentage increases the base slot price only within the ground's configured peak days/times.
 - [x] Fix Pakistan-local default dates instead of deriving them through UTC `toISOString()`.
 
 ## P0 - Mobile UI/UX correctness and navigation
@@ -180,7 +180,6 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Update `README.md` and `AGENTS.md` when implementation changes make documented limitations stale.
 
 ## Baseline verification for every completed task
-
 - [ ] Relevant automated tests pass.
 - [ ] Server validation passes with `npm run typecheck`.
 - [ ] Mobile validation passes with `npx tsc --noEmit`.

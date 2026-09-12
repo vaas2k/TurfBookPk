@@ -43,7 +43,7 @@ try {
   const vendor = await request('/vendors', { method: 'POST', token: vendorToken, body: { business_name: 'Smoke Test Vendor', business_phone: vendorPhone, business_city: 'Karachi' } });
   ids.vendor = vendor.profile.id;
   await request('/vendors/mode', { method: 'PATCH', token: vendorToken, body: {} });
-  const ground = await request('/grounds', { method: 'POST', token: vendorToken, body: { title: 'Smoke Test Ground', location: 'Test', city: 'Karachi', address: 'Test address', price_per_hour: 2000 } });
+  const ground = await request('/grounds', { method: 'POST', token: vendorToken, body: { title: 'Smoke Test Ground', location: 'Test', city: 'Karachi', address: 'Test address', price_per_hour: 2000, peak_percentage: 25, peak_windows: [{ days: [0, 1, 2, 3, 4, 5, 6], start_time: '10:00', end_time: '12:00' }] } });
   ids.ground = ground.ground.id;
   const editedGround = await request(`/grounds/${ids.ground}`, { method: 'PATCH', token: vendorToken, body: { title: 'Edited Smoke Test Ground', price_per_hour: 2200 } });
   if (editedGround.ground.title !== 'Edited Smoke Test Ground' || editedGround.ground.price_per_hour !== 2200) throw new Error('Ground edit did not persist');
@@ -58,6 +58,9 @@ try {
   ids.slot = slot.slot.id;
   const editedSlot = await request(`/grounds/${ids.ground}/slots/${ids.slot}`, { method: 'PATCH', token: vendorToken, body: { end_time: '11:30' } });
   if (!editedSlot.slot.end_time.startsWith('11:30')) throw new Error('Slot edit did not persist');
+  const peakPublicGround = await request(`/grounds/${ids.ground}`);
+  const peakSlot = peakPublicGround.slots.find((candidate) => candidate.id === ids.slot);
+  if (!peakSlot || peakSlot.price !== 2500 || !peakSlot.is_peak) throw new Error('Peak price was not displayed for an eligible slot');
   const pending = await request('/bookings', { method: 'POST', token: playerToken, body: { slot_id: ids.slot, idempotency_key: `smoke-${suffix}` } });
   ids.booking = pending.booking.id;
   if (pending.booking.status !== 'pending_payment') throw new Error('Booking did not enter pending_payment');
@@ -66,9 +69,9 @@ try {
   await request(`/bookings/${ids.booking}`, { token: playerToken });
   await request(`/bookings/${ids.booking}`, { token: vendorToken });
   const beforeCancel = await request('/vendors/earnings', { token: vendorToken });
-  if (beforeCancel.summary.pending_earnings !== 2000) throw new Error('Pending vendor earning was not created');
+  if (beforeCancel.summary.pending_earnings !== 2500) throw new Error('Peak-price vendor earning was not created');
   const cancelled = await request(`/bookings/${ids.booking}/cancel`, { method: 'PATCH', token: playerToken, body: { reason: 'Smoke test cancellation' } });
-  if (cancelled.booking.status !== 'cancelled' || cancelled.booking.refund_amount !== 2000) throw new Error('Cancellation/refund policy failed');
+  if (cancelled.booking.status !== 'cancelled' || cancelled.booking.refund_amount !== 2500) throw new Error('Cancellation/refund policy failed');
   const afterCancel = await request('/vendors/earnings', { token: vendorToken });
   if (afterCancel.summary.pending_earnings !== 0) throw new Error('Cancelled earning was not reversed');
   const vendorNotifications = await request('/bookings/notifications', { token: vendorToken });
@@ -82,14 +85,14 @@ try {
   ids.orderSlots = [orderSlotOne.slot.id, orderSlotTwo.slot.id];
   const pendingOrder = await request('/bookings/orders', { method: 'POST', token: playerToken, body: { slot_ids: ids.orderSlots, idempotency_key: `smoke-order-${suffix}` } });
   ids.order = pendingOrder.order.id;
-  if (pendingOrder.order.status !== 'pending_payment' || pendingOrder.order.total_amount !== 3300) throw new Error('Multi-slot order did not enter pending payment');
+  if (pendingOrder.order.status !== 'pending_payment' || pendingOrder.order.total_amount !== 4125) throw new Error('Multi-slot order did not use percentage peak pricing');
   const confirmedOrder = await request(`/bookings/orders/${ids.order}/mock-confirm`, { method: 'POST', token: playerToken, body: { payment_reference: `smoke-order-payment-${suffix}` } });
   if (confirmedOrder.order.status !== 'confirmed' || confirmedOrder.order.payment_status !== 'paid') throw new Error('Multi-slot mock payment did not confirm the order');
   const bookingsAfterOrder = await request('/bookings/mine', { token: playerToken });
   ids.orderBookings = bookingsAfterOrder.bookings.filter((booking) => ids.orderSlots.includes(booking.slot_id));
   if (ids.orderBookings.length !== 2 || ids.orderBookings.some((booking) => booking.status !== 'confirmed' || booking.payment_status !== 'paid')) throw new Error('Order did not confirm every selected slot');
   const afterOrder = await request('/vendors/earnings', { token: vendorToken });
-  if (afterOrder.summary.pending_earnings !== 3300) throw new Error('Order earnings were not posted for every booking');
+  if (afterOrder.summary.pending_earnings !== 4125) throw new Error('Percentage peak-price order earnings were not posted for every booking');
   await request(`/bookings/${ids.orderBookings[0].id}/cancel`, { method: 'PATCH', token: playerToken, body: { reason: 'Independent order-item cancellation' } });
   const remainingOrderBooking = await request(`/bookings/${ids.orderBookings[1].id}`, { token: playerToken });
   if (remainingOrderBooking.booking.status !== 'confirmed') throw new Error('Cancelling one order item affected another item');
@@ -113,9 +116,10 @@ try {
   console.log('Core MVP smoke test passed');
 } finally {
   server.kill();
-  if (ids.orderBookings.length) { await sql`delete from ledger_entries where booking_id in ${sql(ids.orderBookings.map((booking) => booking.id))}`; }
+  if (ids.order) { await sql`update slots set is_booked = false, booked_by = null, booking_id = null, held_by = null, hold_booking_id = null, hold_expires_at = null where booking_id in (select id from bookings where order_id = ${ids.order}) or hold_booking_id in (select id from bookings where order_id = ${ids.order})`; }
+  if (ids.order) { await sql`delete from ledger_entries where booking_id in (select id from bookings where order_id = ${ids.order})`; }
   if (ids.order) { await sql`delete from payment_attempts where order_id = ${ids.order}`; }
-  if (ids.orderBookings.length) { await sql`delete from bookings where id in ${sql(ids.orderBookings.map((booking) => booking.id))}`; }
+  if (ids.order) { await sql`delete from bookings where order_id = ${ids.order}`; }
   if (ids.order) await sql`delete from booking_orders where id = ${ids.order}`;
   if (ids.noShowBooking) { await sql`delete from ledger_entries where booking_id = ${ids.noShowBooking}`; await sql`delete from payment_attempts where booking_id = ${ids.noShowBooking}`; await sql`delete from bookings where id = ${ids.noShowBooking}`; }
   if (ids.booking) { await sql`delete from ledger_entries where booking_id = ${ids.booking}`; await sql`delete from payment_attempts where booking_id = ${ids.booking}`; await sql`delete from bookings where id = ${ids.booking}`; }

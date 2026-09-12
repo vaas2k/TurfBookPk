@@ -151,6 +151,9 @@ export default function GroundDetail() {
               PKR {ground.price_per_hour.toLocaleString()}/hr
             </Text>
           </View>
+          {ground.peak_percentage && ground.peak_windows.length > 0 && (
+            <Text className="text-[#D97706] text-xs font-semibold mt-2">Peak hours: +{ground.peak_percentage}% for selected times</Text>
+          )}
 
           {/* Amenities */}
           {ground.amenities.length > 0 && (
@@ -292,6 +295,7 @@ export default function GroundDetail() {
                       <Text className={`text-sm mt-0.5 font-semibold ${statusColor}`}>
                         {statusLabel}
                       </Text>
+                      {slot.is_peak && <Text className="text-[#D97706] text-xs font-semibold mt-1">Peak price</Text>}
                     </View>
 
                     {reasonBadge ? (

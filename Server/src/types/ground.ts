@@ -13,7 +13,8 @@ export interface GroundProfile {
   cover_image: string | null;
   pitch_type: string | null;
   price_per_hour: number;
-  peak_price: number | null;
+  peak_percentage: number | null;
+  peak_windows: { days: number[]; start_time: string; end_time: string }[];
   is_active: boolean;
   is_verified: boolean;
   rating: number;

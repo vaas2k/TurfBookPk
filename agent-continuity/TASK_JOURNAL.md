@@ -1,5 +1,84 @@
 # TurfBookPK Task Journal
 
+## 2026-09-12 - Peak pricing converted to percentage uplift and verified
+
+### Accomplished
+
+- Converted peak pricing from a fixed PKR override to a vendor-entered percentage uplift.
+- Renamed the database field to `peak_percentage`; migration `0011_peak_percentage` clears old fixed-price configurations so they cannot be misinterpreted as percentages.
+- Updated vendor configuration copy/validation, player labels, public slot prices, booking/order totals, vendor earnings, refunds, unit tests, and PostgreSQL smoke assertions.
+- Reproduced the initial smoke assertion mismatch after the semantic change and corrected it to calculate each selected slot independently (PKR 4,125 for PKR 1,600 and PKR 1,700 slots at +25%).
+
+### Key decisions
+
+- Peak increase is constrained to a whole number from 1% to 500%; a price is calculated as `round(base slot price × (100 + percentage) / 100)`.
+- Old absolute peak settings are intentionally cleared during migration and must be configured again using the percentage UI.
+
+### Next immediate step
+
+- Manually verify a vendor-entered percentage and player price display, then continue to the next requested task.
+
+### Critical paths and commands
+
+- `Server/drizzle/0011_peak_percentage.sql`
+- `Server/src/services/peakPricing.ts`
+- `PitchBook/src/app/(vendor)/add-ground.tsx`
+- `npm test` (18/18 passed)
+- `npm run test:e2e` (passed)
+- `npx tsc --noEmit` (passed)
+
+## 2026-09-12 - Peak-pricing semantics require product confirmation
+
+### Accomplished
+
+- Clarified that the current implementation interprets `peak_price` as an absolute PKR amount that replaces the normal slot price during a configured peak window.
+
+### Key decisions
+
+- Do not change payment-affecting pricing semantics without confirming whether the business wants an absolute peak rate or a percentage/surge markup.
+
+### Next immediate step
+
+- Confirm the desired peak-pricing model, then adjust schema, vendor wording, price calculation, tests, and existing configuration migration as needed.
+
+### Critical paths and commands
+
+- `Server/src/services/peakPricing.ts`
+- `PitchBook/src/app/(vendor)/add-ground.tsx`
+- `Server/src/controllers/bookingController.ts`
+
+## 2026-09-12 - Vendor-configured peak pricing completed and verified
+
+### Accomplished
+
+- Added `peak_windows` to grounds, migration `0010_peak_pricing`, validated vendor configuration, and exposed it through ground APIs.
+- Added server-authoritative peak-price calculation to public slot responses and single/multi-slot booking totals, vendor earnings, and refunds.
+- Added vendor controls for peak days and start/end times plus player-facing peak-price labels.
+- Reproduced and fixed the PostgreSQL `HH:MM:SS` boundary comparison bug that incorrectly treated a slot ending at a peak window boundary as regular price.
+- Marked peak pricing complete in the P1 checklist.
+
+### Key decisions
+
+- A peak price applies only when the entire slot is inside a configured Pakistan-local day/time window; partial overlaps retain normal pricing to prevent charging a whole-slot peak rate for only part of a booking.
+- Peak configuration requires both a price and at least one window, preventing unused or ambiguous pricing data.
+
+### Next immediate step
+
+- Manually verify vendor peak configuration and player checkout, then continue with the next prioritized UX/core task.
+
+### Critical paths and commands
+
+- `Server/drizzle/0010_peak_pricing.sql`
+- `Server/src/services/peakPricing.ts`
+- `Server/src/controllers/groundController.ts`
+- `Server/src/controllers/bookingController.ts`
+- `PitchBook/src/app/(vendor)/add-ground.tsx`
+- `PitchBook/src/app/(player)/ground/[id].tsx`
+- `npm test` (18/18 passed)
+- `npm run test:e2e` (passed)
+- `npx tsc --noEmit` (passed)
+- `npm run lint` (0 errors; 19 existing warnings)
+
 ## 2026-09-12 - Verified implementation pushed to GitHub
 
 ### Accomplished
