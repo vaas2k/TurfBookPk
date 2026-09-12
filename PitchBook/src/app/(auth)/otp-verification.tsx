@@ -80,14 +80,14 @@ export default function OTPVerificationScreen() {
       inputs.current[0]?.focus();
     } else {
       // Check if user needs profile setup
-      const isNew = useAuthStore.getState().isNewUser;
+      const { isNewUser: isNew, lastMode } = useAuthStore.getState();
       
       if (isNew) {
         // New user - go to profile setup
         router.replace('/(auth)/profile-setup');
       } else {
         // Existing user - go to home
-        router.replace('/(player)');
+        router.replace(lastMode === 'vendor' ? '/(vendor)' : '/(player)');
       }
     }
   };

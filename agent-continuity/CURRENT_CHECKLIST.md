@@ -62,14 +62,49 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Add image validation, ownership, replacement, and deletion behavior.
 - [ ] Implement player profile editing and avatar upload.
 - [ ] Implement vendor profile editing, logo, cover image, activation, and deactivation.
-- [ ] Add notification read/unread endpoints and unread counts.
-- [ ] Add a vendor notification screen and connect the dashboard button.
-- [ ] Move notifications to a dedicated API resource.
-- [ ] Add recurring and bulk slot creation.
-- [ ] Add full slot editing for date, time, and price.
-- [ ] Enforce operating hours, maximum slot duration, and advance-booking windows.
-- [ ] Define and apply peak-price behavior instead of leaving `peak_price` unused.
-- [ ] Fix Pakistan-local default dates instead of deriving them through UTC `toISOString()`.
+- [x] Add notification read/unread endpoints and unread counts.
+- [x] Add a vendor notification screen and connect the dashboard button.
+- [x] Move notifications to a dedicated API resource.
+- [x] Add recurring and bulk slot creation.
+- [x] Add atomic multi-slot orders: player multi-select across dates/times, weekly-repeat shortcut, one payment attempt, all-or-nothing confirmation, and independent per-booking cancellation/refund.
+- [x] Add full slot editing for date, time, and price.
+- [x] Enforce operating hours, maximum slot duration, and advance-booking windows.
+- [ ] Define and apply vendor-configured peak windows: `peak_price` overrides the base price only within the ground's configured peak days/times.
+- [x] Fix Pakistan-local default dates instead of deriving them through UTC `toISOString()`.
+
+## P0 - Mobile UI/UX correctness and navigation
+
+- [ ] Add a consistent accessible back button/header to every pushed player and vendor screen, starting with player notifications, booking lists reached from deep links, and profile edit flows.
+- [ ] Connect player and vendor notification screens to the new notification API: unread badge/count, visible read state, mark-one-read, mark-all-read, pull-to-refresh, and booking deep links.
+- [ ] Remove the disconnected player-home notification modal so the notification bell has one reliable destination.
+- [ ] Wire or remove player discovery filter/settings controls that currently render without an action.
+- [ ] Replace hardcoded vendor dashboard statistics (`todayBookings`, revenue, rating) with real data or an explicit “not available yet” state.
+- [ ] Add loading/disabled states and duplicate-submit prevention to vendor ground, slot, recurrence, activation, and profile actions.
+- [ ] Ensure all icon-only/touchable controls have accessibility labels, 44px minimum touch targets, and visible pressed/disabled states.
+- [ ] Add confirmation dialogs for ground activation/deactivation and destructive slot/ground actions, including a clear player-visibility consequence.
+- [ ] Show server policy constraints (operating hours, max duration, advance window) in vendor slot creation/edit UI before submission.
+
+## P1 - Mobile UI/UX completeness
+
+- [ ] Redesign the vendor earnings screen around clear business balances: available-to-withdraw, pending/processing, paid out, and refunds/adjustments; replace raw ledger labels and booking IDs with plain-language explanations, dates, booking/ground context, status badges, filters, and a transaction-detail view.
+- [ ] Add editable operating-hours controls to vendor ground creation/editing and display them on public ground detail.
+- [ ] Define and expose peak-price UI only after the business provides peak-hour rules; do not display a price users cannot understand.
+- [ ] Replace raw date/time text fields with platform-accessible date/time pickers and validate them inline.
+- [ ] Build a weekly calendar/grid view for vendor slot management with date navigation, availability legend, and bulk actions.
+- [ ] Add search, sort, filter, and empty/error/retry states to player ground discovery.
+- [ ] Add a player-friendly booking cancellation preview that shows fee/refund before confirmation.
+- [ ] Add booking detail shortcuts from notifications and calendar/reminder status feedback.
+- [ ] Add real vendor booking dashboard counts and actionable “today”/“requires attention” cards.
+- [ ] Show no-show eligibility, completion timing, and policy explanations in vendor booking details.
+- [ ] Consolidate repeated headers, cards, form fields, and empty/error states into shared mobile components.
+
+## P2 - Mobile UX polish and accessibility
+
+- [ ] Audit all screens for text scaling, keyboard avoidance, safe-area padding, focus order, color contrast, and screen-reader labels.
+- [ ] Virtualize long ground, slot, notification, booking, and earnings lists with `FlatList`/`SectionList` and stable keys.
+- [ ] Add skeleton loading states and offline/retry messaging for all network-backed screens.
+- [ ] Replace placeholder imagery and mock/payment development copy with production-ready empty states once providers are integrated.
+- [ ] Add analytics/error telemetry for failed booking, payment, slot-management, and role-switching journeys.
 
 ## P1 - Discovery, performance, and contracts
 
@@ -95,7 +130,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Replace raw date/time text fields with accessible date/time pickers.
 - [ ] Build a weekly calendar/grid for vendor slot management.
 - [x] Show unavailable slot reasons: booked, blocked, held, or expired.
-- [x] Add checkout hold countdown and revalidate when checkout regains focus.
+- [x] Remove the user-facing checkout hold countdown and create the booking only when Confirm is pressed.
 - [x] Show complete pricing breakdown before confirmation.
 - [ ] Add consistent loading, retry, empty, offline, and error states.
 - [ ] Use `FlatList`/`SectionList` for potentially large ground, slot, booking, and notification lists.

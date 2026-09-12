@@ -86,4 +86,29 @@ export class VendorController {
     await db.update(users).set({ role: 'vendor', updatedAt: new Date() }).where(eq(users.id, request.auth.userId));
     response.status(existing[0] ? 200 : 201).json({ profile: toProfile(row) });
   };
+
+  update = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const current = (await db.select().from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
+    if (!current) throw new AppError('vendor_required', 'A vendor profile is required', 403);
+    const body = request.body || {};
+    const values: Partial<typeof vendors.$inferInsert> = { updatedAt: new Date() };
+    if (body.business_name !== undefined) {
+      if (typeof body.business_name !== 'string' || !body.business_name.trim()) throw new AppError('invalid_vendor', 'Business name is required', 422);
+      values.businessName = body.business_name.trim();
+    }
+    if (body.business_phone !== undefined) {
+      if (typeof body.business_phone !== 'string' || !body.business_phone.trim()) throw new AppError('invalid_vendor', 'Business phone is required', 422);
+      values.businessPhone = body.business_phone.trim();
+    }
+    if (body.business_city !== undefined) {
+      if (typeof body.business_city !== 'string' || !body.business_city.trim()) throw new AppError('invalid_vendor', 'Business city is required', 422);
+      values.businessCity = body.business_city.trim();
+    }
+    if (body.business_description !== undefined) values.businessDescription = typeof body.business_description === 'string' ? body.business_description.trim() || null : null;
+    if (body.is_active !== undefined) values.isActive = Boolean(body.is_active);
+    const [updated] = await db.update(vendors).set(values).where(eq(vendors.id, current.id)).returning();
+    if (!updated) throw new AppError('vendor_update_failed', 'Unable to update vendor profile', 500);
+    response.json({ profile: toProfile(updated) });
+  };
 }

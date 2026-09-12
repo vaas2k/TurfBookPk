@@ -41,6 +41,10 @@ const handleLogout = async () => {
           <Text className="text-[#737373] text-sm">{profile?.phone || 'No phone'}</Text>
         </View>
 
+        <TouchableOpacity className="bg-white border border-[#E5E5E5] py-4 rounded-full mt-4" onPress={() => router.push('/(player)/edit-profile')}>
+          <Text className="text-[#1A1A2E] text-center font-semibold">Edit Profile</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           className="bg-red-500 py-4 rounded-full mt-6"
           onPress={handleLogout}

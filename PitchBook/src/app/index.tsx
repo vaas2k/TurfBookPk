@@ -6,7 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useVendorStore } from '@/store/vendorStore';
 
 export default function SplashScreen() {
-  const { isAuthenticated, isNewUser, isLoading, user, profile } = useAuthStore();
+  const { isAuthenticated, isNewUser, isLoading, user, profile, lastMode } = useAuthStore();
   const { isVendor } = useVendorStore();
 
   useEffect(() => {
@@ -15,7 +15,7 @@ export default function SplashScreen() {
     const timer = setTimeout(() => {
       if (isAuthenticated && user) {
         // Get the latest role and vendor status
-        if (profile?.role === 'vendor' && isVendor) {
+        if (lastMode === 'vendor' && isVendor) {
           router.replace('/(vendor)');
         } else if (isNewUser) {
           // New user needs to complete profile
@@ -31,7 +31,7 @@ export default function SplashScreen() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [isAuthenticated, isNewUser, isLoading, isVendor, profile?.role, user]);
+  }, [isAuthenticated, isNewUser, isLoading, isVendor, lastMode, profile?.role, user]);
 
   return (
     <View className="flex-1 items-center justify-center bg-[#1A1A2E]">

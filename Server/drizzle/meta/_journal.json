@@ -64,6 +64,13 @@
       "when": 1789012800000,
       "tag": "0008_core_payments_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789100000000,
+      "tag": "0009_booking_orders",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCallback, useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { deleteGround, Ground, listGroundSlots, listVendorGrounds, Slot } from '@/lib/api/vendors';
+import { deleteGround, Ground, listGroundSlots, listVendorGrounds, Slot, updateGround } from '@/lib/api/vendors';
 import { Toast } from '@/components/ui/toast';
 
 export default function VendorGrounds() {
@@ -11,6 +11,7 @@ export default function VendorGrounds() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Ground | null>(null);
+  const [updatingGroundId, setUpdatingGroundId] = useState<string | null>(null);
   const [slotsByGround, setSlotsByGround] = useState<Record<string, Slot[]>>({});
 
   const loadGrounds = useCallback(async () => {
@@ -29,6 +30,19 @@ export default function VendorGrounds() {
     if (!pendingDelete) return;
     try { await deleteGround(pendingDelete.id); setPendingDelete(null); await loadGrounds(); setToast('Ground deleted.'); }
     catch (error: any) { setPendingDelete(null); setToast(error?.message || 'Unable to delete ground.'); }
+  };
+
+  const setGroundActive = async (ground: Ground, isActive: boolean) => {
+    setUpdatingGroundId(ground.id);
+    try {
+      await updateGround(ground.id, { is_active: isActive });
+      await loadGrounds();
+      setToast(isActive ? 'Ground activated and visible to players.' : 'Ground deactivated and hidden from players.');
+    } catch (error: any) {
+      setToast(error?.message || 'Unable to change ground availability.');
+    } finally {
+      setUpdatingGroundId(null);
+    }
   };
 
   return (
@@ -57,8 +71,17 @@ export default function VendorGrounds() {
               <TouchableOpacity className="flex-1 bg-[#E8F5E9] rounded-xl py-3 mr-2 items-center" onPress={() => router.push({ pathname: '/(vendor)/ground-slots', params: { id: ground.id, title: ground.title } })}><Text className="text-[#4CAF50] font-bold">Manage Slots</Text></TouchableOpacity>
               <TouchableOpacity className="w-12 items-center justify-center" onPress={() => router.push({ pathname: '/(vendor)/add-ground', params: { id: ground.id } })}><Ionicons name="create-outline" size={22} color="#1A1A2E" /></TouchableOpacity>
               <TouchableOpacity className="w-12 items-center justify-center" onPress={() => setPendingDelete(ground)}><Ionicons name="trash-outline" size={22} color="#DC2626" /></TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              disabled={updatingGroundId === ground.id}
+              onPress={() => setGroundActive(ground, !ground.is_active)}
+              className={`mt-3 rounded-xl py-3 items-center ${ground.is_active ? 'bg-[#FEF2F2]' : 'bg-[#E8F5E9]'}`}
+            >
+              <Text className={`font-bold ${ground.is_active ? 'text-[#DC2626]' : 'text-[#2E7D32]'}`}>
+                {updatingGroundId === ground.id ? 'Updating...' : ground.is_active ? 'Deactivate Ground' : 'Activate Ground'}
+              </Text>
+            </TouchableOpacity>
             </View></View>
-          </View>
         ))}
       </ScrollView>
       <Modal visible={Boolean(pendingDelete)} transparent animationType="fade" onRequestClose={() => setPendingDelete(null)}><View className="flex-1 bg-black/40 items-center justify-center px-8"><View className="bg-white rounded-2xl p-6 w-full"><Text className="text-xl font-bold text-[#1A1A2E]">Delete ground?</Text><Text className="text-[#737373] mt-2">Grounds with booked slots cannot be deleted.</Text><View className="flex-row justify-end mt-6"><TouchableOpacity onPress={() => setPendingDelete(null)} className="px-4 py-3"><Text className="text-[#737373] font-medium">Cancel</Text></TouchableOpacity><TouchableOpacity onPress={handleDelete} className="bg-[#DC2626] rounded-xl px-4 py-3"><Text className="text-white font-bold">Delete</Text></TouchableOpacity></View></View></View></Modal>

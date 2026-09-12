@@ -60,6 +60,11 @@ export async function registerVendor(data: {
   return result.profile;
 }
 
+export async function updateVendorProfile(data: Partial<Pick<VendorProfile, 'business_name' | 'business_phone' | 'business_city' | 'business_description' | 'is_active'>>): Promise<VendorProfile> {
+  const result = await apiRequest<{ profile: VendorProfile }>('/vendors/me', { method: 'PATCH', data });
+  return result.profile;
+}
+
 export async function activateVendorMode(): Promise<void> {
   await apiRequest('/vendors/mode', { method: 'PATCH', data: {} });
 }
@@ -106,6 +111,11 @@ export async function listGroundSlots(id: string): Promise<Slot[]> {
 export async function createGroundSlot(groundId: string, data: Pick<Slot, 'date' | 'start_time' | 'end_time' | 'price'>): Promise<Slot> {
   const result = await apiRequest<{ slot: Slot }>(`/grounds/${groundId}/slots`, { method: 'POST', data });
   return result.slot;
+}
+
+export async function createRecurringGroundSlots(groundId: string, data: { start_date: string; start_time: string; end_time: string; price: number; interval_days: number; occurrences: number }): Promise<Slot[]> {
+  const result = await apiRequest<{ slots: Slot[] }>(`/grounds/${groundId}/slots/recurring`, { method: 'POST', data });
+  return result.slots;
 }
 
 export async function updateGroundSlot(groundId: string, slotId: string, data: Partial<Slot>): Promise<Slot> {

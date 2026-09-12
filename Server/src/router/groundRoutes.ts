@@ -14,6 +14,7 @@ export function createGroundRouter(controller: GroundController, tokenService: T
   router.patch('/:id', controller.update);
   router.delete('/:id', controller.remove);
   router.post('/:id/slots', controller.createSlot);
+  router.post('/:id/slots/recurring', controller.createRecurringSlots);
   router.patch('/:groundId/slots/:slotId', controller.updateSlot);
   router.delete('/:groundId/slots/:slotId', controller.removeSlot);
   return router;

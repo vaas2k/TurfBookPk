@@ -140,6 +140,7 @@ export default function PlayerLayout() {
         <Stack.Screen name="booking-confirmation" />
         <Stack.Screen name="booking/[id]" />
         <Stack.Screen name="notifications" />
+        <Stack.Screen name="edit-profile" />
         <Stack.Screen name="wallet" />
         <Stack.Screen name="help-support" />
         <Stack.Screen name="reviews" />

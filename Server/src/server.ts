@@ -17,6 +17,8 @@ import { BookingController } from './controllers/bookingController.js';
 import { createBookingRouter } from './router/bookingRoutes.js';
 import { requireJsonBody } from './middleware/requestValidation.js';
 import { BookingMaintenanceService } from './services/bookingMaintenance.js';
+import { NotificationController } from './controllers/notificationController.js';
+import { createNotificationRouter } from './router/notificationRoutes.js';
 
 const app = express();
 
@@ -44,11 +46,13 @@ const vendorController = new VendorController();
 const groundController = new GroundController();
 const bookingController = new BookingController();
 const bookingMaintenance = new BookingMaintenanceService();
+const notificationController = new NotificationController();
 
 app.use('/api/auth', createAuthRouter(authController, tokenService));
 app.use('/api/vendors', createVendorRouter(vendorController, tokenService));
 app.use('/api/grounds', createGroundRouter(groundController, tokenService));
 app.use('/api/bookings', createBookingRouter(bookingController, tokenService));
+app.use('/api/notifications', createNotificationRouter(notificationController, tokenService));
 
 app.get("/api/health", (_req, res) => {
   res.json({

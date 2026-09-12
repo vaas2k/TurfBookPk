@@ -92,6 +92,12 @@ export default function VendorProfile() {
           )}
         </View>
 
+        <View className="mx-4 mt-4">
+          <TouchableOpacity className="bg-white border border-[#E5E5E5] py-4 rounded-xl" onPress={() => router.push('/(vendor)/edit-profile')}>
+            <Text className="text-[#1A1A2E] text-center font-semibold">Edit Business Profile</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Stats */}
         <View className="mx-4 mt-4 flex-row space-x-3">
           <View className="flex-1 bg-white rounded-2xl p-4 items-center"

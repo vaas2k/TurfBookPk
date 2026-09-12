@@ -20,7 +20,7 @@ export default function GroundDetail() {
   const [ground, setGround] = useState<Ground | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
+  const [selectedSlots, setSelectedSlots] = useState<Slot[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -46,6 +46,38 @@ export default function GroundDetail() {
   const dates = useMemo(() => [...new Set(slots.map((s) => s.date))], [slots]);
   const visibleSlots = slots.filter((slot) => slot.date === selectedDate);
   const images = ground ? (ground.cover_image ? [ground.cover_image, ...ground.images] : ground.images) : [];
+  const selectedTotal = selectedSlots.reduce((total, slot) => total + slot.price, 0);
+  const selectedSlot = selectedSlots.length ? { price: selectedTotal } : null;
+
+  const toggleSlot = (slot: Slot) => {
+    setSelectedSlots((current) => current.some((item) => item.id === slot.id)
+      ? current.filter((item) => item.id !== slot.id)
+      : [...current, slot]);
+  };
+
+  const addWeeklyRepeats = () => {
+    const anchor = selectedSlots[0];
+    if (!anchor) return;
+    const anchorDate = new Date(`${anchor.date}T12:00:00`);
+    const weeklyMatches = [1, 2, 3]
+      .map((week) => {
+        const date = new Date(anchorDate);
+        date.setDate(date.getDate() + week * 7);
+        const targetDate = date.toISOString().slice(0, 10);
+        return slots.find((slot) => slot.date === targetDate
+          && slot.start_time === anchor.start_time
+          && slot.end_time === anchor.end_time
+          && !slot.is_booked
+          && !slot.is_blocked
+          && !slot.is_held);
+      })
+      .filter((slot): slot is Slot => Boolean(slot));
+    if (!weeklyMatches.length) {
+      setToast('No matching weekly slots are currently available.');
+      return;
+    }
+    setSelectedSlots((current) => [...current, ...weeklyMatches.filter((slot) => !current.some((item) => item.id === slot.id))]);
+  };
 
   if (loading) {
     return (
@@ -158,7 +190,6 @@ export default function GroundDetail() {
                       accessibilityLabel={`Select date ${date}`}
                       onPress={() => {
                         setSelectedDate(date);
-                        setSelectedSlot(null);
                       }}
                       className={`rounded-full px-4 py-2.5 mr-2.5 border ${
                         isSelected
@@ -183,6 +214,16 @@ export default function GroundDetail() {
           {/* Available Slots */}
           <View className="mt-7">
             <Text className="text-lg font-bold text-[#1A1A2E] mb-3">Available slots</Text>
+            {selectedSlots.length === 1 && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Add matching weekly slots for the next three weeks"
+                onPress={addWeeklyRepeats}
+                className="self-start mb-3 rounded-full border border-[#4CAF50] px-3 py-2"
+              >
+                <Text className="text-[#2E7D32] text-sm font-semibold">Add next 3 weekly slots</Text>
+              </TouchableOpacity>
+            )}
             {visibleSlots.length === 0 ? (
               <View className="bg-[#F9FAFB] rounded-2xl p-6 items-center border border-[#F3F4F6]">
                 <Text className="text-[#6B7280] text-sm">No slots available for this date.</Text>
@@ -193,7 +234,7 @@ export default function GroundDetail() {
                 const isBooked = Boolean(slot.is_booked);
                 const isBlocked = Boolean(slot.is_blocked);
                 const isAvailable = !isBooked && !isBlocked && !isHeld;
-                const isSelected = selectedSlot?.id === slot.id;
+                const isSelected = selectedSlots.some((item) => item.id === slot.id);
 
                 let statusLabel = `PKR ${slot.price.toLocaleString()}`;
                 let statusColor = 'text-[#4CAF50]';
@@ -231,7 +272,7 @@ export default function GroundDetail() {
                     disabled={!isAvailable}
                     accessibilityRole="button"
                     accessibilityLabel={`${slot.start_time.slice(0, 5)} to ${slot.end_time.slice(0, 5)} ${statusLabel}`}
-                    onPress={() => setSelectedSlot(slot)}
+                    onPress={() => toggleSlot(slot)}
                     className={`flex-row items-center justify-between rounded-2xl p-4 mb-2.5 border ${
                       isSelected
                         ? 'border-[#4CAF50] bg-[#E8F5E9]'
@@ -273,28 +314,30 @@ export default function GroundDetail() {
       {/* Sticky Bottom Action Bar */}
       <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-[#E5E5E5] px-5 py-4">
         <TouchableOpacity
-          disabled={!selectedSlot}
+          disabled={selectedSlots.length === 0}
           accessibilityRole="button"
-          accessibilityLabel={selectedSlot ? `Continue booking for PKR ${selectedSlot.price}` : 'Select a slot'}
+          accessibilityLabel={selectedSlots.length ? `Continue booking ${selectedSlots.length} slots for PKR ${selectedTotal}` : 'Select a slot'}
           onPress={() => {
-            if (!selectedSlot) return;
+            if (selectedSlots.length === 0) return;
             router.push({
               pathname: '/(player)/payment-method',
               params: {
-                slotId: selectedSlot.id,
+                slotId: selectedSlots.length === 1 ? selectedSlots[0]!.id : undefined,
+                slotIds: JSON.stringify(selectedSlots.map((slot) => slot.id)),
                 groundTitle: ground.title,
                 groundAddress: ground.address,
-                date: selectedSlot.date,
-                startTime: selectedSlot.start_time.slice(0, 5),
-                endTime: selectedSlot.end_time.slice(0, 5),
-                amount: String(selectedSlot.price),
+                selectedSlots: JSON.stringify(selectedSlots.map((slot) => ({ id: slot.id, date: slot.date, startTime: slot.start_time.slice(0, 5), endTime: slot.end_time.slice(0, 5), price: slot.price }))),
+                date: selectedSlots[0]!.date,
+                startTime: selectedSlots[0]!.start_time.slice(0, 5),
+                endTime: selectedSlots[0]!.end_time.slice(0, 5),
+                amount: String(selectedTotal),
               },
             });
           }}
           className={`rounded-full py-4 items-center ${
-            selectedSlot ? 'bg-[#4CAF50]' : 'bg-[#E5E7EB]'
+            selectedSlots.length ? 'bg-[#4CAF50]' : 'bg-[#E5E7EB]'
           }`}
-          style={selectedSlot ? {
+          style={selectedSlots.length ? {
             shadowColor: '#4CAF50',
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.25,
@@ -302,7 +345,7 @@ export default function GroundDetail() {
             elevation: 3,
           } : undefined}
         >
-          <Text className={`font-bold text-base ${selectedSlot ? 'text-white' : 'text-[#9CA3AF]'}`}>
+          <Text className={`font-bold text-base ${selectedSlots.length ? 'text-white' : 'text-[#9CA3AF]'}`}>
             {selectedSlot ? `Continue · PKR ${selectedSlot.price.toLocaleString()}` : 'Select an Available Slot'}
           </Text>
         </TouchableOpacity>

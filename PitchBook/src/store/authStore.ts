@@ -52,6 +52,7 @@ interface AuthState {
   role: 'player' | 'vendor' | null;
   error: ApiError | null;
   lastMode?: 'player' | 'vendor' | null;
+  lastModeByUser: Record<string, 'player' | 'vendor'>;
   sendOTP: (phone: string) => Promise<{ error: ApiError | null }>;
   verifyOTP: (phone: string, token: string) => Promise<{ error: ApiError | null }>;
   signInWithGoogle: () => Promise<{ error: ApiError | null }>;
@@ -75,8 +76,9 @@ const initialState = {
   isNewUser: false,
   role: null,
   lastMode: null,
+  lastModeByUser: {},
   error: null,
-} satisfies Pick<AuthState, 'user' | 'session' | 'profile' | 'isLoading' | 'isAuthenticated' | 'isNewUser' | 'role' | 'lastMode' | 'error'>;
+} satisfies Pick<AuthState, 'user' | 'session' | 'profile' | 'isLoading' | 'isAuthenticated' | 'isNewUser' | 'role' | 'lastMode' | 'lastModeByUser' | 'error'>;
 
 function toApiError(error: unknown): ApiError {
   if (typeof error === 'object' && error !== null && 'message' in error) {
@@ -110,14 +112,18 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const result = await verifyOtp(phone, token);
+          const vendorStatus = await useVendorStore.getState().checkVendorStatus(result.user.id);
+          const preferredMode = vendorStatus.isVendor
+            ? get().lastModeByUser[result.user.id] ?? 'player'
+            : 'player';
           set({
             user: result.user,
             session: result.session,
             profile: result.profile,
             isAuthenticated: true,
             isNewUser: !result.profile.is_setup_complete,
-            role: result.profile.role,
-            lastMode: result.profile.role,
+            role: preferredMode,
+            lastMode: preferredMode,
             isLoading: false,
           });
           return { error: null };
@@ -147,12 +153,14 @@ export const useAuthStore = create<AuthState>()(
       },
 
       signOut: async () => {
+          const currentUserId = get().user?.id;
+          const preferredMode = currentUserId ? get().lastModeByUser[currentUserId] ?? get().role : get().role;
         set({ isLoading: true });
         try {
           await apiSignOut();
         } finally {
           setAccessToken(null);
-          set({ ...initialState, isLoading: false });
+          set({ ...initialState, lastMode: preferredMode, lastModeByUser: get().lastModeByUser, isLoading: false });
           useVendorStore.getState().clearVendor();
         }
       },
@@ -161,19 +169,23 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
         try {
           const result = await refreshSession();
+          const vendorStatus = await useVendorStore.getState().checkVendorStatus(result.user.id);
+          const preferredMode = vendorStatus.isVendor
+            ? get().lastModeByUser[result.user.id] ?? 'player'
+            : 'player';
           set({
             user: result.user,
             session: result.session,
             profile: result.profile,
             isAuthenticated: true,
             isNewUser: !result.profile.is_setup_complete,
-            role: result.profile.role,
-            lastMode: result.profile.role,
+            role: preferredMode,
+            lastMode: preferredMode,
             isLoading: false,
             error: null,
           });
         } catch {
-          set({ ...initialState, isLoading: false });
+          set({ ...initialState, lastModeByUser: get().lastModeByUser, isLoading: false });
         }
       },
 
@@ -186,7 +198,7 @@ export const useAuthStore = create<AuthState>()(
         if (!user) return { error: { code: 'unauthorized', message: 'No user is logged in' } };
         try {
           const result = await updateProfile({ role: 'player' });
-          set({ user: result.user, profile: result.profile, role: 'player', lastMode: 'player' });
+          set((state) => ({ user: result.user, profile: result.profile, role: 'player', lastMode: 'player', lastModeByUser: { ...state.lastModeByUser, [result.user.id]: 'player' } }));
           return { error: null };
         } catch (error) {
           const apiError = toApiError(error);
@@ -200,7 +212,7 @@ export const useAuthStore = create<AuthState>()(
         if (!user || !profile) return { error: { code: 'unauthorized', message: 'No user is logged in' } };
         try {
           await activateVendorMode();
-          set({ role: 'vendor', profile: { ...profile, role: 'vendor' }, lastMode: 'vendor', error: null });
+          set((state) => ({ role: 'vendor', profile: { ...profile, role: 'vendor' }, lastMode: 'vendor', lastModeByUser: { ...state.lastModeByUser, [user.id]: 'vendor' }, error: null }));
           return { error: null };
         } catch (error) {
           const apiError = toApiError(error);
@@ -209,7 +221,10 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      setLastMode: (mode) => set({ lastMode: mode }),
+      setLastMode: (mode) => set((state) => ({
+        lastMode: mode,
+        lastModeByUser: state.user ? { ...state.lastModeByUser, [state.user.id]: mode } : state.lastModeByUser,
+      })),
     }),
     {
       name: 'auth-storage',
@@ -220,6 +235,7 @@ export const useAuthStore = create<AuthState>()(
         profile: state.profile,
         isNewUser: state.isNewUser,
         lastMode: state.lastMode,
+        lastModeByUser: state.lastModeByUser,
       }),
     },
   ),

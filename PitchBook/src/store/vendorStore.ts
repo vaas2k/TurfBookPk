@@ -53,7 +53,7 @@ export const useVendorStore = create<VendorState>((set, get) => ({
       return { isVendor, profile: data };
     } catch (error) {
       console.error('Check vendor status error:', error);
-      set({ isLoading: false });
+      set({ vendorProfile: null, isVendor: false, isLoading: false });
       return { isVendor: false, profile: null };
     }
   },
@@ -73,6 +73,9 @@ export const useVendorStore = create<VendorState>((set, get) => ({
         role: 'vendor',
         profile: authState.profile ? { ...authState.profile, role: 'vendor' } : authState.profile,
         lastMode: 'vendor',
+        lastModeByUser: authState.user
+          ? { ...authState.lastModeByUser, [authState.user.id]: 'vendor' }
+          : authState.lastModeByUser,
       });
 
       set({ 
@@ -98,6 +101,7 @@ export const useVendorStore = create<VendorState>((set, get) => ({
       return { profile: data, error: null };
     } catch (error: any) {
       console.error('Get vendor profile error:', error);
+      set({ vendorProfile: null, isVendor: false });
       return { profile: null, error: error.message };
     }
   },

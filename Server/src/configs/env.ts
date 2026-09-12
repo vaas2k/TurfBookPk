@@ -42,4 +42,6 @@ export const env = {
   otpTtlMinutes: Number(process.env.OTP_TTL_MINUTES) || 5,
   otpFixedCode: process.env.AUTH_OTP_FIXED_CODE,
   platformCommissionBps: integerInRange('PLATFORM_COMMISSION_BPS', 0, 0, 10_000),
+  maxSlotDurationMinutes: integerInRange('MAX_SLOT_DURATION_MINUTES', 240, 30, 1_440),
+  maxAdvanceBookingDays: integerInRange('MAX_ADVANCE_BOOKING_DAYS', 90, 1, 365),
 };

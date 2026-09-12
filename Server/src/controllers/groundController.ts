@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
 import { grounds, slots, vendors } from '../database/schema.js';
+import { env } from '../configs/env.js';
 
 function textArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()) : [];
@@ -28,15 +29,38 @@ function coordinate(value: unknown, name: string, min: number, max: number): num
 }
 
 function validDate(value: unknown): value is string {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 function validTime(value: unknown): value is string {
   return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(value);
 }
 
+function normalizedTime(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d)?$/.exec(value.trim());
+  if (!match || Number(match[1]) > 23) return null;
+  return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`;
+}
+
+function normalizedDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const clean = value.trim();
+  return validDate(clean) ? clean : null;
+}
+
 function hasStarted(date: string, time: string): boolean {
   return new Date(`${date}T${time.length === 5 ? `${time}:00` : time}+05:00`).getTime() <= Date.now();
+}
+
+function timeMinutes(value: string): number { return Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5)); }
+function enforceSlotPolicy(ground: typeof grounds.$inferSelect, date: string, startTime: string, endTime: string): void {
+  if (timeMinutes(endTime) - timeMinutes(startTime) > env.maxSlotDurationMinutes) throw new AppError('slot_duration_exceeded', `Slots may be at most ${env.maxSlotDurationMinutes} minutes`, 422);
+  if (timeMinutes(startTime) < timeMinutes(ground.operatingHours.open) || timeMinutes(endTime) > timeMinutes(ground.operatingHours.close)) throw new AppError('outside_operating_hours', `Slots must be within ${ground.operatingHours.open}–${ground.operatingHours.close}`, 422);
+  const maxDate = new Date(Date.now() + env.maxAdvanceBookingDays * 86_400_000).toISOString().slice(0, 10);
+  if (date > maxDate) throw new AppError('advance_booking_window_exceeded', `Slots may be created up to ${env.maxAdvanceBookingDays} days in advance`, 422);
 }
 
 function isHeld(row: typeof slots.$inferSelect): boolean {
@@ -155,11 +179,16 @@ export class GroundController {
   createSlot = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const groundId = routeParam(request.params.id, 'Ground id');
-    await ownedGround(groundId, request.auth.userId);
-    const { date, start_time, end_time, price } = request.body || {};
-    if (!validDate(date) || !validTime(start_time) || !validTime(end_time) || !Number.isInteger(price) || price <= 0) throw new AppError('invalid_slot', 'Use a valid date, 24-hour times, and a positive whole-number price', 422);
+    const ground = await ownedGround(groundId, request.auth.userId);
+    const body = request.body || {};
+    const date = normalizedDate(body.date);
+    const start_time = normalizedTime(body.start_time);
+    const end_time = normalizedTime(body.end_time);
+    const price = body.price;
+    if (!date || !start_time || !end_time || !Number.isSafeInteger(price) || price <= 0) throw new AppError('invalid_slot', 'Use a valid date, 24-hour times, and a positive whole-number price', 422);
     if (start_time >= end_time) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
     if (hasStarted(date, start_time)) throw new AppError('slot_expired', 'Slots must start in the future', 422);
+    enforceSlotPolicy(ground, date, start_time, end_time);
     const conflict = await db.select({ id: slots.id }).from(slots).where(and(
       eq(slots.groundId, groundId),
       eq(slots.date, date),
@@ -172,11 +201,45 @@ export class GroundController {
     response.status(201).json({ slot: toSlot(row) });
   };
 
+  createRecurringSlots = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const groundId = routeParam(request.params.id, 'Ground id');
+    const ground = await ownedGround(groundId, request.auth.userId);
+    const body = request.body || {};
+    const date = normalizedDate(body.start_date);
+    const startTime = normalizedTime(body.start_time);
+    const endTime = normalizedTime(body.end_time);
+    const price = body.price;
+    const intervalDays = body.interval_days;
+    const occurrences = body.occurrences;
+    if (!date || !startTime || !endTime || !Number.isSafeInteger(price) || price <= 0 || !Number.isSafeInteger(intervalDays) || intervalDays < 1 || !Number.isSafeInteger(occurrences) || occurrences < 1 || occurrences > 60) {
+      throw new AppError('invalid_recurring_slots', 'Provide valid slot details, an interval of at least one day, and 1 to 60 occurrences', 422);
+    }
+    if (startTime >= endTime) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
+    const recurringDates = Array.from({ length: occurrences }, (_, index) => {
+      const next = new Date(`${date}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + index * intervalDays); return next.toISOString().slice(0, 10);
+    });
+    if (recurringDates.some((slotDate) => hasStarted(slotDate, startTime))) throw new AppError('slot_expired', 'All recurring slots must start in the future', 422);
+    recurringDates.forEach((slotDate) => enforceSlotPolicy(ground, slotDate, startTime, endTime));
+    const created = await db.transaction(async (tx) => {
+      const result = [];
+      for (const slotDate of recurringDates) {
+        const conflict = await tx.select({ id: slots.id }).from(slots).where(and(eq(slots.groundId, groundId), eq(slots.date, slotDate), lt(slots.startTime, endTime), gt(slots.endTime, startTime))).limit(1);
+        if (conflict[0]) throw new AppError('slot_conflict', `A slot already overlaps ${slotDate}`, 409);
+        const [row] = await tx.insert(slots).values({ groundId, date: slotDate, startTime, endTime, price }).returning();
+        if (!row) throw new AppError('slot_creation_failed', 'Unable to create recurring slots', 500);
+        result.push(toSlot(row));
+      }
+      return result;
+    });
+    response.status(201).json({ slots: created });
+  };
+
   updateSlot = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const groundId = routeParam(request.params.groundId, 'Ground id');
     const slotId = routeParam(request.params.slotId, 'Slot id');
-    await ownedGround(groundId, request.auth.userId);
+    const ground = await ownedGround(groundId, request.auth.userId);
     const current = (await db.select().from(slots).where(and(eq(slots.id, slotId), eq(slots.groundId, groundId))).limit(1))[0];
     if (!current) throw new AppError('not_found', 'Slot was not found', 404);
     if (current.isBooked || isHeld(current)) throw new AppError('slot_unavailable', 'Booked or payment-held slots cannot be changed', 409);
@@ -190,6 +253,7 @@ export class GroundController {
     const nextEnd = body.end_time ?? current.endTime;
     if (nextStart >= nextEnd) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
     if (hasStarted(nextDate, nextStart)) throw new AppError('slot_expired', 'Slots must start in the future', 422);
+    enforceSlotPolicy(ground, nextDate, nextStart, nextEnd);
     const conflict = await db.select({ id: slots.id }).from(slots).where(and(
       eq(slots.groundId, groundId),
       eq(slots.date, nextDate),

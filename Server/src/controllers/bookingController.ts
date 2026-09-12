@@ -4,7 +4,7 @@ import { and, desc, eq, gte, isNull, lte, or, sql as expression } from 'drizzle-
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
-import { bookings, grounds, ledgerEntries, notifications, paymentAttempts, slots, users, vendors } from '../database/schema.js';
+import { bookingOrders, bookings, grounds, ledgerEntries, notifications, paymentAttempts, slots, users, vendors } from '../database/schema.js';
 import { canCancelBooking, HOLD_DURATION_MS, paymentStatusForCancellation } from '../services/bookingLifecycle.js';
 import { bookingStart, cancellationQuote } from '../services/cancellationPolicy.js';
 import { MockPaymentProvider } from '../services/paymentProvider.js';
@@ -17,6 +17,7 @@ function param(value: string | string[] | undefined, name: string): string {
   return value;
 }
 function bookingNumber(): string { return `BK-${Date.now()}-${randomUUID().slice(0, 8)}`; }
+function orderNumber(): string { return `ORD-${Date.now()}-${randomUUID().slice(0, 8)}`; }
 function hasStarted(date: string, time: string): boolean {
   return new Date(`${date}T${time.length === 5 ? `${time}:00` : time}+05:00`).getTime() <= Date.now();
 }
@@ -50,6 +51,71 @@ async function fetchBooking(id: string) {
 }
 
 export class BookingController {
+  confirmOrderMock = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const id = param(request.params.id, 'Order id'); const now = new Date();
+    const result = await db.transaction(async (tx) => {
+      const order = (await tx.select().from(bookingOrders).where(eq(bookingOrders.id, id)).limit(1))[0];
+      if (!order || order.playerId !== request.auth!.userId) throw new AppError('not_found', 'Booking order was not found', 404);
+      if (order.status === 'confirmed' && order.paymentStatus === 'paid') return { idempotent: true, order };
+      if (order.status !== 'pending_payment') throw new AppError('order_not_payable', 'This order can no longer be paid', 409);
+      const items = await tx.select({ booking: bookings, slot: slots, ground: grounds, vendor: vendors, player: users }).from(bookings).innerJoin(slots, eq(bookings.slotId, slots.id)).innerJoin(grounds, eq(bookings.groundId, grounds.id)).innerJoin(vendors, eq(bookings.vendorId, vendors.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(eq(bookings.orderId, id));
+      if (items.length < 2 || items.some((item) => item.booking.status !== 'pending_payment' || item.booking.holdExpiresAt === null || item.booking.holdExpiresAt <= now || item.slot.holdBookingId !== item.booking.id)) {
+        throw new AppError('payment_hold_expired', 'One or more selected slots are no longer available. Please start again.', 409);
+      }
+      const confirmation = await new MockPaymentProvider().confirm({ bookingId: id, amount: order.totalAmount, requestedReference: typeof request.body?.payment_reference === 'string' ? request.body.payment_reference : null });
+      const [payment] = await tx.update(paymentAttempts).set({ status: confirmation.status, providerReference: confirmation.providerReference, paidAt: confirmation.paidAt, updatedAt: now }).where(and(eq(paymentAttempts.orderId, id), eq(paymentAttempts.status, 'pending'))).returning();
+      if (!payment) throw new AppError('payment_attempt_missing', 'Order payment attempt was not found', 409);
+      for (const item of items) {
+        const [claimed] = await tx.update(slots).set({ isBooked: true, bookedBy: request.auth!.userId, bookingId: item.booking.id, heldBy: null, holdBookingId: null, holdExpiresAt: null, updatedAt: now }).where(and(eq(slots.id, item.slot.id), eq(slots.holdBookingId, item.booking.id))).returning();
+        if (!claimed) throw new AppError('slot_unavailable', 'One or more selected slots are no longer available', 409);
+        await tx.update(bookings).set({ status: 'confirmed', paymentStatus: 'paid', paymentReference: confirmation.providerReference, holdExpiresAt: null, updatedAt: now }).where(eq(bookings.id, item.booking.id));
+        await tx.insert(ledgerEntries).values({ vendorId: item.booking.vendorId, bookingId: item.booking.id, paymentAttemptId: payment.id, type: 'booking_earning', status: 'pending', amount: item.booking.vendorAmount, description: `Pending earning for booking ${item.booking.bookingNumber}`, idempotencyKey: `earning:${item.booking.id}` });
+        await tx.update(vendors).set({ pendingEarnings: expression`${vendors.pendingEarnings} + ${item.booking.vendorAmount}`, updatedAt: now }).where(eq(vendors.id, item.booking.vendorId));
+        await tx.insert(notifications).values({ userId: item.vendor.userId, type: 'booking', title: 'New booking', message: `${item.player?.fullName || 'A player'} booked a slot at ${item.ground.title}.`, data: { bookingId: item.booking.id, orderId: id } });
+      }
+      await tx.update(bookingOrders).set({ status: 'confirmed', paymentStatus: 'paid', updatedAt: now }).where(eq(bookingOrders.id, id));
+      await tx.insert(notifications).values({ userId: request.auth!.userId, type: 'booking', title: 'Bookings confirmed', message: `${items.length} slots were confirmed.`, data: { orderId: id } });
+      return { idempotent: false, order: { ...order, status: 'confirmed', paymentStatus: 'paid' } };
+    });
+    response.json({ order: { id: result.order.id, order_number: result.order.orderNumber, status: result.order.status, payment_status: result.order.paymentStatus }, idempotent: result.idempotent });
+  };
+  createOrder = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const slotIds = Array.isArray(request.body?.slot_ids) ? [...new Set(request.body.slot_ids.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0))] : [];
+    if (slotIds.length < 2 || slotIds.length > 20) throw new AppError('invalid_order', 'Select between 2 and 20 different slots', 422);
+    const key = idempotencyKey(request); const now = new Date(); const holdExpiresAt = new Date(now.getTime() + HOLD_DURATION_MS);
+    const order = await db.transaction(async (tx) => {
+      const existing = (await tx.select().from(bookingOrders).where(eq(bookingOrders.idempotencyKey, key)).limit(1))[0];
+      if (existing) { if (existing.playerId !== request.auth!.userId) throw new AppError('idempotency_key_conflict', 'This idempotency key belongs to another order', 409); return existing; }
+      const player = (await tx.select({ role: users.role }).from(users).where(eq(users.id, request.auth!.userId)).limit(1))[0];
+      if (!player || player.role !== 'player') throw new AppError('player_mode_required', 'Switch to player mode before booking grounds', 403);
+      const slotIdList = expression.join(slotIds.map((slotId) => expression`${slotId}::uuid`), expression`, `);
+      const selected = await tx.select({ slot: slots, ground: grounds, vendor: vendors }).from(slots).innerJoin(grounds, eq(slots.groundId, grounds.id)).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(expression`${slots.id} IN (${slotIdList})`);
+      if (selected.length !== slotIds.length) throw new AppError('slot_not_found', 'One or more slots were not found', 404);
+      if (selected.some((item) => item.ground.vendorId !== selected[0]!.ground.vendorId)) {
+        throw new AppError('multiple_vendors_not_supported', 'Select slots from one venue per payment', 422);
+      }
+      let totalAmount = 0; let platformFee = 0;
+      for (const item of selected) {
+        if (!item.ground.isActive || !item.vendor.isActive || item.slot.isBooked || item.slot.isBlocked || (item.slot.holdExpiresAt && item.slot.holdExpiresAt > now) || hasStarted(item.slot.date, item.slot.startTime)) throw new AppError('slot_unavailable', 'One or more selected slots are unavailable', 409);
+        if (item.vendor.userId === request.auth!.userId) throw new AppError('self_booking_not_allowed', 'You cannot book your own ground', 403);
+        const price = calculateBookingPrice(item.slot.price, env.platformCommissionBps); totalAmount += price.totalAmount; platformFee += price.platformFee;
+      }
+      const [created] = await tx.insert(bookingOrders).values({ orderNumber: orderNumber(), playerId: request.auth!.userId, totalAmount, platformFee, idempotencyKey: key }).returning();
+      if (!created) throw new AppError('order_creation_failed', 'Unable to create booking order', 500);
+      for (const item of selected) {
+        const price = calculateBookingPrice(item.slot.price, env.platformCommissionBps);
+        const [booking] = await tx.insert(bookings).values({ bookingNumber: bookingNumber(), orderId: created.id, playerId: request.auth!.userId, vendorId: item.ground.vendorId, groundId: item.slot.groundId, slotId: item.slot.id, date: item.slot.date, startTime: item.slot.startTime, endTime: item.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee, vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: 'mock', idempotencyKey: `${key}:${item.slot.id}`, holdExpiresAt }).returning();
+        if (!booking) throw new AppError('booking_failed', 'Unable to create order bookings', 500);
+        const held = await tx.update(slots).set({ heldBy: request.auth!.userId, holdBookingId: booking.id, holdExpiresAt, updatedAt: now }).where(and(eq(slots.id, item.slot.id), eq(slots.isBooked, false), eq(slots.isBlocked, false), or(isNull(slots.holdExpiresAt), lte(slots.holdExpiresAt, now)))).returning({ id: slots.id });
+        if (!held[0]) throw new AppError('slot_unavailable', 'One or more selected slots are unavailable', 409);
+      }
+      await tx.insert(paymentAttempts).values({ orderId: created.id, playerId: request.auth!.userId, vendorId: selected[0]!.ground.vendorId, provider: 'mock', amount: totalAmount, status: 'pending', idempotencyKey: `payment:${created.id}:mock` });
+      return created;
+    });
+    response.status(201).json({ order: { id: order.id, order_number: order.orderNumber, total_amount: order.totalAmount, platform_fee: order.platformFee, status: order.status, payment_status: order.paymentStatus } });
+  };
   notifications = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const rows = await db.select().from(notifications).where(eq(notifications.userId, request.auth.userId)).orderBy(desc(notifications.createdAt));

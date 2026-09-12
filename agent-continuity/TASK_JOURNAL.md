@@ -1,5 +1,591 @@
 # TurfBookPK Task Journal
 
+## 2026-09-12 - Vendor earnings UX issue added to backlog
+
+### Accomplished
+
+- Added a dedicated P1 mobile UI/UX task to redesign the vendor earnings experience around understandable balances and transactions.
+
+### Key decisions
+
+- The current ledger is technically accurate but inappropriate as the primary vendor interface because raw accounting states, negative refund rows, and booking IDs lack business context.
+
+### Next immediate step
+
+- Keep earnings redesign queued behind the current core-priority work, or begin it when requested.
+
+### Critical paths and commands
+
+- `agent-continuity/CURRENT_CHECKLIST.md`
+- `PitchBook/src/app/(vendor)/earnings.tsx`
+
+## 2026-09-12 - Role preference scoped to the authenticated account
+
+### Accomplished
+
+- Fixed role routing so a persisted vendor-mode preference is now stored per user ID instead of globally.
+- OTP sign-in and refresh now verify the current account's vendor profile before restoring vendor mode.
+- Cleared stale vendor-store state when vendor-profile verification fails.
+- Mobile TypeScript validation passed.
+
+### Key decisions
+
+- A remembered mode is a UI preference only; it is never authorization. Only the current account's `/vendors/me` result can permit vendor-mode routing.
+
+### Next immediate step
+
+- Manually test signing out from a vendor account and signing in with a player-only account, then retest the original vendor account's persisted vendor mode.
+
+### Critical paths and commands
+
+- `PitchBook/src/store/authStore.ts`
+- `PitchBook/src/store/vendorStore.ts`
+- `PitchBook/src/app/(auth)/otp-verification.tsx`
+- `npx tsc --noEmit` (passed)
+
+## 2026-09-12 - Recommended next priority
+
+### Accomplished
+
+- Prioritized the next backlog work after verified multi-slot checkout.
+
+### Key decisions
+
+- Peak pricing is the next P1 core-MVP implementation because it directly affects what players pay and what vendors earn; UI safety/navigation work remains the next P0 quality track.
+
+### Next immediate step
+
+- If continuing core functionality, implement vendor-configured peak days/times and deterministic peak-price calculation end to end.
+
+### Critical paths and commands
+
+- `agent-continuity/CURRENT_CHECKLIST.md`
+- `Server/src/database/schema.ts`
+- `Server/src/controllers/groundController.ts`
+- `Server/src/controllers/bookingController.ts`
+
+## 2026-09-12 - Manual test handoff for multi-slot checkout
+
+### Accomplished
+
+- Prepared the manual mobile verification checklist for the recently completed atomic multi-slot checkout flow.
+
+### Key decisions
+
+- Peak pricing is not marked implemented: the existing `peak_price` column is not yet driven by vendor-configured peak day/time windows or used to calculate slot prices.
+
+### Next immediate step
+
+- Manually verify multi-slot checkout, then implement the separately prioritized vendor-configured peak-pricing workflow when requested.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(player)/ground/[id].tsx`
+- `PitchBook/src/app/(player)/payment-method.tsx`
+- `Server/src/controllers/bookingController.ts`
+
+## 2026-09-12 - Atomic multi-slot orders verified end-to-end
+
+### Accomplished
+
+- Fixed the multi-slot slot lookup to generate a valid typed SQL `IN (...)` clause instead of invalid `ANY(($1, $2))` SQL.
+- Corrected smoke-test cleanup order for ledger/payment foreign keys.
+- Verified the full PostgreSQL workflow: order creation and holds, one order-level payment attempt, all-or-nothing confirmation, child booking/slot updates, vendor earnings, notifications, and independent cancellation of each order item.
+- Marked the P1 atomic multi-slot order task complete.
+
+### Key decisions
+
+- Preserved one-vendor-per-order settlement. This remains necessary until multi-vendor payment routing and split settlement are explicitly designed.
+
+### Next immediate step
+
+- Continue with the next unchecked P1 Core MVP task: vendor-configured peak pricing, or switch to the prioritized UI/UX backlog if preferred.
+
+### Critical paths and commands
+
+- `Server/src/controllers/bookingController.ts`
+- `Server/scripts/core-mvp-smoke.mjs`
+- `PitchBook/src/app/(player)/ground/[id].tsx`
+- `PitchBook/src/app/(player)/payment-method.tsx`
+- `npm test` (17/17 passed)
+- `npm run test:e2e` (passed)
+
+## 2026-09-12 - Final verification status for multi-slot work
+
+### Accomplished
+
+- Re-ran mobile TypeScript and lint validation: both passed with no errors; lint reports 19 existing warnings.
+- Ran backend unit tests: 14 non-database tests passed.
+
+### Key decisions
+
+- Did not mark the multi-slot checklist item complete yet because PostgreSQL-dependent integration and smoke coverage cannot execute while port 5432 refuses connections.
+
+### Next immediate step
+
+- Start or expose PostgreSQL at the configured `DATABASE_URL`, then run `npm run test:e2e` and `npm test` from `Server` to complete verification.
+
+### Critical paths and commands
+
+- `PitchBook`: `npx tsc --noEmit` (passed), `npm run lint` (0 errors, 19 warnings)
+- `Server`: `npm run typecheck` (passed), `npm test` (14 passed; 3 DB integration tests blocked by `ECONNREFUSED`), `npm run test:e2e` (blocked by `ECONNREFUSED`)
+
+## 2026-09-12 - Multi-slot mobile selection and verification status
+
+### Accomplished
+
+- Connected the player ground screen to retain selections across dates and submit either a single booking or atomic multi-slot order.
+- Added a weekly-repeat shortcut that adds available matching slots over the next three weeks.
+- Added multi-slot creation, payment confirmation, earnings, and independent item-cancellation coverage to the PostgreSQL smoke script.
+- Passed backend and mobile TypeScript checks.
+
+### Key decisions
+
+- Checkout remains one-venue-per-payment because the gateway settlement model is vendor-specific.
+- The order confirmation screen routes to My Bookings, where every separately cancellable child booking is visible.
+
+### Next immediate step
+
+- Restore PostgreSQL reachability on port 5432, then rerun `npm run test:e2e`; the current run is blocked by `ECONNREFUSED`, not an assertion failure.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(player)/ground/[id].tsx`
+- `PitchBook/src/app/(player)/payment-method.tsx`
+- `PitchBook/src/lib/api/bookings.ts`
+- `Server/scripts/core-mvp-smoke.mjs`
+- `npm run typecheck` (passed)
+- `npx tsc --noEmit` (passed)
+- `npm run test:e2e` (blocked: PostgreSQL `ECONNREFUSED` on port 5432)
+
+## 2026-09-12 - Booking-order migration applied and settlement scope secured
+
+### Accomplished
+
+- Applied migration `0009_booking_orders` to the local PostgreSQL database successfully.
+- Restricted a single multi-slot payment order to slots belonging to one vendor, matching the future gateway's vendor-settlement requirement.
+
+### Key decisions
+
+- A cross-vendor cart would require split settlement/payment-attempt semantics. Until that is deliberately designed, the API rejects it rather than recording a misleading single-vendor payment attempt.
+
+### Next immediate step
+
+- Connect player multi-select UI to order creation/confirmation, then add and execute end-to-end coverage.
+
+### Critical paths and commands
+
+- `Server/drizzle/0009_booking_orders.sql`
+- `Server/src/controllers/bookingController.ts`
+- `npm run db:migrate`
+
+## 2026-09-11 - Atomic multi-slot order confirmation API
+
+### Accomplished
+
+- Added order-level mock confirmation: one payment attempt confirms every held child booking atomically.
+- Confirmation claims all slots, posts one pending ledger entry per booking, updates vendor pending balances, and sends player/vendor notifications.
+
+### Key decisions
+
+- If any held child slot is no longer valid, the transaction rejects the order and does not partially confirm or charge it.
+
+### Next immediate step
+
+- Apply the new booking-order migration, add/execute order E2E coverage, then build the player multi-select checkout UI.
+
+### Critical paths and commands
+
+- `Server/src/controllers/bookingController.ts`
+- `Server/src/router/bookingRoutes.ts`
+- `Server/drizzle/0009_booking_orders.sql`
+- `npm run typecheck` (passed)
+
+## 2026-09-11 - Atomic multi-slot order creation API
+
+### Accomplished
+
+- Added `POST /api/bookings/orders` for atomic creation of an order with 2–20 selected slots.
+- The endpoint validates every slot, creates all child bookings and holds in one transaction, and creates one order-level payment attempt.
+
+### Key decisions
+
+- Any unavailable/invalid slot aborts the whole order; no partial booking order is created.
+
+### Next immediate step
+
+- Implement atomic order payment confirmation, ledger posting, notifications, and then expose player multi-select checkout UI.
+
+### Critical paths and commands
+
+- `Server/src/controllers/bookingController.ts`
+- `Server/src/router/bookingRoutes.ts`
+- `npm run typecheck` (passed)
+
+## 2026-09-11 - Multi-slot booking order schema foundation
+
+### Accomplished
+
+- Added the `booking_orders` schema and migration.
+- Linked bookings optionally to an order and made payment attempts target exactly one booking or one order.
+
+### Key decisions
+
+- Existing single-booking payment attempts remain compatible; the database check prevents an ambiguous payment attempt from targeting both a booking and an order.
+
+### Next immediate step
+
+- Implement atomic order creation/confirmation APIs and then the player multi-select checkout UI.
+
+### Critical paths and commands
+
+- `Server/src/database/schema.ts`
+- `Server/drizzle/0009_booking_orders.sql`
+- `npm run typecheck` (passed)
+
+## 2026-09-11 - Approved multi-slot checkout and peak-pricing contract
+
+### Accomplished
+
+- Confirmed the product contract for vendor-configured peak windows and atomic multi-slot checkout.
+- Updated the pending P1 checklist language to specify the agreed behavior rather than leaving ambiguous feature names.
+
+### Key decisions
+
+- Peak price overrides base price only for vendor-configured days/times.
+- Multi-slot checkout is all-or-nothing, uses one payment attempt, supports manual selection plus weekly repeat, and preserves independent cancellation/refund per booking.
+
+### Next immediate step
+
+- Add the booking-order schema/migration and provider-neutral order payment attempt, then implement atomic order confirmation before exposing mobile multi-select UI.
+
+### Critical paths and commands
+
+- `Server/src/database/schema.ts`
+- `Server/drizzle/`
+- `Server/src/controllers/bookingController.ts`
+- `PitchBook/src/app/(player)/ground/[id].tsx`
+
+## 2026-09-11 - Pending product decisions for peak pricing and multi-slot checkout
+
+### Accomplished
+
+- Captured the intended use case: players select recurring or arbitrary future slots across dates/times, pay once, and receive all confirmed slots after payment success.
+
+### Key decisions
+
+- Implementation is paused pending explicit peak-hour rules, all-or-nothing availability behavior, and cancellation/refund rules for a multi-slot order.
+
+### Next immediate step
+
+- Receive the product decisions and implement the order, payment attempt, atomic slot allocation, and mobile multi-select checkout flow.
+
+### Critical paths and commands
+
+- `agent-continuity/CURRENT_CHECKLIST.md`
+- `Server/src/database/schema.ts`
+- `Server/src/controllers/bookingController.ts`
+- `PitchBook/src/app/(player)/ground/[id].tsx`
+
+## 2026-09-11 - P1 Core MVP checklist reconciliation
+
+### Accomplished
+
+- Reconciled recent implementation work with P1 Core MVP checkboxes.
+- Marked complete only the notification read/resource work, recurring/bulk slot creation, scheduling-policy enforcement, and Pakistan-local date defaults.
+
+### Key decisions
+
+- Left profile/avatar, vendor media, real SMS/storage, peak pricing, and multi-slot payment unchecked because each remains partially implemented or needs an explicit product/provider decision.
+
+### Next immediate step
+
+- Begin the prioritized P0 mobile UI/UX backlog or proceed when the outstanding product decisions are provided.
+
+### Critical paths and commands
+
+- `agent-continuity/CURRENT_CHECKLIST.md`
+
+## 2026-09-11 - Mobile UI/UX audit and prioritized backlog
+
+### Accomplished
+
+- Audited the player and vendor mobile routes, navigation, notifications, forms, dashboard actions, and slot-management UI.
+- Added a separate P0/P1/P2 mobile UI/UX checklist with concrete, route-level issues and follow-up work.
+
+### Key decisions
+
+- Kept UI/UX remediation separate from Core MVP/backend tasks so visible completeness is not confused with business-rule completion.
+- Kept provider-dependent and product-decision-dependent work explicitly deferred rather than representing placeholders as complete features.
+
+### Next immediate step
+
+- Start P0 UI/UX work with notification read-state integration, reliable navigation/back headers, and disconnected controls.
+
+### Critical paths and commands
+
+- `agent-continuity/CURRENT_CHECKLIST.md`
+- `PitchBook/src/app/(player)/notifications.tsx`
+- `PitchBook/src/app/(vendor)/notifications.tsx`
+- `PitchBook/src/app/(player)/index.tsx`
+- `PitchBook/src/app/(vendor)/index.tsx`
+
+## 2026-09-11 - Scheduling policies completed and verified
+
+### Accomplished
+
+- Applied operating-hour, maximum-duration, and advance-window policies to single-slot creation, recurring creation, and slot edits.
+- Updated the PostgreSQL smoke test to generate policy-compliant future dates.
+
+### Key decisions
+
+- Did not invent peak hours or a multi-slot checkout/payment rule; both require a product decision because they directly affect money and booking behavior.
+
+### Next immediate step
+
+- Obtain the desired peak-hour rule and multi-slot checkout UX/payment policy before implementing the final P1 core items.
+
+### Critical paths and commands
+
+- `Server/src/controllers/groundController.ts`
+- `Server/src/configs/env.ts`
+- `Server/scripts/core-mvp-smoke.mjs`
+- `npm run typecheck`, `npm test`, and `npm run test:e2e` (passed; 17/17 tests and E2E)
+
+## 2026-09-11 - Slot scheduling policy foundation
+
+### Accomplished
+
+- Added configurable maximum slot duration and advance-booking window environment settings.
+- Enforced those rules and the ground's operating hours for new single-slot creation.
+
+### Key decisions
+
+- Defaults are 06:00–23:00 ground hours, 240-minute maximum slots, and a 90-day advance window; deployment configuration can tighten these without code changes.
+
+### Next immediate step
+
+- Apply the same policy to recurring and edited slots, then expose operating-hour configuration in the vendor ground editor.
+
+### Critical paths and commands
+
+- `Server/src/configs/env.ts`
+- `Server/src/controllers/groundController.ts`
+- `npm run typecheck` (passed)
+
+## 2026-09-11 - Vendor recurring slot UI
+
+### Accomplished
+
+- Added recurring-slot controls to vendor slot management.
+- Vendors can repeat the current valid slot details every N days for 1–60 occurrences.
+
+### Key decisions
+
+- Recurrence uses the same validated date, start/end time, and price as the normal slot form to avoid divergent scheduling logic.
+
+### Next immediate step
+
+- Implement server-side operating hours, maximum duration, and advance-booking policies.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(vendor)/ground-slots.tsx`
+- `npx tsc --noEmit` and `npm run lint` (passed; 0 errors)
+
+## 2026-09-11 - Atomic recurring slot creation API
+
+### Accomplished
+
+- Added an authenticated recurring-slot endpoint and mobile API method.
+- The server creates 1–60 slots at a chosen day interval in one transaction; any invalid/future-date/overlap failure rolls back the entire batch.
+
+### Key decisions
+
+- Recurrence is interval-based rather than a complex weekly-rule engine for the first MVP version.
+
+### Next immediate step
+
+- Add the recurring controls to the vendor slot-management UI, then implement operating-hour and advance-booking policies.
+
+### Critical paths and commands
+
+- `Server/src/controllers/groundController.ts`
+- `Server/src/router/groundRoutes.ts`
+- `PitchBook/src/lib/api/vendors.ts`
+- `npm run typecheck` and `npm test` (Server: 17/17 passed)
+
+## 2026-09-11 - Player and vendor profile editing UI
+
+### Accomplished
+
+- Added player profile editing for name, city, and bio.
+- Added vendor business editing for name, phone, city, and description.
+- Added navigation from both profile pages to their edit screens.
+
+### Key decisions
+
+- Avatar, vendor logo, and cover-image upload remain explicitly deferred until object storage provides durable URLs.
+
+### Next immediate step
+
+- Continue with recurring/bulk slot creation and server-side operating-hour, duration, advance-window, and peak-pricing policies.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(player)/edit-profile.tsx`
+- `PitchBook/src/app/(vendor)/edit-profile.tsx`
+- `Server/src/controllers/vendorController.ts`
+- `npm run typecheck` (Server: passed)
+- `npx tsc --noEmit` and `npm run lint` (PitchBook: passed; 0 errors)
+
+## 2026-09-11 - Vendor profile API update capability
+
+### Accomplished
+
+- Added authenticated vendor profile updates for business name, phone, city, description, and active status.
+- Added the matching mobile API method.
+
+### Key decisions
+
+- Kept media fields out of this update operation until the cloud-storage upload contract is implemented; local device URIs are not accepted as durable media.
+- Player profile UI work remains incomplete; an attempted replacement was not applied due to a file-operation limitation, so the existing screen was preserved.
+
+### Next immediate step
+
+- Add the vendor-profile form and player-profile editing UI, then proceed to recurring/bulk slots and scheduling policies.
+
+### Critical paths and commands
+
+- `Server/src/controllers/vendorController.ts`
+- `Server/src/router/vendorRoutes.ts`
+- `PitchBook/src/lib/api/vendors.ts`
+- `npm run typecheck` (Server: passed)
+- `npx tsc --noEmit` (PitchBook: passed)
+
+## 2026-09-11 - Future provider boundaries added
+
+### Accomplished
+
+- Added an SMS-provider contract with a safe development implementation for future OTP delivery integration.
+- Added an object-storage contract for server-issued upload targets and owner-scoped deletion, covering avatars, ground images, and vendor media.
+
+### Key decisions
+
+- Did not wire a real provider without credentials or a selected vendor; production integrations must implement these contracts and use short-lived upload targets.
+
+### Next immediate step
+
+- Continue P1 with profile editing and scheduling/slot policy functionality.
+
+### Critical paths and commands
+
+- `Server/src/services/smsProvider.ts`
+- `Server/src/services/objectStorageProvider.ts`
+- `npm run typecheck` (passed)
+
+## 2026-09-11 - P1 notification API and vendor-mode persistence
+
+### Accomplished
+
+- Preserved the user's selected mode across sign-out; an existing vendor now returns directly to vendor mode after OTP sign-in.
+- Added the dedicated authenticated notification API with list, unread count, mark-one-read, and mark-all-read operations.
+- Corrected vendor slot creation defaults to use Pakistan-local dates.
+
+### Key decisions
+
+- The stored preferred mode is intentionally retained after sign-out, while all authentication tokens and profile data are still cleared.
+- The legacy booking notification endpoint remains temporarily compatible while mobile moves to the dedicated resource.
+
+### Next immediate step
+
+- Add credential-independent provider interfaces for SMS and image storage, then continue profile and scheduling functionality.
+
+### Critical paths and commands
+
+- `PitchBook/src/store/authStore.ts`
+- `PitchBook/src/app/index.tsx`
+- `PitchBook/src/app/(auth)/otp-verification.tsx`
+- `Server/src/controllers/notificationController.ts`
+- `Server/src/router/notificationRoutes.ts`
+- `Server/src/server.ts`
+- `npm run typecheck`, `npm test`, `npm run test:e2e` (all passed)
+- `npx tsc --noEmit`, `npm run lint` (passed; 0 errors)
+
+## 2026-09-11 - Vendor and ground management gaps completed
+
+### Accomplished
+
+- Added explicit ground activation/deactivation controls, full available-slot editing, a connected vendor notification screen, and vendor-dashboard sign-out.
+- Removed the checkout countdown and pre-created checkout reservation; booking creation now begins only when Confirm is pressed.
+- Expanded PostgreSQL E2E coverage for activation visibility and slot edits.
+
+### Key decisions
+
+- Retained the server's short internal payment-safety reservation between create and mock-confirm to preserve double-booking protection, but removed it as a user-facing timed checkout feature.
+- Booked slots remain non-editable.
+
+### Next immediate step
+
+- Restart Expo with a cleared cache and manually verify the four corrected vendor/player flows.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(vendor)/grounds.tsx`
+- `PitchBook/src/app/(vendor)/ground-slots.tsx`
+- `PitchBook/src/app/(vendor)/notifications.tsx`
+- `PitchBook/src/app/(vendor)/index.tsx`
+- `PitchBook/src/app/(player)/payment-method.tsx`
+- `Server/scripts/core-mvp-smoke.mjs`
+- Server tests/E2E passed; mobile TypeScript and lint passed with zero errors.
+
+## 2026-09-11 - Ground edit and slot creation validation fix
+
+### Accomplished
+
+- Replaced the mobile slot form's brittle combined validation with normalized date, time, and price parsing plus field-specific error messages.
+- Slot entry now safely accepts surrounding whitespace, one-digit hours such as `9:00`, and comma-formatted whole-number prices such as `2,000`.
+- Added defensive server-side date/time normalization and strict real-calendar-date validation.
+- Expanded the PostgreSQL smoke test to verify ground edits persist and are publicly visible, and that normalized slot times persist correctly.
+
+### Key decisions
+
+- Kept the API's canonical stored time format as zero-padded 24-hour time while allowing reasonable human input variants at the boundary.
+- Continued requiring positive integer PKR prices; decimal and negative prices remain invalid.
+
+### Next immediate step
+
+- Restart the server and Expo bundler, then manually retry ground editing and slot creation before continuing the broader mobile checklist.
+
+### Critical paths and commands
+
+- `PitchBook/src/app/(vendor)/ground-slots.tsx`
+- `Server/src/controllers/groundController.ts`
+- `Server/scripts/core-mvp-smoke.mjs`
+- `npm run typecheck`, `npm test`, and `npm run test:e2e` (passed; 17/17 unit/integration tests)
+- `npx tsc --noEmit` and `npm run lint` (passed; 0 lint errors, 19 existing warnings)
+
+## 2026-09-11 - Mobile manual verification handoff
+
+### Accomplished
+
+- Prepared a concise manual mobile smoke-test checklist covering authentication, role switching, ground/slot management, booking, cancellation, notifications, no-show, and earnings.
+
+### Key decisions
+
+- Prioritized end-to-end behavior and persistence checks; payment and uploads remain mocked/deferred integrations.
+
+### Next immediate step
+
+- Run the checklist on a mobile device against the local API/PostgreSQL instance and report any failing step with its visible error and server log.
+
+### Critical paths and commands
+
+- `agent-continuity/CURRENT_CHECKLIST.md`
+- `PitchBook/src/lib/api/client.ts`
+- `npx expo start -c`
+- `npm run dev` (Server)
+
 ## 2026-09-08 — Full project audit
 
 ### Accomplished

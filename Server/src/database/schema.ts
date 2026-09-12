@@ -18,6 +18,8 @@ export const paymentStatusEnum = pgEnum('payment_status', [
   'refunded',
 ]);
 
+export const bookingOrderStatusEnum = pgEnum('booking_order_status', ['pending_payment', 'confirmed', 'cancelled', 'expired']);
+
 export const ledgerEntryTypeEnum = pgEnum('ledger_entry_type', ['booking_earning', 'refund', 'adjustment', 'payout']);
 export const ledgerEntryStatusEnum = pgEnum('ledger_entry_status', ['pending', 'posted', 'reversed']);
 
@@ -131,6 +133,7 @@ export const bookings = pgTable('bookings', {
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
   groundId: uuid('ground_id').notNull().references(() => grounds.id),
   slotId: uuid('slot_id').notNull().references(() => slots.id),
+  orderId: uuid('order_id'),
   date: date('date').notNull(),
   startTime: time('start_time').notNull(),
   endTime: time('end_time').notNull(),
@@ -153,9 +156,23 @@ export const bookings = pgTable('bookings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const bookingOrders = pgTable('booking_orders', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orderNumber: text('order_number').notNull().unique(),
+  playerId: uuid('player_id').notNull().references(() => users.id),
+  totalAmount: integer('total_amount').notNull(),
+  platformFee: integer('platform_fee').notNull().default(0),
+  status: bookingOrderStatusEnum('status').notNull().default('pending_payment'),
+  paymentStatus: paymentStatusEnum('payment_status').notNull().default('pending'),
+  idempotencyKey: text('idempotency_key').notNull().unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const paymentAttempts = pgTable('payment_attempts', {
   id: uuid('id').defaultRandom().primaryKey(),
-  bookingId: uuid('booking_id').notNull().references(() => bookings.id),
+  bookingId: uuid('booking_id').references(() => bookings.id),
+  orderId: uuid('order_id').references(() => bookingOrders.id),
   playerId: uuid('player_id').notNull().references(() => users.id),
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
   provider: text('provider').notNull(),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -10,16 +10,30 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { BookingProfile, confirmMockBooking, createBooking, getBooking } from '@/lib/api/bookings';
+import { confirmMockBooking, confirmMockBookingOrder, createBooking, createBookingOrder } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
-import { CheckoutHoldTimer } from '@/components/booking/CheckoutHoldTimer';
 import { PricingBreakdown } from '@/components/booking/PricingBreakdown';
+
+type CheckoutSlot = { id: string; date: string; startTime: string; endTime: string; price: number };
+
+function parseSelectedSlots(value: string | string[] | undefined): CheckoutSlot[] {
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((slot): slot is CheckoutSlot => Boolean(slot) && typeof slot.id === 'string' && typeof slot.date === 'string' && typeof slot.startTime === 'string' && typeof slot.endTime === 'string' && typeof slot.price === 'number');
+  } catch {
+    return [];
+  }
+}
 
 export default function PaymentMethodScreen() {
   const params = useLocalSearchParams<{
     slotId: string;
+    slotIds?: string;
+    selectedSlots?: string;
     groundTitle: string;
     groundAddress: string;
     date: string;
@@ -30,58 +44,38 @@ export default function PaymentMethodScreen() {
 
   const [reference, setReference] = useState('');
   const [loading, setLoading] = useState(false);
-  const [holdExpired, setHoldExpired] = useState(false);
-  const [pendingBooking, setPendingBooking] = useState<BookingProfile | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const [idempotencyKey] = useState(
     () => `booking-${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
-  const slotPrice = Number(params.amount) || 0;
-  const pendingBookingId = pendingBooking?.id;
-
-  useEffect(() => {
-    if (!params.slotId) return;
-    let active = true;
-    createBooking(params.slotId, idempotencyKey)
-      .then((booking) => {
-        if (!active) return;
-        setPendingBooking(booking);
-        setHoldExpired(booking.status === 'expired');
-      })
-      .catch((error: any) => {
-        if (active) setToast(error?.message || 'This slot is no longer available.');
-      });
-    return () => { active = false; };
-  }, [idempotencyKey, params.slotId]);
-
-  useFocusEffect(useCallback(() => {
-    if (!pendingBookingId) return;
-    getBooking(pendingBookingId)
-      .then((booking) => {
-        setPendingBooking(booking);
-        setHoldExpired(booking.status === 'expired');
-      })
-      .catch(() => setHoldExpired(true));
-  }, [pendingBookingId]));
+  const selectedSlots = useMemo(() => parseSelectedSlots(params.selectedSlots), [params.selectedSlots]);
+  const slotIds = useMemo(() => {
+    if (selectedSlots.length) return selectedSlots.map((slot) => slot.id);
+    if (typeof params.slotIds === 'string') {
+      try { const parsed = JSON.parse(params.slotIds); if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string'); } catch { /* Fall through to the single slot. */ }
+    }
+    return params.slotId ? [params.slotId] : [];
+  }, [params.slotId, params.slotIds, selectedSlots]);
+  const slotPrice = selectedSlots.length
+    ? selectedSlots.reduce((total, slot) => total + slot.price, 0)
+    : Number(params.amount) || 0;
+  const isMultiSlotOrder = slotIds.length > 1;
 
   const handleConfirm = async () => {
-    if (!params.slotId) {
-      setToast('The selected slot is missing. Please select your slot again.');
+    if (!slotIds.length) {
+      setToast('The selected slots are missing. Please select them again.');
       return;
     }
-    if (holdExpired) {
-      setToast('Your hold timer has expired. Please go back and select the slot again.');
-      return;
-    }
-
     setLoading(true);
     try {
-      if (!pendingBooking) {
-        setToast('Your slot hold is still being prepared. Please wait a moment.');
+      if (isMultiSlotOrder) {
+        const order = await createBookingOrder(slotIds, idempotencyKey);
+        await confirmMockBookingOrder(order.id, reference.trim() || undefined);
+        router.replace('/(player)/bookings');
         return;
       }
-
+      const pendingBooking = await createBooking(slotIds[0]!, idempotencyKey);
       const booking = await confirmMockBooking(pendingBooking.id, reference.trim() || undefined);
 
       // 3. Navigate to booking confirmation screen with real persisted booking details
@@ -130,18 +124,6 @@ export default function PaymentMethodScreen() {
           contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Checkout Hold Countdown */}
-          <View className="mb-4">
-            {pendingBooking?.hold_expires_at ? (
-              <CheckoutHoldTimer expiresAt={pendingBooking.hold_expires_at} onExpire={() => setHoldExpired(true)} />
-            ) : (
-              <View className="rounded-2xl p-4 flex-row items-center bg-[#E0F2FE]">
-                <ActivityIndicator size="small" color="#0284C7" />
-                <Text className="text-[#0284C7] text-xs font-semibold ml-3">Securing your slot...</Text>
-              </View>
-            )}
-          </View>
-
           {/* Ground & Slot Summary Card */}
           <View className="bg-white rounded-2xl p-5 border border-[#E5E5E5] mb-4">
             <Text className="text-xl font-bold text-[#1A1A2E]">{params.groundTitle || 'Ground'}</Text>
@@ -158,6 +140,11 @@ export default function PaymentMethodScreen() {
                   {params.startTime} - {params.endTime}
                 </Text>
               </View>
+              {isMultiSlotOrder && (
+                <Text className="text-[#4CAF50] text-sm font-semibold mt-3">
+                  {slotIds.length} slots selected across your chosen dates
+                </Text>
+              )}
             </View>
           </View>
 
@@ -194,14 +181,14 @@ export default function PaymentMethodScreen() {
       {/* Bottom Sticky Action Bar */}
       <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-[#E5E5E5] px-5 py-4">
         <TouchableOpacity
-          disabled={loading || holdExpired || !pendingBooking}
+          disabled={loading}
           onPress={handleConfirm}
           accessibilityRole="button"
           accessibilityLabel={`Confirm booking for PKR ${slotPrice}`}
           className={`rounded-full py-4 items-center ${
-            loading || holdExpired || !pendingBooking ? 'bg-[#9CA3AF]' : 'bg-[#4CAF50]'
+            loading ? 'bg-[#9CA3AF]' : 'bg-[#4CAF50]'
           }`}
-          style={!loading && !holdExpired && pendingBooking ? {
+          style={!loading ? {
             shadowColor: '#4CAF50',
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.25,
@@ -213,7 +200,7 @@ export default function PaymentMethodScreen() {
             <ActivityIndicator color="white" />
           ) : (
             <Text className="text-white font-bold text-base">
-              {holdExpired ? 'Hold Expired - Select Again' : `Confirm Booking · PKR ${slotPrice.toLocaleString()}`}
+              {`Confirm Booking · PKR ${slotPrice.toLocaleString()}`}
             </Text>
           )}
         </TouchableOpacity>

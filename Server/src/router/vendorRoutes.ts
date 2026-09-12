@@ -9,6 +9,7 @@ export function createVendorRouter(controller: VendorController, tokenService: T
   router.get('/me', controller.me);
   router.get('/earnings', controller.earnings);
   router.patch('/mode', controller.activateMode);
+  router.patch('/me', controller.update);
   router.post('/', controller.create);
   return router;
 }

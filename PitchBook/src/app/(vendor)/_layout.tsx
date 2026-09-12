@@ -134,6 +134,8 @@ export default function VendorLayout() {
         <Stack.Screen name="add-ground" />
         <Stack.Screen name="ground-slots" />
         <Stack.Screen name="booking/[id]" />
+        <Stack.Screen name="notifications" />
+        <Stack.Screen name="edit-profile" />
       </Stack>
       <VendorTabBar />
     </View>

@@ -8,7 +8,7 @@ import { useVendorStore } from '@/store/vendorStore';
 import { Ground, listVendorGrounds } from '@/lib/api/vendors';
 
 export default function VendorDashboard() {
-  const { profile, switchToPlayer } = useAuthStore();
+  const { profile, signOut, switchToPlayer } = useAuthStore();
   const { vendorProfile } = useVendorStore();
   const [refreshing, setRefreshing] = useState(false);
   const [grounds, setGrounds] = useState<Ground[]>([]);
@@ -51,6 +51,10 @@ export default function VendorDashboard() {
       ]
     );
   };
+  const handleSignOut = () => Alert.alert('Sign out?', 'You will need to verify your phone number to sign in again.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Sign Out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/(auth)/phone-input'); } },
+  ]);
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
@@ -87,8 +91,16 @@ export default function VendorDashboard() {
           <TouchableOpacity
             className="bg-white w-10 h-10 rounded-full items-center justify-center"
             style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
-            >
+            onPress={() => router.push('/(vendor)/notifications')}>
             <Ionicons name="notifications-outline" size={20} color="#1A1A2E" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+            className="bg-white w-10 h-10 rounded-full items-center justify-center"
+            onPress={handleSignOut}
+          >
+            <Ionicons name="log-out-outline" size={20} color="#DC2626" />
           </TouchableOpacity>
           <TouchableOpacity
             className="bg-white w-10 h-10 rounded-full items-center justify-center"
