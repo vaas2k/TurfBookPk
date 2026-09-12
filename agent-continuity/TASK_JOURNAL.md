@@ -1,5 +1,27 @@
 # TurfBookPK Task Journal
 
+## 2026-09-12 - Verified implementation pushed to GitHub
+
+### Accomplished
+
+- Committed and pushed the accumulated verified mobile, backend, migration, test, checklist, and continuity changes to `origin/main` as commit `d26e565` (`Complete core MVP booking and role safety`).
+
+### Key decisions
+
+- Included the current in-scope work as one coherent commit; no environment files or database test data were staged.
+
+### Next immediate step
+
+- Continue with the next prioritized implementation task when requested.
+
+### Critical paths and commands
+
+- `git status --short`
+- `git diff --check`
+- `git add PitchBook Server agent-continuity`
+- `git commit -m "Complete core MVP booking and role safety"`
+- `git push origin main`
+
 ## 2026-09-12 - Vendor earnings UX issue added to backlog
 
 ### Accomplished
