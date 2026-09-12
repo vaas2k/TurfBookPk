@@ -14,7 +14,7 @@
 
 ### Next immediate step
 
-- Commit the verified working tree and push the release to `origin/main`.
+- Continue with physical mobile verification of dialogs, back navigation, vendor overview, and the redesigned earnings experience.
 
 ### Critical paths and commands
 
@@ -23,6 +23,7 @@
 - `npx tsc --noEmit` (passed)
 - `npx eslint src --no-cache` (0 errors, 24 warnings)
 - `npm run typecheck` (passed), `npm test` (18/18 passed), `npm run test:e2e` (passed)
+- Released as commit `5057eff` to `origin/main`.
 
 ## 2026-09-12 - Safe back-navigation repair
 
