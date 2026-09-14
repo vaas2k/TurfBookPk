@@ -145,6 +145,33 @@ export async function listPublicGrounds(): Promise<Ground[]> {
   return result.grounds;
 }
 
+export interface PublicGroundSearchResult {
+  grounds: Ground[];
+  slots_by_ground: Record<string, Slot[]>;
+  pagination: { page: number; limit: number; total: number; has_more: boolean };
+}
+
+export interface PublicGroundSearchOptions {
+  q?: string;
+  city?: string;
+  pitch_type?: string;
+  amenities?: string[];
+  availability_date: string;
+  max_price?: number;
+  sort?: 'recommended' | 'price_low' | 'price_high' | 'rating';
+  page?: number;
+  limit?: number;
+}
+
+export async function searchPublicGrounds(options: PublicGroundSearchOptions): Promise<PublicGroundSearchResult> {
+  const params = new URLSearchParams();
+  Object.entries(options).forEach(([key, value]) => {
+    if (value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) return;
+    params.set(key, Array.isArray(value) ? value.join(',') : String(value));
+  });
+  return apiRequest<PublicGroundSearchResult>(`/grounds?${params.toString()}`);
+}
+
 export async function getPublicGround(id: string): Promise<{ ground: Ground; slots: Slot[] }> {
   return apiRequest<{ ground: Ground; slots: Slot[] }>(`/grounds/${id}`);
 }

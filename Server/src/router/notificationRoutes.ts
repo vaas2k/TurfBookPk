@@ -6,6 +6,7 @@ import { TokenService } from '../services/tokenService.js';
 export function createNotificationRouter(controller: NotificationController, tokenService: TokenService): Router {
   const router = Router();
   router.use(requireAuth(tokenService));
+  router.post('/push-token', controller.registerPushToken);
   router.get('/', controller.list);
   router.patch('/read-all', controller.markAllRead);
   router.patch('/:id/read', controller.markRead);

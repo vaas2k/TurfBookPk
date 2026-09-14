@@ -9,6 +9,9 @@ import { useFonts } from 'expo-font';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { getApiConfigurationError } from '@/lib/api/client';
 import { AppDialogHost } from '@/components/ui/app-dialog';
+import { Platform } from 'react-native';
+import { registerForPushNotifications } from '@/lib/notifications';
+import { registerPushToken } from '@/lib/api/notifications';
 
 //@ts-ignore
 import '../global.css';
@@ -37,6 +40,8 @@ export default function RootLayout() {
         const currentUser = useAuthStore.getState().user;
         if (currentUser) {
           await checkVendorStatus(currentUser.id);
+          const token = await registerForPushNotifications();
+          if (token) await registerPushToken(token, Platform.OS);
         }
       } finally {
         setIsReady(true);

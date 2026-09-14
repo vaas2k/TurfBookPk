@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getPublicGround, Ground, Slot } from '@/lib/api/vendors';
 import { Toast } from '@/components/ui/toast';
 import { goBackOrReplace } from '@/lib/navigation';
+import { openGroundDirections } from '@/components/ground-discovery-map';
 
 const fallbackImage = 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200';
 
@@ -176,6 +177,11 @@ export default function GroundDetail() {
             <Text className="text-[#4B5563] leading-5 text-sm">
               {ground.description || 'No description provided by the venue owner.'}
             </Text>
+          </View>
+
+          <View className="mt-6">
+            <Text className="text-lg font-bold text-[#1A1A2E] mb-3">Location</Text>
+            {ground.latitude !== null && ground.longitude !== null ? <><View className="rounded-2xl bg-[#F5F5F5] p-4 flex-row items-start"><Ionicons name="location-outline" size={21} color="#2E7D32" /><View className="flex-1 ml-3"><Text className="text-[#1A1A2E] font-semibold">{ground.address}</Text><Text className="text-[#737373] text-sm mt-1">{ground.location}, {ground.city}</Text></View></View><TouchableOpacity accessibilityRole="button" accessibilityLabel={`Get directions to ${ground.title}`} onPress={() => openGroundDirections(ground).catch(() => setToast('Unable to open directions.'))} className="mt-3 rounded-xl bg-[#E8F5E9] py-3 flex-row items-center justify-center"><Ionicons name="navigate-outline" size={18} color="#2E7D32" /><Text className="text-[#2E7D32] font-bold ml-2">Get directions</Text></TouchableOpacity></> : <Text className="text-[#737373] text-sm">The venue owner has not added map coordinates yet.</Text>}
           </View>
 
           {/* Choose Date */}

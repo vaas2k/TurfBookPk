@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { confirmMockBooking, confirmMockBookingOrder, createBooking, createBookingOrder } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { goBackOrReplace } from '@/lib/navigation';
+import { scheduleBookingReminders } from '@/lib/notifications';
 import { PricingBreakdown } from '@/components/booking/PricingBreakdown';
 
 type CheckoutSlot = { id: string; date: string; startTime: string; endTime: string; price: number };
@@ -78,6 +79,7 @@ export default function PaymentMethodScreen() {
       }
       const pendingBooking = await createBooking(slotIds[0]!, idempotencyKey);
       const booking = await confirmMockBooking(pendingBooking.id, reference.trim() || undefined);
+      await scheduleBookingReminders(booking);
 
       // 3. Navigate to booking confirmation screen with real persisted booking details
       router.replace({

@@ -14,6 +14,7 @@ import { VendorFormData } from '@/components/vendor/VendorRegistrationModal';
 import { Ground, listGroundSlots, listPublicGrounds } from '@/lib/api/vendors';
 import { getNotifications } from '@/lib/api/notifications';
 import { appDialog } from '@/components/ui/app-dialog';
+import * as Location from 'expo-location';
 
 const { width } = Dimensions.get('window');
 
@@ -21,7 +22,14 @@ type PlayerGround = ReturnType<typeof toPlayerGround>;
 
 const filterOptions = ['All', '5-a-side', '7-a-side', 'Turf'];
 
-function toPlayerGround(ground: Ground) {
+function distanceKm(from: { latitude: number; longitude: number }, ground: Ground): number | null {
+  if (ground.latitude === null || ground.longitude === null) return null;
+  const radians = (value: number) => value * Math.PI / 180;
+  const a = Math.sin(radians(ground.latitude - from.latitude) / 2) ** 2 + Math.cos(radians(from.latitude)) * Math.cos(radians(ground.latitude)) * Math.sin(radians(ground.longitude - from.longitude) / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toPlayerGround(ground: Ground, distance: number | null = null) {
   return {
     id: ground.id,
     name: ground.title,
@@ -32,7 +40,8 @@ function toPlayerGround(ground: Ground) {
     slotsAvailable: ground.is_active ? 1 : 0,
     image: ground.cover_image || ground.images[0] || 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800',
     type: ground.pitch_type || 'Turf',
-    distance: '',
+    distance: distance === null ? '' : `${distance.toFixed(1)} km away`,
+    distanceKm: distance,
     isAvailableNow: ground.is_active,
   };
 }
@@ -44,6 +53,7 @@ export default function PlayerHome() {
   const [searchQuery, setSearchQuery] = useState('');
   const [groundList, setGroundList] = useState<PlayerGround[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
   // Modal states
   const [toastVisible, setToastVisible] = useState(false);
@@ -57,13 +67,20 @@ export default function PlayerHome() {
   const loadGrounds = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [grounds, notifications] = await Promise.all([listPublicGrounds(), getNotifications()]);
+      const [grounds, notifications, locationPermission] = await Promise.all([listPublicGrounds(), getNotifications(), Location.getForegroundPermissionsAsync()]);
       setUnreadNotifications(notifications.unread_count);
+      let currentLocation = userLocation;
+      const permission = locationPermission.granted ? locationPermission : await Location.requestForegroundPermissionsAsync();
+      if (permission.granted) {
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        currentLocation = { latitude: position.coords.latitude, longitude: position.coords.longitude }; setUserLocation(currentLocation);
+      }
       const withAvailability = await Promise.all(grounds.map(async (ground) => {
         const slots = await listGroundSlots(ground.id);
         const available = slots.filter((slot) => !slot.is_booked && !slot.is_blocked).length;
-        return { ...toPlayerGround(ground), slotsAvailable: available, isAvailableNow: ground.is_active && available > 0 };
+        return { ...toPlayerGround(ground, currentLocation ? distanceKm(currentLocation, ground) : null), slotsAvailable: available, isAvailableNow: ground.is_active && available > 0 };
       }));
+      withAvailability.sort((a, b) => a.distanceKm === null ? 1 : b.distanceKm === null ? -1 : a.distanceKm - b.distanceKm);
       setGroundList(withAvailability);
     } catch (error) {
       console.log('[PlayerHome] Ground load failed:', error);

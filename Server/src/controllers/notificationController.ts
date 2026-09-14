@@ -1,7 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { Response } from 'express';
 import { db } from '../database/client.js';
-import { notifications } from '../database/schema.js';
+import { notifications, pushTokens } from '../database/schema.js';
 import { AppError } from '../helpers/errors.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
@@ -11,6 +11,14 @@ function notificationId(value: string | string[] | undefined): string {
 }
 
 export class NotificationController {
+  registerPushToken = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const token = typeof request.body?.token === 'string' ? request.body.token.trim() : '';
+    const platform = typeof request.body?.platform === 'string' ? request.body.platform.trim().slice(0, 20) : 'unknown';
+    if (!/^ExponentPushToken\[.+\]$|^ExpoPushToken\[.+\]$/.test(token)) throw new AppError('invalid_push_token', 'A valid Expo push token is required', 422);
+    await db.insert(pushTokens).values({ userId: request.auth.userId, token, platform, updatedAt: new Date() }).onConflictDoUpdate({ target: pushTokens.token, set: { userId: request.auth.userId, platform, updatedAt: new Date() } });
+    response.status(204).send();
+  };
   list = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const rows = await db.select().from(notifications)

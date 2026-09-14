@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { and, eq, gt, lt, ne } from 'drizzle-orm';
+import { and, arrayContains, asc, desc, eq, gt, ilike, inArray, lt, ne, or, sql } from 'drizzle-orm';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
@@ -50,6 +50,31 @@ function normalizedDate(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const clean = value.trim();
   return validDate(clean) ? clean : null;
+}
+
+function optionalQueryText(value: unknown, name: string, maxLength = 100): string | null {
+  if (value === undefined || value === '') return null;
+  if (typeof value !== 'string') throw new AppError('invalid_search', `${name} must be text`, 422);
+  const clean = value.trim();
+  if (!clean) return null;
+  if (clean.length > maxLength) throw new AppError('invalid_search', `${name} is too long`, 422);
+  return clean;
+}
+
+function queryInteger(value: unknown, name: string, fallback: number, min: number, max: number): number {
+  if (value === undefined || value === '') return fallback;
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) throw new AppError('invalid_search', `${name} must be a whole number`, 422);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) throw new AppError('invalid_search', `${name} must be between ${min} and ${max}`, 422);
+  return parsed;
+}
+
+function queryAmenities(value: unknown): string[] {
+  if (value === undefined || value === '') return [];
+  if (typeof value !== 'string') throw new AppError('invalid_search', 'Amenities must be comma-separated text', 422);
+  const amenities = [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
+  if (amenities.length > 12 || amenities.some((item) => item.length > 60)) throw new AppError('invalid_search', 'Use at most 12 valid amenities', 422);
+  return amenities;
 }
 
 function peakWindows(value: unknown): PeakWindow[] {
@@ -113,9 +138,53 @@ async function ownedGround(groundId: string, userId: string) {
 }
 
 export class GroundController {
-  listPublic = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const rows = await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.isActive, true), eq(vendors.isActive, true)));
-    response.json({ grounds: rows.map(({ ground }) => toGround(ground)) });
+  listPublic = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const q = optionalQueryText(request.query.q, 'Search query');
+    const city = optionalQueryText(request.query.city, 'City');
+    const pitchType = optionalQueryText(request.query.pitch_type, 'Pitch type', 60);
+    const amenities = queryAmenities(request.query.amenities);
+    const availabilityDate = request.query.availability_date === undefined ? null : normalizedDate(request.query.availability_date);
+    if (request.query.availability_date !== undefined && !availabilityDate) throw new AppError('invalid_search', 'Availability date must use YYYY-MM-DD format', 422);
+    const maxPrice = queryInteger(request.query.max_price, 'Maximum price', Number.MAX_SAFE_INTEGER, 1, 1_000_000);
+    const page = queryInteger(request.query.page, 'Page', 1, 1, 10_000);
+    const limit = queryInteger(request.query.limit, 'Limit', 24, 1, 50);
+    const sort = request.query.sort === undefined ? 'recommended' : request.query.sort;
+    if (!['recommended', 'price_low', 'price_high', 'rating'].includes(String(sort))) throw new AppError('invalid_search', 'Sort must be recommended, price_low, price_high, or rating', 422);
+
+    const filters = [eq(grounds.isActive, true), eq(vendors.isActive, true)];
+    if (q) {
+      const pattern = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+      filters.push(or(ilike(grounds.title, pattern), ilike(grounds.city, pattern), ilike(grounds.location, pattern), ilike(grounds.address, pattern), ilike(grounds.pitchType, pattern), ilike(sql<string>`array_to_string(${grounds.amenities}, ' ')`, pattern))!);
+    }
+    if (city) filters.push(ilike(grounds.city, `%${city.replace(/[\\%_]/g, '\\$&')}%`));
+    if (pitchType) filters.push(ilike(grounds.pitchType, pitchType));
+    if (amenities.length) filters.push(arrayContains(grounds.amenities, amenities));
+
+    const orderBy = sort === 'rating' || sort === 'recommended' ? [desc(grounds.rating), asc(grounds.title)] : [asc(grounds.title)];
+    const rows = await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(...filters)).orderBy(...orderBy);
+    if (!availabilityDate) {
+      response.json({ grounds: rows.map(({ ground }) => toGround(ground)), pagination: { page: 1, limit: rows.length, total: rows.length, has_more: false } });
+      return;
+    }
+
+    const ids = rows.map(({ ground }) => ground.id);
+    const matchingSlots = ids.length ? await db.select().from(slots).where(and(inArray(slots.groundId, ids), eq(slots.date, availabilityDate), eq(slots.isBooked, false), eq(slots.isBlocked, false))) : [];
+    const slotsByGround = new Map<string, ReturnType<typeof toSlot>[]>();
+    for (const slot of matchingSlots) {
+      if (isHeld(slot) || hasStarted(slot.date, slot.startTime)) continue;
+      const ground = rows.find(({ ground: item }) => item.id === slot.groundId)?.ground;
+      if (!ground) continue;
+      const value = toSlot(slot, ground);
+      if (value.price > maxPrice) continue;
+      slotsByGround.set(slot.groundId, [...(slotsByGround.get(slot.groundId) || []), value]);
+    }
+    let matches = rows.filter(({ ground }) => slotsByGround.has(ground.id));
+    if (sort === 'price_low') matches = matches.sort((a, b) => Math.min(...slotsByGround.get(a.ground.id)!.map((slot) => slot.price)) - Math.min(...slotsByGround.get(b.ground.id)!.map((slot) => slot.price)));
+    if (sort === 'price_high') matches = matches.sort((a, b) => Math.min(...slotsByGround.get(b.ground.id)!.map((slot) => slot.price)) - Math.min(...slotsByGround.get(a.ground.id)!.map((slot) => slot.price)));
+    const total = matches.length;
+    const start = (page - 1) * limit;
+    const pageRows = matches.slice(start, start + limit);
+    response.json({ grounds: pageRows.map(({ ground }) => toGround(ground)), slots_by_ground: Object.fromEntries(pageRows.map(({ ground }) => [ground.id, slotsByGround.get(ground.id) || []])), pagination: { page, limit, total, has_more: start + limit < total } });
   };
 
   getPublic = async (request: AuthenticatedRequest, response: Response): Promise<void> => {

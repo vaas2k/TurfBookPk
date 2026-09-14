@@ -85,6 +85,13 @@
       "when": 1789190000000,
       "tag": "0011_peak_percentage",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789383352389,
+      "tag": "0012_push_tokens",
+      "breakpoints": true
     }
   ]
 }

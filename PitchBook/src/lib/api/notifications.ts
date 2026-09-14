@@ -19,3 +19,7 @@ export async function markNotificationRead(id: string): Promise<void> {
 export async function markAllNotificationsRead(): Promise<void> {
   await apiRequest('/notifications/read-all', { method: 'PATCH', data: {} });
 }
+
+export async function registerPushToken(token: string, platform: string): Promise<void> {
+  await apiRequest('/notifications/push-token', { method: 'POST', data: { token, platform } });
+}
