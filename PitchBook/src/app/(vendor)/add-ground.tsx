@@ -78,7 +78,10 @@ export default function AddGround() {
     setSaving(true);
     const images = form.images.length ? form.images : [MOCK_GROUND_IMAGE];
     const data = { title: form.title.trim(), description: form.description.trim(), location: form.location.trim(), city: form.city.trim(), address: form.address.trim(), price_per_hour: Number(form.price_per_hour), peak_percentage: form.peak_percentage ? Number(form.peak_percentage) : null, peak_windows: form.peak_percentage ? [{ days: form.peak_days, start_time: form.peak_start_time, end_time: form.peak_end_time }] : [], pitch_type: form.pitch_type.trim(), cover_image: form.cover_image || images[0], images, amenities: form.amenities, rules: form.rules, latitude, longitude, cancellation_policy: form.cancellation_policy.trim() };
-    try { if (existing) await updateGround(existing.id, data); else await createGround(data); router.replace('/(vendor)/grounds'); }
+    try {
+      if (existing) { await updateGround(existing.id, data); router.replace('/(vendor)/grounds'); }
+      else { const created = await createGround(data); router.replace({ pathname: '/(vendor)/setup-schedule', params: { id: created.id, title: created.title } }); }
+    }
     catch (error: any) { setToast(error?.message || 'Unable to save ground. Please try again.'); }
     finally { setSaving(false); }
   };

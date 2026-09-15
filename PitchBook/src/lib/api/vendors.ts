@@ -41,6 +41,8 @@ export interface Slot {
   is_peak?: boolean;
   is_booked: boolean;
   is_blocked: boolean;
+  is_club_reserved?: boolean;
+  reservation_note?: string | null;
   is_held?: boolean;
   created_at: string;
   updated_at: string;
@@ -139,6 +141,20 @@ export async function updateGroundSlot(groundId: string, slotId: string, data: P
 export async function deleteGroundSlot(groundId: string, slotId: string): Promise<void> {
   await apiRequest<void>(`/grounds/${groundId}/slots/${slotId}`, { method: 'DELETE' });
 }
+
+export async function bulkUpdateGroundSlots(groundId: string, slotIds: string[], action: 'block' | 'unblock' | 'delete'): Promise<void> {
+  await apiRequest(`/grounds/${groundId}/slots/bulk`, { method: 'PATCH', data: { slot_ids: slotIds, action } });
+}
+
+export async function saveGroundSchedule(groundId: string, data: { open_time: string; close_time: string; slot_duration_minutes: number; slot_starts: string[]; days: number[]; price: number }): Promise<Slot[]> {
+  const result = await apiRequest<{ slots: Slot[] }>(`/grounds/${groundId}/schedule`, { method: 'PUT', data });
+  return result.slots;
+}
+
+export interface GroundBlackout { id: string; date: string; reason: string | null; }
+export async function listGroundBlackouts(groundId: string): Promise<GroundBlackout[]> { const result = await apiRequest<{ blackouts: GroundBlackout[] }>(`/grounds/${groundId}/blackouts`); return result.blackouts; }
+export async function createGroundBlackouts(groundId: string, dates: string[], reason?: string): Promise<void> { await apiRequest(`/grounds/${groundId}/blackouts`, { method: 'POST', data: { dates, reason } }); }
+export async function deleteGroundBlackout(groundId: string, date: string): Promise<void> { await apiRequest(`/grounds/${groundId}/blackouts/${date}`, { method: 'DELETE' }); }
 
 export async function listPublicGrounds(): Promise<Ground[]> {
   const result = await apiRequest<{ grounds: Ground[] }>('/grounds');

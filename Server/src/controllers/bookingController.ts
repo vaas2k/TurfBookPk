@@ -12,6 +12,7 @@ import { BookingMaintenanceService } from '../services/bookingMaintenance.js';
 import { calculateBookingPrice } from '../services/bookingPricing.js';
 import { effectiveSlotPrice } from '../services/peakPricing.js';
 import { env } from '../configs/env.js';
+import { sendExpoPush } from '../services/expoPushService.js';
 
 function param(value: string | string[] | undefined, name: string): string {
   if (typeof value !== 'string' || !value) throw new AppError('invalid_request', `${name} is required`, 422);
@@ -215,6 +216,8 @@ export class BookingController {
         { userId: request.auth!.userId, type: 'booking', title: 'Booking confirmed', message: `Your slot at ${current.ground.title} is confirmed.`, data: { bookingId: id } },
         { userId: current.vendor.userId, type: 'booking', title: 'New booking', message: `${current.player?.fullName || 'A player'} booked a slot at ${current.ground.title}.`, data: { bookingId: id } },
       ]);
+      void sendExpoPush({ userIds: [request.auth!.userId], title: 'Booking confirmed', body: `Your slot at ${current.ground.title} is confirmed.`, data: { bookingId: id } });
+      void sendExpoPush({ userIds: [current.vendor.userId], title: 'New booking', body: `A slot was booked at ${current.ground.title}.`, data: { bookingId: id } });
       return { idempotent: false, bookingId: id };
     });
     const result = await fetchBooking(outcome.bookingId);
@@ -250,6 +253,7 @@ export class BookingController {
     if (bookingStart(current.booking.date, current.booking.endTime) > new Date()) throw new AppError('booking_not_ended', 'A no-show can only be recorded after the slot ends', 409);
     if (!await new BookingMaintenanceService().finalizeBooking(id, 'no_show')) throw new AppError('booking_not_updatable', 'Only confirmed bookings can be marked as no-show', 409);
     await db.insert(notifications).values({ userId: current.booking.playerId, type: 'booking', title: 'Booking marked as no-show', message: `Your booking at ${current.ground.title} was marked as a no-show.`, data: { bookingId: id } });
+    void sendExpoPush({ userIds: [current.booking.playerId], title: 'Booking marked as no-show', body: `Your booking at ${current.ground.title} was marked as a no-show.`, data: { bookingId: id } });
     const result = await fetchBooking(id);
     response.json({ booking: result ? mapBooking(result) : null });
   };

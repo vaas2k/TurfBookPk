@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getPublicGround, Ground, Slot } from '@/lib/api/vendors';
 import { Toast } from '@/components/ui/toast';
 import { goBackOrReplace } from '@/lib/navigation';
+import { GroundReview, listGroundReviews } from '@/lib/api/reviews';
 import { openGroundDirections } from '@/components/ground-discovery-map';
 
 const fallbackImage = 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200';
@@ -25,6 +26,7 @@ export default function GroundDetail() {
   const [selectedSlots, setSelectedSlots] = useState<Slot[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const [reviews, setReviews] = useState<GroundReview[]>([]);
 
   const fetchGround = useCallback(() => {
     if (typeof id !== 'string') return;
@@ -34,6 +36,7 @@ export default function GroundDetail() {
         setGround(result.ground);
         setSlots(result.slots);
         setSelectedDate(result.slots[0]?.date || null);
+        listGroundReviews(result.ground.id).then(setReviews).catch(() => undefined);
       })
       .catch((error: any) => {
         setToast(error?.message || 'Unable to load ground details.');
@@ -156,6 +159,11 @@ export default function GroundDetail() {
           {ground.peak_percentage && ground.peak_windows.length > 0 && (
             <Text className="text-[#D97706] text-xs font-semibold mt-2">Peak hours: +{ground.peak_percentage}% for selected times</Text>
           )}
+
+          <View className="mt-7">
+            <View className="flex-row items-center justify-between mb-3"><Text className="text-lg font-bold text-[#1A1A2E]">Player reviews</Text><Text className="text-[#737373] text-sm">{ground.total_reviews} total</Text></View>
+            {reviews.length === 0 ? <Text className="text-[#737373] text-sm">No reviews yet. Be the first player to rate this ground after a completed booking.</Text> : reviews.slice(0, 3).map((review) => <View key={review.id} className="bg-[#F9FAFB] rounded-xl p-4 mb-2 border border-[#F3F4F6]"><View className="flex-row justify-between"><Text className="text-[#1A1A2E] font-bold">{review.player_name}</Text><View className="flex-row items-center"><Ionicons name="star" size={14} color="#F59E0B" /><Text className="text-[#1A1A2E] font-bold ml-1">{review.rating}.0</Text></View></View>{review.comment ? <Text className="text-[#4B5563] text-sm mt-2">{review.comment}</Text> : null}<Text className="text-[#9CA3AF] text-xs mt-2">{new Date(review.created_at).toLocaleDateString('en-PK')}</Text></View>)}
+          </View>
 
           {/* Amenities */}
           {ground.amenities.length > 0 && (

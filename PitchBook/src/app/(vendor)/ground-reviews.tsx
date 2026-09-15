@@ -1,0 +1,13 @@
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { GroundReview, listGroundReviews } from '@/lib/api/reviews';
+import { Toast } from '@/components/ui/toast';
+
+export default function GroundReviews() {
+  const { id, title, rating, count } = useLocalSearchParams<{ id: string; title?: string; rating?: string; count?: string }>(); const [reviews, setReviews] = useState<GroundReview[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (!id) return; listGroundReviews(id).then(setReviews).catch((caught: any) => setError(caught?.message || 'Unable to load reviews.')).finally(() => setLoading(false)); }, [id]);
+  return <SafeAreaView className="flex-1 bg-[#F8F9FA]"><ScrollView className="px-5" contentContainerStyle={{ paddingBottom: 32 }}><View className="flex-row items-center py-5"><TouchableOpacity onPress={() => router.back()} className="h-11 w-11 rounded-full bg-white items-center justify-center"><Ionicons name="arrow-back" size={20} color="#1A1A2E" /></TouchableOpacity><Text className="text-xl font-bold text-[#1A1A2E] ml-3 flex-1" numberOfLines={1}>{title || 'Ground reviews'}</Text></View><View className="bg-[#1A1A2E] rounded-2xl p-5"><Text className="text-white/70">Average rating</Text><View className="flex-row items-end mt-1"><Text className="text-white text-4xl font-bold">{rating || '0.0'}</Text><Text className="text-white/70 mb-1 ml-2">from {count || 0} reviews</Text></View></View><Text className="text-lg font-bold text-[#1A1A2E] mt-6 mb-3">Player feedback</Text>{loading ? <ActivityIndicator color="#4CAF50" /> : reviews.length === 0 ? <Text className="text-[#737373]">No reviews yet.</Text> : reviews.map((review) => <View key={review.id} className="bg-white rounded-xl p-4 border border-[#E5E5E5] mb-3"><View className="flex-row justify-between"><Text className="font-bold text-[#1A1A2E]">{review.player_name}</Text><View className="flex-row"><Ionicons name="star" size={15} color="#F59E0B" /><Text className="font-bold ml-1">{review.rating}.0</Text></View></View>{review.comment ? <Text className="text-[#4B5563] mt-2">{review.comment}</Text> : null}<Text className="text-[#9CA3AF] text-xs mt-2">{new Date(review.created_at).toLocaleDateString('en-PK')}</Text></View>)}</ScrollView><Toast message={error} tone="error" onHide={() => setError(null)} /></SafeAreaView>;
+}

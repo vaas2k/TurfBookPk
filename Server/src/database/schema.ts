@@ -118,6 +118,9 @@ export const slots = pgTable('slots', {
   price: integer('price').notNull(),
   isBooked: boolean('is_booked').notNull().default(false),
   isBlocked: boolean('is_blocked').notNull().default(false),
+  isClubReserved: boolean('is_club_reserved').notNull().default(false),
+  reservationNote: text('reservation_note'),
+  scheduleTemplateId: uuid('schedule_template_id'),
   bookedBy: uuid('booked_by').references(() => users.id),
   bookingId: uuid('booking_id'),
   heldBy: uuid('held_by').references(() => users.id),
@@ -155,6 +158,26 @@ export const bookings = pgTable('bookings', {
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const slotScheduleTemplates = pgTable('slot_schedule_templates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  groundId: uuid('ground_id').notNull().references(() => grounds.id, { onDelete: 'cascade' }),
+  days: integer('days').array().notNull(),
+  startTime: time('start_time').notNull(),
+  endTime: time('end_time').notNull(),
+  price: integer('price').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const groundBlackoutDates = pgTable('ground_blackout_dates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  groundId: uuid('ground_id').notNull().references(() => grounds.id, { onDelete: 'cascade' }),
+  date: date('date').notNull(),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const bookingOrders = pgTable('booking_orders', {
@@ -220,6 +243,17 @@ export const pushTokens = pgTable('push_tokens', {
   platform: text('platform').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const reviews = pgTable('reviews', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  bookingId: uuid('booking_id').notNull().unique().references(() => bookings.id, { onDelete: 'cascade' }),
+  groundId: uuid('ground_id').notNull().references(() => grounds.id, { onDelete: 'cascade' }),
+  playerId: uuid('player_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  rating: integer('rating').notNull(),
+  comment: text('comment'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type UserRow = typeof users.$inferSelect;

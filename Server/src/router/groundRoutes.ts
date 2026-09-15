@@ -13,8 +13,13 @@ export function createGroundRouter(controller: GroundController, tokenService: T
   router.post('/', controller.create);
   router.patch('/:id', controller.update);
   router.delete('/:id', controller.remove);
+  router.put('/:id/schedule', controller.saveSchedule);
+  router.get('/:id/blackouts', controller.listBlackouts);
+  router.post('/:id/blackouts', controller.createBlackouts);
+  router.delete('/:id/blackouts/:date', controller.removeBlackout);
   router.post('/:id/slots', controller.createSlot);
   router.post('/:id/slots/recurring', controller.createRecurringSlots);
+  router.patch('/:id/slots/bulk', controller.bulkUpdateSlots);
   router.patch('/:groundId/slots/:slotId', controller.updateSlot);
   router.delete('/:groundId/slots/:slotId', controller.removeSlot);
   return router;

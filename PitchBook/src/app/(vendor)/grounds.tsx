@@ -83,6 +83,7 @@ export default function VendorGrounds() {
               <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Edit ${ground.title}`} className="w-12 items-center justify-center" onPress={() => router.push({ pathname: '/(vendor)/add-ground', params: { id: ground.id } })}><Ionicons name="create-outline" size={22} color="#1A1A2E" /></TouchableOpacity>
               <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Delete ${ground.title}`} className="w-12 items-center justify-center" onPress={() => setPendingDelete(ground)}><Ionicons name="trash-outline" size={22} color="#DC2626" /></TouchableOpacity>
             </View>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={`View reviews for ${ground.title}`} onPress={() => router.push({ pathname: '/(vendor)/ground-reviews', params: { id: ground.id, title: ground.title, rating: String(ground.rating), count: String(ground.total_reviews) } })} className="mt-3 rounded-xl bg-[#FFF7ED] py-3 items-center"><Text className="text-[#C56A00] font-bold">Reviews · {ground.rating.toFixed(1)} ★ ({ground.total_reviews})</Text></TouchableOpacity>
             <TouchableOpacity
               disabled={updatingGroundId === ground.id}
               onPress={() => confirmGroundAvailability(ground)}

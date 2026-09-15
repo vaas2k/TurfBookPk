@@ -261,6 +261,9 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
             <Text className="text-white font-bold text-base">Mark as No-Show</Text>
           </TouchableOpacity>
         )}
+        {!vendorView && booking.status === 'completed' && (
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Rate this ground" onPress={() => router.push({ pathname: '/(player)/reviews-write', params: { bookingId: booking.id, title: booking.ground_title } })} className="bg-[#F59E0B] rounded-full py-4 items-center mt-3"><Text className="text-white font-bold text-base">Rate this ground</Text></TouchableOpacity>
+        )}
       </ScrollView>
 
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
