@@ -9,7 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { BookingProfile, cancelBooking, getBooking, markBookingNoShow } from '@/lib/api/bookings';
+import { BookingProfile, cancelBooking, getBooking, markBookingCompleted, markBookingNoShow } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { appDialog } from '@/components/ui/app-dialog';
@@ -87,6 +87,9 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
         },
       ]
     );
+  };
+  const handleCompleted = () => {
+    appDialog.alert('Mark attendance complete?', 'Only do this after the booked slot has ended and the player attended.', [{ text: 'Back', style: 'cancel' }, { text: 'Mark completed', onPress: async () => { setActionLoading(true); try { setBooking(await markBookingCompleted(id)); } catch (error: any) { setToast(error?.message || 'Unable to update booking status.'); } finally { setActionLoading(false); } } }]);
   };
 
   if (loading) {
@@ -250,6 +253,9 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
           </TouchableOpacity>
         )}
 
+        {vendorView && booking.status === 'confirmed' && (
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mark player attendance complete" disabled={actionLoading} onPress={handleCompleted} className="bg-[#4CAF50] rounded-full py-4 items-center mt-3"><Text className="text-white font-bold text-base">Mark Attendance Complete</Text></TouchableOpacity>
+        )}
         {vendorView && booking.status === 'confirmed' && (
           <TouchableOpacity
             accessibilityRole="button"

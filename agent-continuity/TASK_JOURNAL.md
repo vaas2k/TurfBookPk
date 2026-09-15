@@ -396,6 +396,30 @@
 
 - `git status --short`
 - `git diff --check`
+
+## 2026-09-15 - Vendor scheduling, blackout dates, and reviews completed
+
+### Accomplished
+
+- Added a vendor-first repeating schedule wizard: choose operating hours, slot duration, days, price, and the times to offer; saved templates materialize future dated slots automatically.
+- Redirected new-ground creation into schedule setup and replaced the prior recurrence-focused flow with calendar-led daily slot management.
+- Added a 31-day vendor calendar with clear available, booked, blocked, club-reserved, and closed-day states.
+- Added venue club reservations and safe daily slot actions. Booked or payment-held slots remain protected.
+- Added persisted blackout-date records. Closing a date blocks unbooked generated slots and prevents the schedule materializer from recreating them; dates containing a booking or active hold cannot be closed. Reopening restores eligible non-club-reserved slots.
+- Added completed-booking player reviews/ratings, ground rating rollups, public review display, and a vendor ground-review screen.
+- Applied migrations `0013_reviews.sql`, `0014_slot_schedule_templates.sql`, and `0015_ground_blackout_dates.sql` locally.
+- Pushed verified work to GitHub: commit `6ef0465 Add vendor scheduling, blackouts, and reviews` on `origin/main`.
+
+### Verification
+
+- `npx tsc --noEmit` passed for PitchBook.
+- `npm run typecheck` passed for Server.
+- `npm test` passed for Server: 18/18 tests.
+- Database migrations applied successfully.
+
+### Next immediate step
+
+- Continue vendor operations with the Today dashboard and actionable booking controls, or take the next P1 task selected by the product owner.
 - `git add PitchBook Server agent-continuity`
 - `git commit -m "Complete core MVP booking and role safety"`
 - `git push origin main`

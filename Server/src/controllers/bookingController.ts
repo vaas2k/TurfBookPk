@@ -257,6 +257,16 @@ export class BookingController {
     const result = await fetchBooking(id);
     response.json({ booking: result ? mapBooking(result) : null });
   };
+  markCompleted = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const id = param(request.params.id, 'Booking id'); const current = await fetchBooking(id);
+    const vendor = (await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
+    if (!current || vendor?.id !== current.booking.vendorId) throw new AppError('not_found', 'Booking was not found', 404);
+    if (bookingStart(current.booking.date, current.booking.endTime) > new Date()) throw new AppError('booking_not_ended', 'Attendance can only be recorded after the slot ends', 409);
+    if (!await new BookingMaintenanceService().finalizeBooking(id, 'completed')) throw new AppError('booking_not_updatable', 'Only confirmed bookings can be marked as attended', 409);
+    await db.insert(notifications).values({ userId: current.booking.playerId, type: 'booking', title: 'Booking completed', message: `Your booking at ${current.ground.title} was marked as completed.`, data: { bookingId: id } });
+    const result = await fetchBooking(id); response.json({ booking: result ? mapBooking(result) : null });
+  };
   cancel = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const id = param(request.params.id, 'Booking id');

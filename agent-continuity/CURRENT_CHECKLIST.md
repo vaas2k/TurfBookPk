@@ -90,7 +90,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Add editable operating-hours controls to vendor ground creation/editing and display them on public ground detail.
 - [ ] Define and expose peak-price UI only after the business provides peak-hour rules; do not display a price users cannot understand.
 - [ ] Replace raw date/time text fields with platform-accessible date/time pickers and validate them inline.
-- [ ] Build a weekly calendar/grid view for vendor slot management with date navigation, availability legend, and bulk actions.
+- [x] Build a vendor slot calendar/grid with date navigation and clear availability/closure states. A 31-day calendar is used instead of a weekly-only view so vendors can schedule planned closures.
 - [ ] Add search, sort, filter, and empty/error/retry states to player ground discovery.
 - [ ] Add a player-friendly booking cancellation preview that shows fee/refund before confirmation.
 - [ ] Add booking detail shortcuts from notifications and calendar/reminder status feedback.
@@ -108,7 +108,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 
 ## P1 - Discovery, performance, and contracts
 
-- [ ] Add server-side ground search, city/area filters, pitch type, price, rating, and availability filters.
+- [x] Add server-side ground search, city/area filters, pitch type, price, rating, and availability filters.
 - [ ] Add pagination and deterministic sorting to grounds, bookings, slots, and notifications.
 - [ ] Return ground availability summaries in the ground list to remove N+1 slot requests.
 - [ ] Replace the inaccurate `Available Now` label with time-aware next availability.
@@ -128,7 +128,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Group player bookings into upcoming, completed, cancelled, and payment-pending sections.
 - [x] Group vendor bookings by date/status and provide actionable booking details.
 - [ ] Replace raw date/time text fields with accessible date/time pickers.
-- [ ] Build a weekly calendar/grid for vendor slot management.
+- [x] Build a vendor slot calendar/grid with date navigation and planned blackout-date controls.
 - [x] Show unavailable slot reasons: booked, blocked, held, or expired.
 - [x] Remove the user-facing checkout hold countdown and create the booking only when Confirm is pressed.
 - [x] Show complete pricing breakdown before confirmation.
@@ -148,10 +148,18 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Add vendor payout requests and payout history.
 - [ ] Implement map rendering, geolocation, distance calculation, and nearby-ground discovery.
 - [ ] Build the Search tab using server-side discovery APIs.
-- [ ] Add reviews and ratings only after completed bookings.
+- [x] Add reviews and ratings only after completed bookings, including vendor review visibility and player rating submission.
 - [ ] Add review reporting and moderation.
 - [ ] Add favorites and recently viewed grounds.
-- [ ] Add push notifications and scheduled booking reminders.
+- [ ] Complete remote push-notification rollout and real-device validation.
+  - [x] Persist Expo device tokens and apply the `push_tokens` migration.
+  - [x] Add local single-booking reminders and booking deep-link handling.
+  - [x] Add initial Expo delivery for confirmed bookings, vendor booking alerts, and no-shows.
+  - [ ] Test remote push in an Android/iOS development build (not Expo Go).
+  - [ ] Add cancellation, refund/payment-status, and multi-slot-order remote pushes.
+  - [ ] Persist Expo ticket IDs; poll receipts and remove tokens on delayed `DeviceNotRegistered` errors.
+  - [ ] Add a user-facing notification-preferences screen and persist preferences server-side.
+  - [ ] Cancel/reschedule reminders when bookings change; schedule reminders for every confirmed order slot.
 - [ ] Add promo codes, discounts, and pricing rules.
 - [ ] Add customer-support and booking-dispute workflows.
 - [ ] Add admin workflows for vendor/ground verification and account moderation.
@@ -161,7 +169,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 
 - [ ] Add team creation and player invitations.
 - [ ] Add split payments.
-- [ ] Add recurring player bookings.
+- [x] Add recurring player bookings.
 - [ ] Add tournaments and leagues.
 - [ ] Add loyalty and referral programs.
 - [ ] Add vendor analytics and pricing recommendations.
@@ -186,3 +194,11 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] `git diff --check` reports no new whitespace errors.
 - [ ] Database changes include a reviewed migration and rollout note.
 - [ ] `agent-continuity/TASK_JOURNAL.md` is updated with outcome and next step.
+
+## meow
+- [ ] Pitch Side on select from (5,7,9,11)
+- [ ] Cancellation policy on select from (,,,,)
+- [ ] ammeneties select from (,,,) + add more 
+- [ ] allow the player on reccuring booking to hold all the slots on reserved on take payment for the first slot and hold all the other on reserved from him and when the future slot time is near notify and open a small time window for him before the slot time to pay for the slot on success allocate else removed the slot from reservation
+- [low prioirty] allow vendors to activate or deactivate ground on future date
+- 

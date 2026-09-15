@@ -63,3 +63,7 @@ export async function markBookingNoShow(id: string): Promise<BookingProfile> {
   const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}/no-show`, { method: 'PATCH', data: {} });
   return result.booking;
 }
+export async function markBookingCompleted(id: string): Promise<BookingProfile> {
+  const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}/complete`, { method: 'PATCH', data: {} });
+  return result.booking;
+}

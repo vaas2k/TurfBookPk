@@ -1,0 +1,12 @@
+import { useMemo, useState } from 'react';
+import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+
+type Props = { label: string; value: string; onChange: (value: string) => void; minimum?: string; maximum?: string };
+const minutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
+const display = (value: string) => { const hour = Number(value.slice(0, 2)); return `${hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}:${value.slice(3, 5)} ${hour >= 12 ? 'PM' : 'AM'}`; };
+
+export function TimePicker({ label, value, onChange, minimum = '00:00', maximum = '23:00' }: Props) {
+  const [open, setOpen] = useState(false);
+  const choices = useMemo(() => Array.from({ length: 48 }, (_, index) => `${String(Math.floor(index / 2)).padStart(2, '0')}:${index % 2 ? '30' : '00'}`).filter((time) => minutes(time) >= minutes(minimum) && minutes(time) <= minutes(maximum)), [minimum, maximum]);
+  return <View><Text className="text-[#1A1A2E] font-medium mb-1">{label}</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel={`Choose ${label}`} onPress={() => setOpen(true)} className="bg-white border border-[#E5E5E5] rounded-xl px-4 py-4 flex-row items-center justify-between"><Text className="text-[#1A1A2E] text-base font-semibold">{display(value)}</Text><Text className="text-[#4CAF50] font-bold">Change</Text></TouchableOpacity><Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}><View className="flex-1 bg-black/40 justify-end"><View className="bg-white rounded-t-3xl p-5 max-h-[70%]"><View className="flex-row items-center justify-between mb-4"><Text className="text-xl font-bold text-[#1A1A2E]">{label}</Text><TouchableOpacity accessibilityLabel="Close time picker" onPress={() => setOpen(false)} className="px-3 py-2"><Text className="text-[#2E7D32] font-bold">Done</Text></TouchableOpacity></View><ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', paddingBottom: 20 }}>{choices.map((time) => <TouchableOpacity key={time} accessibilityRole="button" accessibilityState={{ selected: time === value }} onPress={() => { onChange(time); setOpen(false); }} className={`w-[31%] mr-[2%] mb-3 rounded-xl py-4 items-center ${time === value ? 'bg-[#4CAF50]' : 'bg-[#F5F5F5]'}`}><Text className={time === value ? 'text-white font-bold' : 'text-[#1A1A2E] font-bold'}>{display(time)}</Text></TouchableOpacity>)}</ScrollView></View></View></Modal></View>;
+}

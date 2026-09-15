@@ -1,15 +1,27 @@
-import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useFocusEffect } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { appDialog } from '@/components/ui/app-dialog';
-import { useAuthStore } from '@/store/authStore';
-import { useVendorStore } from '@/store/vendorStore';
-import { getVendorEarnings, Ground, listVendorGrounds } from '@/lib/api/vendors';
-import { getNotifications } from '@/lib/api/notifications';
-import { listVendorBookings } from '@/lib/api/bookings';
-import { Toast } from '@/components/ui/toast';
+import { useCallback, useState } from "react";
+import {
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { router, useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { appDialog } from "@/components/ui/app-dialog";
+import { useAuthStore } from "@/store/authStore";
+import { useVendorStore } from "@/store/vendorStore";
+import {
+  getVendorEarnings,
+  Ground,
+  listVendorGrounds,
+} from "@/lib/api/vendors";
+import { getNotifications } from "@/lib/api/notifications";
+import { listVendorBookings } from "@/lib/api/bookings";
+import { BookingProfile } from "@/types/booking";
+import { Toast } from "@/components/ui/toast";
 
 export default function VendorDashboard() {
   const { profile, signOut } = useAuthStore();
@@ -18,38 +30,363 @@ export default function VendorDashboard() {
   const [grounds, setGrounds] = useState<Ground[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [todayBookings, setTodayBookings] = useState(0);
+  const [todaySchedule, setTodaySchedule] = useState<BookingProfile[]>([]);
+  const [attentionBookings, setAttentionBookings] = useState<BookingProfile[]>([]);
   const [availableBalance, setAvailableBalance] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [items, notifications, bookings, earnings] = await Promise.all([listVendorGrounds(), getNotifications(), listVendorBookings(), getVendorEarnings()]);
-      const today = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      setGrounds(items); setUnreadNotifications(notifications.unread_count);
-      setTodayBookings(bookings.filter((booking) => booking.date === today && booking.status === 'confirmed').length);
+      const [items, notifications, bookings, earnings] = await Promise.all([
+        listVendorGrounds(),
+        getNotifications(),
+        listVendorBookings(),
+        getVendorEarnings(),
+      ]);
+      const today = new Date(Date.now() + 5 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      setGrounds(items);
+      setUnreadNotifications(notifications.unread_count);
+      const todayItems = bookings.filter((booking) => booking.date === today && booking.status === "confirmed").sort((a, b) => a.start_time.localeCompare(b.start_time));
+      setTodayBookings(todayItems.length);
+      setTodaySchedule(todayItems);
+      setAttentionBookings(bookings.filter((booking) => booking.status === "pending_payment" || booking.payment_status === "refund_pending"));
       setAvailableBalance(earnings.summary.available_to_withdraw);
-    } catch (error: any) { setToast(error?.message || 'Unable to refresh your overview.'); }
-    finally { setRefreshing(false); }
+    } catch (error: any) {
+      setToast(error?.message || "Unable to refresh your overview.");
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
-  const switchToPlayer = () => appDialog.alert('Switch to Player Mode', 'You can return to this vendor workspace anytime from the player home screen.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Switch', onPress: async () => { const { error } = await useAuthStore.getState().switchToPlayer(); if (error) appDialog.alert('Unable to switch modes', error.message); else router.replace('/(player)'); } }]);
-  const confirmSignOut = () => appDialog.alert('Sign out?', 'You will need to verify your phone number to sign in again.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign Out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/(auth)/phone-input'); } }]);
-  const businessName = vendorProfile?.business_name || profile?.full_name || 'Your venue';
+  const switchToPlayer = () =>
+    appDialog.alert(
+      "Switch to Player Mode",
+      "You can return to this vendor workspace anytime from the player home screen.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Switch",
+          onPress: async () => {
+            const { error } = await useAuthStore.getState().switchToPlayer();
+            if (error) appDialog.alert("Unable to switch modes", error.message);
+            else router.replace("/(player)");
+          },
+        },
+      ],
+    );
+  const confirmSignOut = () =>
+    appDialog.alert(
+      "Sign out?",
+      "You will need to verify your phone number to sign in again.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            await signOut();
+            router.replace("/(auth)/phone-input");
+          },
+        },
+      ],
+    );
+  const businessName =
+    vendorProfile?.business_name || profile?.full_name || "Your venue";
 
-  return <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-    <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-    <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor="#4CAF50" />} showsVerticalScrollIndicator={false}>
-      <View className="px-5 pt-4 flex-row items-start justify-between"><View className="flex-1 mr-3"><Text className="text-[#737373] text-sm">Venue overview</Text><Text className="text-2xl font-bold text-[#1A1A2E] mt-1" numberOfLines={1}>{businessName}</Text><View className="flex-row items-center mt-2"><View className="bg-[#E8F5E9] rounded-full px-2.5 py-1"><Text className="text-[#2E7D32] text-xs font-bold">VENDOR</Text></View>{vendorProfile?.is_verified === false && <View className="bg-[#FEF3C7] rounded-full px-2.5 py-1 ml-2"><Text className="text-[#92400E] text-xs font-bold">VERIFICATION PENDING</Text></View>}</View></View><View className="flex-row gap-2"><TouchableOpacity accessibilityRole="button" accessibilityLabel={unreadNotifications ? `${unreadNotifications} unread notifications` : 'Notifications'} onPress={() => router.push('/(vendor)/notifications')} className="h-11 w-11 rounded-full bg-white items-center justify-center border border-[#E5E5E5]"><Ionicons name="notifications-outline" size={21} color="#1A1A2E" />{unreadNotifications > 0 && <View className="absolute right-0 top-0 min-w-[17px] h-[17px] px-1 rounded-full bg-[#DC2626] items-center justify-center"><Text className="text-white text-[9px] font-bold">{unreadNotifications > 9 ? '9+' : unreadNotifications}</Text></View>}</TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="More account actions" onPress={() => router.push('/(vendor)/profile')} className="h-11 w-11 rounded-full bg-white items-center justify-center border border-[#E5E5E5]"><Ionicons name="person-outline" size={21} color="#1A1A2E" /></TouchableOpacity></View></View>
+  return (
+    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 24 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={load}
+            tintColor="#4CAF50"
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="px-5 pt-4 flex-row items-start justify-between">
+          <View className="flex-1 mr-3">
+            <Text className="text-[#737373] text-sm">Venue overview</Text>
+            <Text
+              className="text-2xl font-bold text-[#1A1A2E] mt-1"
+              numberOfLines={1}
+            >
+              {businessName}
+            </Text>
+            <View className="flex-row items-center mt-2">
+              <View className="bg-[#E8F5E9] rounded-full px-2.5 py-1">
+                <Text className="text-[#2E7D32] text-xs font-bold">VENDOR</Text>
+              </View>
+              {vendorProfile?.is_verified === false && (
+                <View className="bg-[#FEF3C7] rounded-full px-2.5 py-1 ml-2">
+                  <Text className="text-[#92400E] text-xs font-bold">
+                    VERIFICATION PENDING
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={
+                unreadNotifications
+                  ? `${unreadNotifications} unread notifications`
+                  : "Notifications"
+              }
+              onPress={() => router.push("/(vendor)/notifications")}
+              className="h-11 w-11 rounded-full bg-white items-center justify-center border border-[#E5E5E5]"
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={21}
+                color="#1A1A2E"
+              />
+              {unreadNotifications > 0 && (
+                <View className="absolute right-0 top-0 min-w-[17px] h-[17px] px-1 rounded-full bg-[#DC2626] items-center justify-center">
+                  <Text className="text-white text-[9px] font-bold">
+                    {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="More account actions"
+              onPress={() => router.push("/(vendor)/profile")}
+              className="h-11 w-11 rounded-full bg-white items-center justify-center border border-[#E5E5E5]"
+            >
+              <Ionicons name="person-outline" size={21} color="#1A1A2E" />
+            </TouchableOpacity>
+          </View>
+        </View>
 
-      <View className="mx-5 mt-6 bg-[#1A1A2E] rounded-3xl p-5"><View className="flex-row items-center justify-between"><View><Text className="text-white/70 text-sm">Available to withdraw</Text><Text className="text-white text-3xl font-bold mt-1">PKR {availableBalance.toLocaleString()}</Text></View><TouchableOpacity accessibilityRole="button" accessibilityLabel="Open earnings" onPress={() => router.replace('/(vendor)/earnings')} className="h-11 w-11 rounded-full bg-white/15 items-center justify-center"><Ionicons name="arrow-forward" size={21} color="white" /></TouchableOpacity></View><View className="mt-4 pt-4 border-t border-white/15 flex-row"><View className="flex-1"><Text className="text-white/60 text-xs">TODAY’S BOOKINGS</Text><Text className="text-white text-xl font-bold mt-1">{todayBookings}</Text></View><View className="flex-1 border-l border-white/15 pl-4"><Text className="text-white/60 text-xs">ACTIVE GROUNDS</Text><Text className="text-white text-xl font-bold mt-1">{grounds.filter((ground) => ground.is_active).length}</Text></View></View></View>
+        <View className="mx-5 mt-6 bg-[#1A1A2E] rounded-3xl p-5">
+          <View className="flex-row items-center justify-between">
+            <View>
+              <Text className="text-white/70 text-sm">
+                Available to withdraw
+              </Text>
+              <Text className="text-white text-3xl font-bold mt-1">
+                PKR {availableBalance.toLocaleString()}
+              </Text>
+            </View>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Open earnings"
+              onPress={() => router.replace("/(vendor)/earnings")}
+              className="h-11 w-11 rounded-full bg-white/15 items-center justify-center"
+            >
+              <Ionicons name="arrow-forward" size={21} color="white" />
+            </TouchableOpacity>
+          </View>
+          <View className="mt-4 pt-4 border-t border-white/15 flex-row">
+            <View className="flex-1">
+              <Text className="text-white/60 text-xs">TODAY’S BOOKINGS</Text>
+              <Text className="text-white text-xl font-bold mt-1">
+                {todayBookings}
+              </Text>
+            </View>
+            <View className="flex-1 border-l border-white/15 pl-4">
+              <Text className="text-white/60 text-xs">ACTIVE GROUNDS</Text>
+              <Text className="text-white text-xl font-bold mt-1">
+                {grounds.filter((ground) => ground.is_active).length}
+              </Text>
+            </View>
+          </View>
+        </View>
 
-      <View className="px-5 mt-7"><Text className="text-[#1A1A2E] text-lg font-bold">Manage your venue</Text><Text className="text-[#737373] text-sm mt-1">The essentials, always one tap away.</Text><View className="mt-4 gap-3"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Open all grounds" onPress={() => router.replace('/(vendor)/grounds')} className="bg-white rounded-2xl p-4 border border-[#E5E5E5] flex-row items-center"><View className="h-11 w-11 rounded-xl bg-[#E8F5E9] items-center justify-center"><Ionicons name="business-outline" size={22} color="#2E7D32" /></View><View className="flex-1 ml-3"><Text className="text-[#1A1A2E] font-bold">All grounds</Text><Text className="text-[#737373] text-xs mt-1">Create, activate, edit, and manage slots</Text></View><Ionicons name="chevron-forward" size={20} color="#9CA3AF" /></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Open booking schedule" onPress={() => router.replace('/(vendor)/bookings')} className="bg-white rounded-2xl p-4 border border-[#E5E5E5] flex-row items-center"><View className="h-11 w-11 rounded-xl bg-[#EFF6FF] items-center justify-center"><Ionicons name="calendar-outline" size={22} color="#2563EB" /></View><View className="flex-1 ml-3"><Text className="text-[#1A1A2E] font-bold">Booking schedule</Text><Text className="text-[#737373] text-xs mt-1">See today’s matches and take action</Text></View><Ionicons name="chevron-forward" size={20} color="#9CA3AF" /></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Open earnings and ledger" onPress={() => router.replace('/(vendor)/earnings')} className="bg-white rounded-2xl p-4 border border-[#E5E5E5] flex-row items-center"><View className="h-11 w-11 rounded-xl bg-[#FFF7ED] items-center justify-center"><Ionicons name="wallet-outline" size={22} color="#C56A00" /></View><View className="flex-1 ml-3"><Text className="text-[#1A1A2E] font-bold">Earnings & payouts</Text><Text className="text-[#737373] text-xs mt-1">Available balance and transaction activity</Text></View><Ionicons name="chevron-forward" size={20} color="#9CA3AF" /></TouchableOpacity></View></View>
+        <View className="px-5 mt-6">
+          <View className="flex-row items-center justify-between"><Text className="text-[#1A1A2E] text-lg font-bold">Today&apos;s schedule</Text><TouchableOpacity onPress={() => router.replace('/(vendor)/bookings')} className="min-h-[44px] px-2 justify-center"><Text className="text-[#2E7D32] font-bold">View all</Text></TouchableOpacity></View>
+          {todaySchedule.length ? <TouchableOpacity onPress={() => router.push({ pathname: '/(vendor)/booking/[id]', params: { id: todaySchedule[0].id } })} className="bg-white border border-[#E5E5E5] rounded-2xl p-4 mt-2"><Text className="text-[#737373] text-xs">NEXT BOOKING</Text><View className="flex-row justify-between mt-1"><View className="flex-1"><Text className="text-[#1A1A2E] font-bold text-lg">{todaySchedule[0].start_time.slice(0, 5)} · {todaySchedule[0].ground_title}</Text><Text className="text-[#737373] text-sm mt-1">{todaySchedule[0].player_name || 'Player'} · PKR {todaySchedule[0].vendor_amount.toLocaleString()}</Text></View><Ionicons name="chevron-forward" size={22} color="#4CAF50" /></View></TouchableOpacity> : <View className="bg-white border border-[#E5E5E5] rounded-2xl p-4 mt-2"><Text className="text-[#1A1A2E] font-bold">No confirmed bookings today</Text><Text className="text-[#737373] text-sm mt-1">Your next player booking will appear here.</Text></View>}
+          {attentionBookings.length > 0 && <TouchableOpacity onPress={() => router.replace('/(vendor)/bookings')} className="bg-[#FFF7ED] border border-[#FED7AA] rounded-2xl p-4 mt-3 flex-row items-center"><Ionicons name="alert-circle-outline" size={23} color="#C56A00" /><View className="flex-1 ml-3"><Text className="text-[#9A3412] font-bold">{attentionBookings.length} booking{attentionBookings.length === 1 ? '' : 's'} need attention</Text><Text className="text-[#9A3412] text-xs mt-1">Pending payment or refund processing.</Text></View><Ionicons name="chevron-forward" size={20} color="#C56A00" /></TouchableOpacity>}
+        </View>
 
-      <View className="px-5 mt-7"><View className="flex-row items-center justify-between"><Text className="text-[#1A1A2E] text-lg font-bold">Grounds at a glance</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Open all grounds" onPress={() => router.replace('/(vendor)/grounds')} className="min-h-[44px] px-2 items-center justify-center"><Text className="text-[#2E7D32] font-bold text-sm">All grounds</Text></TouchableOpacity></View>{grounds.length === 0 ? <View className="bg-white rounded-2xl p-6 border border-[#E5E5E5] items-center mt-3"><Ionicons name="business-outline" size={34} color="#9CA3AF" /><Text className="text-[#1A1A2E] font-bold mt-3">Add your first ground</Text><Text className="text-[#737373] text-sm text-center mt-1">Once it is active, players can discover and book its slots.</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Add a ground" onPress={() => router.push('/(vendor)/add-ground')} className="mt-4 min-h-[48px] px-5 rounded-xl bg-[#4CAF50] items-center justify-center"><Text className="text-white font-bold">Add ground</Text></TouchableOpacity></View> : <View className="mt-3 gap-2">{grounds.slice(0, 2).map((ground) => <TouchableOpacity key={ground.id} accessibilityRole="button" accessibilityLabel={`Manage slots for ${ground.title}`} onPress={() => router.push({ pathname: '/(vendor)/ground-slots', params: { id: ground.id, title: ground.title } })} className="bg-white rounded-2xl p-4 border border-[#E5E5E5] flex-row items-center"><View className={`h-10 w-10 rounded-xl items-center justify-center ${ground.is_active ? 'bg-[#E8F5E9]' : 'bg-[#F3F4F6]'}`}><Ionicons name="football-outline" size={20} color={ground.is_active ? '#2E7D32' : '#6B7280'} /></View><View className="flex-1 ml-3"><Text className="text-[#1A1A2E] font-bold" numberOfLines={1}>{ground.title}</Text><Text className="text-[#737373] text-xs mt-1">{ground.is_active ? 'Visible to players' : 'Hidden from players'} · Manage slots</Text></View><Ionicons name="chevron-forward" size={20} color="#9CA3AF" /></TouchableOpacity>)}</View>}</View>
-      <View className="px-5 mt-6 flex-row gap-3"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Add a ground" onPress={() => router.push('/(vendor)/add-ground')} className="flex-1 min-h-[52px] rounded-xl bg-[#4CAF50] items-center justify-center"><Text className="text-white font-bold">Add ground</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Switch to player mode" onPress={switchToPlayer} className="min-h-[52px] rounded-xl border border-[#4CAF50] px-4 flex-row items-center justify-center"><Ionicons name="person-outline" size={18} color="#2E7D32" /><Text className="text-[#2E7D32] font-bold ml-2">Player view</Text></TouchableOpacity></View>
-      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Sign out" onPress={confirmSignOut} className="self-center mt-5 min-h-[44px] px-4 items-center justify-center"><Text className="text-[#DC2626] font-semibold">Sign out</Text></TouchableOpacity>
-    </ScrollView><Toast message={toast} tone="error" onHide={() => setToast(null)} />
-  </SafeAreaView>;
+        <View className="px-5 mt-7">
+          <Text className="text-[#1A1A2E] text-lg font-bold">
+            Manage your venue
+          </Text>
+          <Text className="text-[#737373] text-sm mt-1">
+            The essentials, always one tap away.
+          </Text>
+          <View className="mt-4 gap-3">
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Open all grounds"
+              onPress={() => router.replace("/(vendor)/grounds")}
+              className="bg-white rounded-2xl p-4 border border-[#E5E5E5] flex-row items-center"
+            >
+              <View className="h-11 w-11 rounded-xl bg-[#E8F5E9] items-center justify-center">
+                <Ionicons name="business-outline" size={22} color="#2E7D32" />
+              </View>
+              <View className="flex-1 ml-3">
+                <Text className="text-[#1A1A2E] font-bold">All grounds</Text>
+                <Text className="text-[#737373] text-xs mt-1">
+                  Create, activate, edit, and manage slots
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Open booking schedule"
+              onPress={() => router.replace("/(vendor)/bookings")}
+              className="bg-white rounded-2xl p-4 border border-[#E5E5E5] flex-row items-center"
+            >
+              <View className="h-11 w-11 rounded-xl bg-[#EFF6FF] items-center justify-center">
+                <Ionicons name="calendar-outline" size={22} color="#2563EB" />
+              </View>
+              <View className="flex-1 ml-3">
+                <Text className="text-[#1A1A2E] font-bold">
+                  Booking schedule
+                </Text>
+                <Text className="text-[#737373] text-xs mt-1">
+                  See today’s matches and take action
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Open earnings and ledger"
+              onPress={() => router.replace("/(vendor)/earnings")}
+              className="bg-white rounded-2xl p-4 border border-[#E5E5E5] flex-row items-center"
+            >
+              <View className="h-11 w-11 rounded-xl bg-[#FFF7ED] items-center justify-center">
+                <Ionicons name="wallet-outline" size={22} color="#C56A00" />
+              </View>
+              <View className="flex-1 ml-3">
+                <Text className="text-[#1A1A2E] font-bold">
+                  Booking income
+                </Text>
+                <Text className="text-[#737373] text-xs mt-1">
+                  Booking income and transaction activity
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View className="px-5 mt-7">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-[#1A1A2E] text-lg font-bold">
+              Grounds at a glance
+            </Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Open all grounds"
+              onPress={() => router.replace("/(vendor)/grounds")}
+              className="min-h-[44px] px-2 items-center justify-center"
+            >
+              <Text className="text-[#2E7D32] font-bold text-sm">
+                All grounds
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {grounds.length === 0 ? (
+            <View className="bg-white rounded-2xl p-6 border border-[#E5E5E5] items-center mt-3">
+              <Ionicons name="business-outline" size={34} color="#9CA3AF" />
+              <Text className="text-[#1A1A2E] font-bold mt-3">
+                Add your first ground
+              </Text>
+              <Text className="text-[#737373] text-sm text-center mt-1">
+                Once it is active, players can discover and book its slots.
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Add a ground"
+                onPress={() => router.push("/(vendor)/add-ground")}
+                className="mt-4 min-h-[48px] px-5 rounded-xl bg-[#4CAF50] items-center justify-center"
+              >
+                <Text className="text-white font-bold">Add ground</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View className="mt-3 gap-2">
+              {grounds.slice(0, 2).map((ground) => (
+                <TouchableOpacity
+                  key={ground.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Manage slots for ${ground.title}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(vendor)/ground-slots",
+                      params: { id: ground.id, title: ground.title },
+                    })
+                  }
+                  className="bg-white rounded-2xl p-4 border border-[#E5E5E5] flex-row items-center"
+                >
+                  <View
+                    className={`h-10 w-10 rounded-xl items-center justify-center ${ground.is_active ? "bg-[#E8F5E9]" : "bg-[#F3F4F6]"}`}
+                  >
+                    <Ionicons
+                      name="football-outline"
+                      size={20}
+                      color={ground.is_active ? "#2E7D32" : "#6B7280"}
+                    />
+                  </View>
+                  <View className="flex-1 ml-3">
+                    <Text
+                      className="text-[#1A1A2E] font-bold"
+                      numberOfLines={1}
+                    >
+                      {ground.title}
+                    </Text>
+                    <Text className="text-[#737373] text-xs mt-1">
+                      {ground.is_active
+                        ? "Visible to players"
+                        : "Hidden from players"}{" "}
+                      · Manage slots
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+        <View className="px-5 mt-6 flex-row gap-3">
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Add a ground"
+            onPress={() => router.push("/(vendor)/add-ground")}
+            className="flex-1 min-h-[52px] rounded-xl bg-[#4CAF50] items-center justify-center"
+          >
+            <Text className="text-white font-bold">Add ground</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Switch to player mode"
+            onPress={switchToPlayer}
+            className="min-h-[52px] rounded-xl border border-[#4CAF50] px-4 flex-row items-center justify-center"
+          >
+            <Ionicons name="person-outline" size={18} color="#2E7D32" />
+            <Text className="text-[#2E7D32] font-bold ml-2">Player view</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+          onPress={confirmSignOut}
+          className="self-center mt-5 min-h-[44px] px-4 items-center justify-center"
+        >
+          <Text className="text-[#DC2626] font-semibold">Sign out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+      <Toast message={toast} tone="error" onHide={() => setToast(null)} />
+    </SafeAreaView>
+  );
 }
