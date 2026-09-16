@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { BookingProfile, listVendorBookings } from '@/lib/api/bookings';
+import { BookingProfile, getVendorBookings } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { goBackOrReplace } from '@/lib/navigation';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
@@ -25,6 +25,10 @@ export default function VendorBookings() {
   const [bookings, setBookings] = useState<BookingProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
@@ -32,8 +36,8 @@ export default function VendorBookings() {
     else setLoading(true);
 
     try {
-      const data = await listVendorBookings();
-      setBookings(data);
+      const data = await getVendorBookings(1);
+      setBookings(data.bookings); setPage(1); setHasMore(data.pagination.has_more); setTotal(data.pagination.total);
     } catch (error: any) {
       setToast(error?.message || 'Unable to load bookings.');
     } finally {
@@ -41,6 +45,17 @@ export default function VendorBookings() {
       setRefreshing(false);
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (loading || refreshing || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await getVendorBookings(page + 1);
+      setBookings((current) => [...current, ...data.bookings]); setPage(data.pagination.page); setHasMore(data.pagination.has_more); setTotal(data.pagination.total);
+    } catch (error: any) {
+      setToast(error?.message || 'Unable to load more bookings.');
+    } finally { setLoadingMore(false); }
+  }, [hasMore, loading, loadingMore, page, refreshing]);
 
   useEffect(() => {
     load();
@@ -156,7 +171,7 @@ export default function VendorBookings() {
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace('/(vendor)')} className="w-11 h-11 rounded-full bg-[#F5F5F5] items-center justify-center mr-3"><Ionicons name="arrow-back" size={20} color="#1A1A2E" /></TouchableOpacity>
         <View className="flex-1"><Text className="text-2xl font-bold text-[#1A1A2E]">VENDOR BOOKINGS</Text>
         <Text className="text-[#737373] text-xs mt-0.5">
-          {bookings.length} {bookings.length === 1 ? 'total booking' : 'total bookings across your venues'}
+          {total} {total === 1 ? 'total booking' : 'total bookings across your venues'}
         </Text></View>
       </View>
 
@@ -180,6 +195,9 @@ export default function VendorBookings() {
           keyExtractor={(item) => item.id}
           renderItem={renderBookingCard}
           renderSectionHeader={renderSectionHeader}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={loadingMore ? <ActivityIndicator className="py-4" color="#4CAF50" /> : null}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
           showsVerticalScrollIndicator={false}
           refreshControl={

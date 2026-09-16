@@ -159,7 +159,7 @@ Drizzle migrations are stored in `Server/drizzle/`. Run migrations against the c
 
 - Real SMS delivery is not implemented; development OTP is fixed/configured.
 - Payment gateway integration is not implemented; booking confirmation is mocked.
-- Cloudflare R2 image upload is not implemented; image picker URIs/mock URLs are currently stored as strings.
+- Image storage uses a provider-neutral signed-upload API with a Cloudinary adapter. Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` on the server; R2/S3 can replace the adapter later without changing feature screens.
 - Reviews, map rendering, wallet/earnings, and advanced admin verification are not implemented.
 - Notifications are persisted and displayed in-app, but push notifications and scheduled local reminders are not fully implemented.
 - The mobile project still has pre-existing TypeScript issues in OTP refs, Expo StatusBar props, web CSS module typing, and global CSS typing.

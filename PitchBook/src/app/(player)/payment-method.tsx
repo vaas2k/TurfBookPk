@@ -45,6 +45,7 @@ export default function PaymentMethodScreen() {
 
   const [reference, setReference] = useState('');
   const [loading, setLoading] = useState(false);
+  const [reserveFutureSlots, setReserveFutureSlots] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const [idempotencyKey] = useState(
@@ -62,6 +63,9 @@ export default function PaymentMethodScreen() {
     ? selectedSlots.reduce((total, slot) => total + slot.price, 0)
     : Number(params.amount) || 0;
   const isMultiSlotOrder = slotIds.length > 1;
+  const firstSelectedDate = selectedSlots.length ? [...selectedSlots].sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`))[0]?.date : null;
+  const firstDayPrice = firstSelectedDate ? selectedSlots.filter((slot) => slot.date === firstSelectedDate).reduce((total, slot) => total + slot.price, 0) : slotPrice;
+  const dueNow = reserveFutureSlots && isMultiSlotOrder ? firstDayPrice : slotPrice;
 
   const handleConfirm = async () => {
     if (!slotIds.length) {
@@ -71,7 +75,7 @@ export default function PaymentMethodScreen() {
     setLoading(true);
     try {
       if (isMultiSlotOrder) {
-        const order = await createBookingOrder(slotIds, idempotencyKey);
+        const order = await createBookingOrder(slotIds, idempotencyKey, reserveFutureSlots);
         await confirmMockBookingOrder(order.id, reference.trim() || undefined);
         router.replace('/(player)/bookings');
         return;
@@ -152,11 +156,17 @@ export default function PaymentMethodScreen() {
           {/* Pricing Breakdown Card */}
           <View className="mb-4">
             <PricingBreakdown
-              slotPrice={slotPrice}
+              slotPrice={dueNow}
               platformFee={0}
-              totalAmount={slotPrice}
+              totalAmount={dueNow}
             />
           </View>
+
+          {isMultiSlotOrder && (
+            <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: reserveFutureSlots }} onPress={() => setReserveFutureSlots((value) => !value)} className={`rounded-2xl p-4 mb-4 border ${reserveFutureSlots ? 'bg-[#E8F5E9] border-[#4CAF50]' : 'bg-white border-[#E5E5E5]'}`}>
+              <View className="flex-row items-start"><Ionicons name={reserveFutureSlots ? 'checkbox' : 'square-outline'} size={22} color="#2E7D32" /><View className="flex-1 ml-3"><Text className="text-[#1A1A2E] font-bold">Reserve future recurring slots</Text><Text className="text-[#4B5563] text-xs leading-4 mt-1">Pay PKR {firstDayPrice.toLocaleString()} for all selected slots on {firstSelectedDate} now. Later-date slots stay reserved and each opens a 30-minute payment window 2 hours before it starts. Unpaid slots are released.</Text></View></View>
+            </TouchableOpacity>
+          )}
 
           {/* Mock Payment Mode Card */}
           <View className="bg-[#FFF8E1] rounded-2xl p-5 border border-[#FDE68A]">
@@ -185,7 +195,7 @@ export default function PaymentMethodScreen() {
           disabled={loading}
           onPress={handleConfirm}
           accessibilityRole="button"
-          accessibilityLabel={`Confirm booking for PKR ${slotPrice}`}
+          accessibilityLabel={`Confirm booking for PKR ${dueNow}`}
           className={`rounded-full py-4 items-center ${
             loading ? 'bg-[#9CA3AF]' : 'bg-[#4CAF50]'
           }`}
@@ -201,7 +211,7 @@ export default function PaymentMethodScreen() {
             <ActivityIndicator color="white" />
           ) : (
             <Text className="text-white font-bold text-base">
-              {`Confirm Booking · PKR ${slotPrice.toLocaleString()}`}
+              {`${reserveFutureSlots && isMultiSlotOrder ? 'Pay first slot' : 'Confirm Booking'} · PKR ${dueNow.toLocaleString()}`}
             </Text>
           )}
         </TouchableOpacity>

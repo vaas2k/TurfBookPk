@@ -10,10 +10,12 @@ export function createBookingRouter(controller: BookingController, tokenService:
   router.post('/orders', controller.createOrder);
   router.post('/orders/:id/mock-confirm', controller.confirmOrderMock);
   router.post('/:id/mock-confirm', controller.confirmMock);
+  router.post('/:id/recurring-reservation/mock-confirm', controller.confirmRecurringReservationMock);
   router.get('/notifications', controller.notifications);
   router.get('/mine', controller.playerList);
   router.get('/vendor', controller.vendorList);
   router.get('/:id', controller.detail);
+  router.get('/:id/cancellation-preview', controller.cancellationPreview);
   router.patch('/:id/cancel', controller.cancel);
   router.patch('/:id/no-show', controller.markNoShow);
   router.patch('/:id/complete', controller.markCompleted);

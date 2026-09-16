@@ -58,10 +58,10 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Add vendor earnings ledger, commission calculation, and balance updates.
 - [x] Build the vendor earnings screen using real ledger data.
 - [ ] Integrate a real SMS provider for OTP delivery.
-- [ ] Implement cloud image upload/storage and stop persisting local device URIs.
-- [ ] Add image validation, ownership, replacement, and deletion behavior.
-- [ ] Implement player profile editing and avatar upload.
-- [ ] Implement vendor profile editing, logo, cover image, activation, and deactivation.
+- [x] Implement cloud image upload/storage and stop persisting local device URIs. (Provider-neutral signed-upload contract with Cloudinary adapter; credentials still need environment configuration.)
+- [x] Add image validation, ownership, replacement, and deletion behavior. (JPEG/PNG/WebP, 8 MB limit, owner-scoped keys, replacement cleanup.)
+- [x] Implement player profile editing and avatar upload.
+- [x] Implement vendor profile editing, logo, cover image, activation, and deactivation.
 - [x] Add notification read/unread endpoints and unread counts.
 - [x] Add a vendor notification screen and connect the dashboard button.
 - [x] Move notifications to a dedicated API resource.
@@ -87,15 +87,15 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 ## P1 - Mobile UI/UX completeness
 
 - [ ] Redesign the vendor earnings screen around clear business balances: available-to-withdraw, pending/processing, paid out, and refunds/adjustments; replace raw ledger labels and booking IDs with plain-language explanations, dates, booking/ground context, status badges, filters, and a transaction-detail view.
-- [ ] Add editable operating-hours controls to vendor ground creation/editing and display them on public ground detail.
+- [x] Add editable operating-hours controls to vendor ground creation/editing and display them on public ground detail.
 - [ ] Define and expose peak-price UI only after the business provides peak-hour rules; do not display a price users cannot understand.
 - [ ] Replace raw date/time text fields with platform-accessible date/time pickers and validate them inline.
 - [x] Build a vendor slot calendar/grid with date navigation and clear availability/closure states. A 31-day calendar is used instead of a weekly-only view so vendors can schedule planned closures.
 - [ ] Add search, sort, filter, and empty/error/retry states to player ground discovery.
-- [ ] Add a player-friendly booking cancellation preview that shows fee/refund before confirmation.
+- [x] Add a player-friendly booking cancellation preview that shows fee/refund before confirmation.
 - [ ] Add booking detail shortcuts from notifications and calendar/reminder status feedback.
 - [ ] Add real vendor booking dashboard counts and actionable “today”/“requires attention” cards.
-- [ ] Show no-show eligibility, completion timing, and policy explanations in vendor booking details.
+- [x] Show no-show eligibility, completion timing, and policy explanations in vendor booking details.
 - [ ] Consolidate repeated headers, cards, form fields, and empty/error states into shared mobile components.
 
 ## P2 - Mobile UX polish and accessibility
@@ -109,11 +109,11 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 ## P1 - Discovery, performance, and contracts
 
 - [x] Add server-side ground search, city/area filters, pitch type, price, rating, and availability filters.
-- [ ] Add pagination and deterministic sorting to grounds, bookings, slots, and notifications.
-- [ ] Return ground availability summaries in the ground list to remove N+1 slot requests.
-- [ ] Replace the inaccurate `Available Now` label with time-aware next availability.
-- [ ] Validate the ground in the public slot-list endpoint.
-- [ ] Sort public and vendor slots by date and start time.
+- [x] Add pagination and deterministic sorting to grounds, bookings, slots, and notifications. (Mobile load-more controls remain a separate reliability task.)
+- [x] Return ground availability summaries in the ground list to remove N+1 slot requests.
+- [x] Replace the inaccurate `Available Now` label with upcoming availability language.
+- [x] Validate the ground in the public slot-list endpoint.
+- [x] Sort public and vendor slots by date and start time.
 - [ ] Consolidate duplicated mobile auth, ground, slot, booking, and vendor types.
 - [ ] Replace core `any` usage, especially booking mapping and API error handling.
 - [ ] Add runtime API response validation or generate the mobile client from an API contract.
@@ -199,6 +199,6 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Pitch Side on select from (5,7,9,11)
 - [ ] Cancellation policy on select from (,,,,)
 - [ ] ammeneties select from (,,,) + add more 
-- [ ] allow the player on reccuring booking to hold all the slots on reserved on take payment for the first slot and hold all the other on reserved from him and when the future slot time is near notify and open a small time window for him before the slot time to pay for the slot on success allocate else removed the slot from reservation
-- [low prioirty] allow vendors to activate or deactivate ground on future date
+- [x] Allow a player to reserve future recurring slots while paying only the first slot. Future slots open a configurable payment window 2 hours before start (30 minutes by default); payment confirms that slot, otherwise maintenance releases it. In-app notifications are implemented; remote push will reuse this event later.
+- [x] allow vendors to activate or deactivate ground on future date
 - 

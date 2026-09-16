@@ -2,10 +2,14 @@ import { apiRequest } from './client';
 
 export interface AppNotification { id: string; type: string; title: string; message: string; data?: { bookingId?: string; orderId?: string } | null; isRead: boolean; createdAt: string; }
 
-export interface NotificationList { notifications: AppNotification[]; unread_count: number; }
+export interface NotificationList {
+  notifications: AppNotification[];
+  unread_count: number;
+  pagination: { page: number; limit: number; total: number; has_more: boolean };
+}
 
-export async function getNotifications(): Promise<NotificationList> {
-  return apiRequest<NotificationList>('/notifications');
+export async function getNotifications(page = 1, limit = 50): Promise<NotificationList> {
+  return apiRequest<NotificationList>(`/notifications?page=${page}&limit=${limit}`);
 }
 
 export async function listNotifications(): Promise<AppNotification[]> {

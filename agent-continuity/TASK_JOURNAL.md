@@ -1376,3 +1376,128 @@
 - `npm run typecheck` (Server)
 - `npm test` (Server)
 - `git diff --check`
+
+## 2026-09-16 - Core MVP P1 completion and provider-neutral image storage
+
+### Completed
+
+- Added a storage-provider abstraction and a Cloudinary implementation so the app can later move to R2, S3, or another provider without changing mobile screens or API contracts.
+- Added authenticated provider-neutral media endpoints for signed image uploads and owned-image deletion; Cloudinary credentials remain server-side.
+- Enforced image MIME type, 8 MB size, owner-scoped storage keys, and deletion ownership at the API boundary.
+- Wired real image upload, replacement, and removal into vendor ground cover/gallery management.
+- Added player avatar upload and vendor logo/cover upload to their profile screens.
+- Added vendor business visibility activation/deactivation controls.
+- Added ground operating hours to create/edit, API validation, persistence, and public ground display.
+- Added cancellation previews showing cancellation fee and expected refund before confirmation.
+- Prevented attendance/no-show actions before a booking's slot has ended.
+- Added public availability summaries, removed the home-screen per-ground slot request pattern, and kept public slots deterministically ordered.
+- Updated the active MVP checklist for the completed non-payment P1 items.
+
+### Verification
+
+- `npm run typecheck` in `Server/`: passed.
+- `npx tsc --noEmit` in `PitchBook/`: passed.
+- `npm run db:migrate`: passed against local PostgreSQL.
+- `npm test` in `Server/`: 18/18 passed, including database integration tests.
+- `npm run build` in `Server/`: passed.
+- Cloudinary configuration presence check: passed without exposing any credentials.
+- Fixed Expo SDK 57 image uploads: Expo's fetch rejects React Native's legacy URI FormData parts, so uploads now attach an `expo-file-system` `File` (a supported Blob-compatible part).
+
+### Next immediate step
+
+- Execute the full real-device Cloudinary upload/replacement/delete flow using a player avatar, vendor branding image, and ground gallery image.
+- Continue the remaining non-payment MVP reliability work: list pagination, shared UI/API contract cleanup, accessibility polish, and final end-to-end regression testing.
+
+## 2026-09-16 - Deterministic paginated API lists
+
+### Completed
+
+- Added validated `page` and `limit` query handling plus pagination metadata (`page`, `limit`, `total`, `has_more`) to player bookings, vendor bookings, and notifications.
+- Added deterministic secondary ID ordering to booking and notification lists so records cannot jump between pages when timestamps are equal.
+- Completed public-ground list pagination for the no-date discovery route and corrected low/high price sorting.
+- Added pagination metadata to vendor grounds and public ground slot lists while keeping their existing mobile response fields compatible.
+
+### Verification
+
+- `npm run typecheck` in `Server/`: passed.
+- `npm test` in `Server/`: 18/18 passed against local PostgreSQL.
+
+### Next immediate step
+
+- Add mobile load-more/pull-to-refresh behavior for booking and notification histories, then convert their potentially long scroll views to `FlatList`/`SectionList`.
+
+## 2026-09-16 - Mobile booking and notification pagination
+
+### Completed
+
+- Added mobile paginated API helpers for player/vendor bookings and notifications.
+- Added automatic load-more footers and pull-to-refresh reset behavior to both booking histories.
+- Converted player and vendor notification feeds from `ScrollView` to virtualized `FlatList` components with stable keys, pull-to-refresh, and load-more behavior.
+- Kept booking notification deep links and mark-read actions intact while paginating the feed.
+
+### Verification
+
+- `npx tsc --noEmit` in `PitchBook/`: passed.
+- `git diff --check`: passed with no whitespace errors (line-ending warnings only).
+
+### Next immediate step
+
+- Apply the same virtualized-list and load-more treatment to ground discovery, vendor ground/slot management, and earnings where record volume can grow.
+
+## 2026-09-16 - Paginated player ground discovery
+
+### Completed
+
+- Added typed pagination metadata to the public-ground mobile API contract.
+- Added a player-home load-more control that fetches subsequent discovery pages with their availability summaries.
+- Preserved location permission behavior and re-sorts the combined discovery set nearest-to-farthest when distance is available.
+
+### Verification
+
+- `npx tsc --noEmit` in `PitchBook/`: passed.
+
+### Next immediate step
+
+- Refactor the multi-section player home layout to a virtualized list, then add pagination/virtualization to vendor ground and earnings histories.
+
+## 2026-09-16 - Paginated vendor ground management
+
+### Completed
+
+- Added typed paginated vendor-ground API access.
+- Updated vendor ground management to load the first page, reset cleanly on refresh, and load more grounds on demand.
+- Loads slot summaries only for the newly fetched grounds so availability and booked counts remain correct on later pages.
+
+### Verification
+
+- `npx tsc --noEmit` in `PitchBook/`: passed.
+- `git diff --check`: passed with no whitespace errors (line-ending warnings only).
+
+### Next immediate step
+
+- Refactor the multi-section player home and vendor ground layouts to virtualized list containers, then paginate the earnings API and activity feed.
+
+## 2026-09-16 - Player recurring reservation and pay-later lifecycle
+
+### Completed
+
+- Added a dedicated recurring-reservation path to multi-slot checkout. Players can pay only the earliest slot and reserve later selected slots.
+- Future reservations remain unavailable to other players until their per-slot reservation expiry, instead of using the ordinary short checkout hold.
+- Added configurable payment windows: opening 120 minutes before slot start and lasting 30 minutes by default (`RECURRING_PAYMENT_OPENS_BEFORE_MINUTES`, `RECURRING_PAYMENT_WINDOW_MINUTES`).
+- Added the initial payment path, later per-booking payment endpoint, atomic slot claim, ledger entry, and vendor/player booking notifications.
+- Maintenance now creates one in-app payment-window notification per future reservation and safely expires/releases the slot when its payment window ends.
+- Added player checkout control and booking-detail payment call-to-action for an open future payment window.
+- Added and applied `0016_recurring_payment_reservations.sql` locally.
+- Refined payment grouping: every selected slot on the earliest selected calendar date is paid together; only selected slots on later dates are reserved for their future payment windows.
+
+### Verification
+
+- `npm run db:migrate`: passed.
+- `npm run typecheck` in `Server/`: passed.
+- `npm test` in `Server/`: 18/18 passed.
+- `npx tsc --noEmit` in `PitchBook/`: passed.
+- `git diff --check`: passed with no whitespace errors (line-ending warnings only).
+
+### Next immediate step
+
+- Run a manual recurring-reservation flow with test slots whose payment window is near, then add remote push delivery to the same maintenance notification event once development builds are available.

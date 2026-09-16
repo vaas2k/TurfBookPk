@@ -99,6 +99,13 @@ function validatePeakConfig(peakPercentage: number | null, windows: PeakWindow[]
   }
 }
 
+function operatingHours(value: unknown): { open: string; close: string } {
+  if (!value || typeof value !== 'object') throw new AppError('invalid_operating_hours', 'Operating hours must include opening and closing times', 422);
+  const record = value as Record<string, unknown>; const open = normalizedTime(record.open); const close = normalizedTime(record.close);
+  if (!open || !close || open >= close) throw new AppError('invalid_operating_hours', 'Choose valid opening and closing times', 422);
+  return { open, close };
+}
+
 function hasStarted(date: string, time: string): boolean {
   return new Date(`${date}T${time.length === 5 ? `${time}:00` : time}+05:00`).getTime() <= Date.now();
 }
@@ -178,11 +185,27 @@ export class GroundController {
     if (pitchType) filters.push(ilike(grounds.pitchType, pitchType));
     if (amenities.length) filters.push(arrayContains(grounds.amenities, amenities));
 
-    const orderBy = sort === 'rating' || sort === 'recommended' ? [desc(grounds.rating), asc(grounds.title)] : [asc(grounds.title)];
+    const orderBy = sort === 'price_low'
+      ? [asc(grounds.pricePerHour), asc(grounds.title), asc(grounds.id)]
+      : sort === 'price_high'
+        ? [desc(grounds.pricePerHour), asc(grounds.title), asc(grounds.id)]
+        : [desc(grounds.rating), asc(grounds.title), asc(grounds.id)];
     const rows = await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(...filters)).orderBy(...orderBy);
     await Promise.all(rows.map(({ ground }) => materializeSchedule(ground)));
     if (!availabilityDate) {
-      response.json({ grounds: rows.map(({ ground }) => toGround(ground)), pagination: { page: 1, limit: rows.length, total: rows.length, has_more: false } });
+      const total = rows.length;
+      const start = (page - 1) * limit;
+      const pageRows = rows.slice(start, start + limit);
+      const allIds = pageRows.map(({ ground }) => ground.id);
+      const available = allIds.length ? await db.select().from(slots).where(and(inArray(slots.groundId, allIds), eq(slots.isBooked, false), eq(slots.isBlocked, false))).orderBy(asc(slots.date), asc(slots.startTime)) : [];
+      const summaries: Record<string, { available_count: number; next_available_at: string | null }> = {};
+      for (const { ground } of pageRows) summaries[ground.id] = { available_count: 0, next_available_at: null };
+      for (const slot of available) {
+        if (hasStarted(slot.date, slot.startTime) || isHeld(slot)) continue;
+        const summary = summaries[slot.groundId];
+        if (summary) { summary.available_count++; summary.next_available_at ??= `${slot.date}T${slot.startTime.slice(0, 5)}:00+05:00`; }
+      }
+      response.json({ grounds: pageRows.map(({ ground }) => toGround(ground)), availability_by_ground: summaries, pagination: { page, limit, total, has_more: start + pageRows.length < total } });
       return;
     }
 
@@ -217,8 +240,12 @@ export class GroundController {
   listMine = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const vendorId = await vendorIdForUser(request.auth.userId);
-    const rows = await db.select().from(grounds).where(eq(grounds.vendorId, vendorId));
-    response.json({ grounds: rows.map(toGround) });
+    const page = queryInteger(request.query.page, 'Page', 1, 1, 10_000);
+    const limit = queryInteger(request.query.limit, 'Limit', 50, 1, 100);
+    const offset = (page - 1) * limit;
+    const all = await db.select().from(grounds).where(eq(grounds.vendorId, vendorId)).orderBy(asc(grounds.title), asc(grounds.id));
+    const rows = all.slice(offset, offset + limit);
+    response.json({ grounds: rows.map(toGround), pagination: { page, limit, total: all.length, has_more: offset + rows.length < all.length } });
   };
 
   create = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -240,6 +267,7 @@ export class GroundController {
       location, city, address, latitude, longitude,
       amenities: textArray(body.amenities), images: textArray(body.images), coverImage: typeof body.cover_image === 'string' ? body.cover_image.trim() || null : null,
       pitchType: body.pitch_type?.trim() || null, pricePerHour: body.price_per_hour, peakPercentage: configuredPeakPercentage, peakWindows: configuredPeakWindows,
+      operatingHours: body.operating_hours === undefined ? { open: '06:00', close: '23:00' } : operatingHours(body.operating_hours),
       rules: textArray(body.rules), cancellationPolicy: body.cancellation_policy?.trim() || null,
     }).returning())[0];
     if (!row) throw new AppError('ground_creation_failed', 'Ground could not be created', 500);
@@ -271,6 +299,7 @@ export class GroundController {
       values.peakPercentage = body.peak_percentage;
     }
     if (body.peak_windows !== undefined) values.peakWindows = peakWindows(body.peak_windows);
+    if (body.operating_hours !== undefined) values.operatingHours = operatingHours(body.operating_hours);
     validatePeakConfig(values.peakPercentage === undefined ? current.peakPercentage : values.peakPercentage, values.peakWindows === undefined ? current.peakWindows : values.peakWindows);
     if (body.is_active !== undefined) values.isActive = Boolean(body.is_active);
     if (body.rules !== undefined) values.rules = textArray(body.rules);
@@ -291,8 +320,12 @@ export class GroundController {
     const ground = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(vendors.isActive, true))).limit(1))[0];
     if (!ground) throw new AppError('not_found', 'Ground was not found', 404);
     await materializeSchedule(ground.ground);
-    const rows = await db.select().from(slots).where(eq(slots.groundId, ground.ground.id));
-    response.json({ slots: rows.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, ground.ground)) });
+    const page = queryInteger(request.query.page, 'Page', 1, 1, 10_000);
+    const limit = queryInteger(request.query.limit, 'Limit', 100, 1, 200);
+    const offset = (page - 1) * limit;
+    const rows = (await db.select().from(slots).where(eq(slots.groundId, ground.ground.id)).orderBy(asc(slots.date), asc(slots.startTime), asc(slots.id))).filter((slot) => !hasStarted(slot.date, slot.startTime));
+    const pageRows = rows.slice(offset, offset + limit);
+    response.json({ slots: pageRows.map((slot) => toSlot(slot, ground.ground)), pagination: { page, limit, total: rows.length, has_more: offset + pageRows.length < rows.length } });
   };
 
   createSlot = async (request: AuthenticatedRequest, response: Response): Promise<void> => {

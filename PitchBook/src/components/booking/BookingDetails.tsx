@@ -9,7 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { BookingProfile, cancelBooking, getBooking, markBookingCompleted, markBookingNoShow } from '@/lib/api/bookings';
+import { BookingProfile, cancelBooking, confirmRecurringReservationBooking, getBooking, getCancellationPreview, markBookingCompleted, markBookingNoShow } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { appDialog } from '@/components/ui/app-dialog';
@@ -35,12 +35,15 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
     load();
   }, [load]);
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
+    setActionLoading(true);
+    let preview;
+    try { preview = await getCancellationPreview(id); }
+    catch (error: any) { setToast(error?.message || 'Unable to check the cancellation policy.'); setActionLoading(false); return; }
+    setActionLoading(false);
     appDialog.alert(
-      'Cancel booking?',
-      vendorView
-        ? 'The player will receive a full refund if payment was already completed.'
-        : 'Refund eligibility depends on how soon the match slot begins.',
+      'Review cancellation',
+      `Cancellation fee: PKR ${preview.cancellation_fee.toLocaleString()}\n${preview.payment_status === 'paid' ? `Refund due: PKR ${preview.refund_amount.toLocaleString()}` : 'No payment has been recorded.'}${preview.is_mock_payment ? '\nThis is a mock payment. No real money will move.' : ''}\n\nThe slot will become available again.`,
       [
         { text: 'Keep Booking', style: 'cancel' },
         {
@@ -91,6 +94,12 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
   const handleCompleted = () => {
     appDialog.alert('Mark attendance complete?', 'Only do this after the booked slot has ended and the player attended.', [{ text: 'Back', style: 'cancel' }, { text: 'Mark completed', onPress: async () => { setActionLoading(true); try { setBooking(await markBookingCompleted(id)); } catch (error: any) { setToast(error?.message || 'Unable to update booking status.'); } finally { setActionLoading(false); } } }]);
   };
+  const handleRecurringPayment = async () => {
+    setActionLoading(true);
+    try { setBooking(await confirmRecurringReservationBooking(id)); }
+    catch (error: any) { setToast(error?.message || 'Unable to pay for this reserved slot.'); }
+    finally { setActionLoading(false); }
+  };
 
   if (loading) {
     return (
@@ -118,7 +127,10 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
   }
 
   const isCancellable =
-    booking.status === 'confirmed' || booking.status === 'pending_payment';
+    (booking.status === 'confirmed' || booking.status === 'pending_payment') && new Date(`${booking.date}T${booking.start_time}+05:00`).getTime() > Date.now();
+  const hasEnded = new Date(`${booking.date}T${booking.end_time}+05:00`).getTime() <= Date.now();
+  const paymentWindowOpen = booking.payment_window_opens_at ? new Date(booking.payment_window_opens_at).getTime() <= Date.now() : false;
+  const reservationActive = booking.is_recurring_reservation && booking.status === 'pending_payment' && booking.reservation_expires_at && new Date(booking.reservation_expires_at).getTime() > Date.now();
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">
@@ -237,6 +249,9 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
         )}
 
         {/* Action Buttons */}
+        {!vendorView && reservationActive && (
+          <View className="bg-[#E8F5E9] rounded-2xl p-5 border border-[#86EFAC] mb-2"><Text className="text-[#1A1A2E] font-bold">Future slot reserved for you</Text><Text className="text-[#4B5563] text-sm mt-1">{paymentWindowOpen ? 'Your payment window is open now. Pay before this reservation is released.' : `Payment opens ${new Date(booking.payment_window_opens_at!).toLocaleString()}.`}</Text>{paymentWindowOpen && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Pay for reserved slot" disabled={actionLoading} onPress={handleRecurringPayment} className="bg-[#4CAF50] rounded-full py-3 items-center mt-4">{actionLoading ? <ActivityIndicator color="white" /> : <Text className="text-white font-bold">Pay PKR {booking.total_amount.toLocaleString()}</Text>}</TouchableOpacity>}</View>
+        )}
         {isCancellable && (
           <TouchableOpacity
             accessibilityRole="button"
@@ -253,10 +268,11 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
           </TouchableOpacity>
         )}
 
-        {vendorView && booking.status === 'confirmed' && (
+        {vendorView && booking.status === 'confirmed' && !hasEnded && <Text className="text-[#737373] text-center mt-4">Attendance and no-show can be recorded after this slot ends.</Text>}
+        {vendorView && booking.status === 'confirmed' && hasEnded && (
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mark player attendance complete" disabled={actionLoading} onPress={handleCompleted} className="bg-[#4CAF50] rounded-full py-4 items-center mt-3"><Text className="text-white font-bold text-base">Mark Attendance Complete</Text></TouchableOpacity>
         )}
-        {vendorView && booking.status === 'confirmed' && (
+        {vendorView && booking.status === 'confirmed' && hasEnded && (
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Mark player as no-show"

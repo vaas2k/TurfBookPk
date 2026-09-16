@@ -66,7 +66,7 @@ export async function registerVendor(data: {
   return result.profile;
 }
 
-export async function updateVendorProfile(data: Partial<Pick<VendorProfile, 'business_name' | 'business_phone' | 'business_city' | 'business_description' | 'is_active'>>): Promise<VendorProfile> {
+export async function updateVendorProfile(data: Partial<Pick<VendorProfile, 'business_name' | 'business_phone' | 'business_city' | 'business_description' | 'business_logo' | 'business_cover_image' | 'is_active'>>): Promise<VendorProfile> {
   const result = await apiRequest<{ profile: VendorProfile }>('/vendors/me', { method: 'PATCH', data });
   return result.profile;
 }
@@ -99,8 +99,12 @@ export async function getVendorEarnings(): Promise<{ summary: EarningsSummary; e
   return apiRequest('/vendors/earnings');
 }
 
+export async function getVendorGrounds(page = 1, limit = 50): Promise<{ grounds: Ground[]; pagination: { page: number; limit: number; total: number; has_more: boolean } }> {
+  return apiRequest(`/grounds/vendor/mine?page=${page}&limit=${limit}`);
+}
+
 export async function listVendorGrounds(): Promise<Ground[]> {
-  const result = await apiRequest<{ grounds: Ground[] }>('/grounds/vendor/mine');
+  const result = await getVendorGrounds();
   return result.grounds;
 }
 
@@ -156,9 +160,14 @@ export async function listGroundBlackouts(groundId: string): Promise<GroundBlack
 export async function createGroundBlackouts(groundId: string, dates: string[], reason?: string): Promise<void> { await apiRequest(`/grounds/${groundId}/blackouts`, { method: 'POST', data: { dates, reason } }); }
 export async function deleteGroundBlackout(groundId: string, date: string): Promise<void> { await apiRequest(`/grounds/${groundId}/blackouts/${date}`, { method: 'DELETE' }); }
 
-export async function listPublicGrounds(): Promise<Ground[]> {
-  const result = await apiRequest<{ grounds: Ground[] }>('/grounds');
-  return result.grounds;
+export interface PublicGroundListResult {
+  grounds: Ground[];
+  availability_by_ground: Record<string, { available_count: number; next_available_at: string | null }>;
+  pagination: { page: number; limit: number; total: number; has_more: boolean };
+}
+
+export async function listPublicGrounds(page = 1, limit = 24): Promise<PublicGroundListResult> {
+  return apiRequest(`/grounds?page=${page}&limit=${limit}`);
 }
 
 export interface PublicGroundSearchResult {

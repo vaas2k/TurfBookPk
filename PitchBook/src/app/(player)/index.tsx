@@ -11,7 +11,7 @@ import { useAuthStore } from '@/store/authStore';
 import VendorRegistrationModal from '@/components/vendor/VendorRegistrationModal';
 import { useVendorStore } from '@/store/vendorStore';
 import { VendorFormData } from '@/components/vendor/VendorRegistrationModal';
-import { Ground, listGroundSlots, listPublicGrounds } from '@/lib/api/vendors';
+import { Ground, listPublicGrounds } from '@/lib/api/vendors';
 import { getNotifications } from '@/lib/api/notifications';
 import { appDialog } from '@/components/ui/app-dialog';
 import * as Location from 'expo-location';
@@ -52,6 +52,9 @@ export default function PlayerHome() {
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [groundList, setGroundList] = useState<PlayerGround[]>([]);
+  const [groundPage, setGroundPage] = useState(1);
+  const [hasMoreGrounds, setHasMoreGrounds] = useState(false);
+  const [loadingMoreGrounds, setLoadingMoreGrounds] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
@@ -67,7 +70,7 @@ export default function PlayerHome() {
   const loadGrounds = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [grounds, notifications, locationPermission] = await Promise.all([listPublicGrounds(), getNotifications(), Location.getForegroundPermissionsAsync()]);
+      const [discovery, notifications, locationPermission] = await Promise.all([listPublicGrounds(), getNotifications(), Location.getForegroundPermissionsAsync()]);
       setUnreadNotifications(notifications.unread_count);
       let currentLocation = userLocation;
       const permission = locationPermission.granted ? locationPermission : await Location.requestForegroundPermissionsAsync();
@@ -75,17 +78,32 @@ export default function PlayerHome() {
         const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         currentLocation = { latitude: position.coords.latitude, longitude: position.coords.longitude }; setUserLocation(currentLocation);
       }
-      const withAvailability = await Promise.all(grounds.map(async (ground) => {
-        const slots = await listGroundSlots(ground.id);
-        const available = slots.filter((slot) => !slot.is_booked && !slot.is_blocked).length;
+      const withAvailability = discovery.grounds.map((ground) => {
+        const available = discovery.availability_by_ground[ground.id]?.available_count ?? 0;
         return { ...toPlayerGround(ground, currentLocation ? distanceKm(currentLocation, ground) : null), slotsAvailable: available, isAvailableNow: ground.is_active && available > 0 };
-      }));
+      });
       withAvailability.sort((a, b) => a.distanceKm === null ? 1 : b.distanceKm === null ? -1 : a.distanceKm - b.distanceKm);
-      setGroundList(withAvailability);
+      setGroundList(withAvailability); setGroundPage(discovery.pagination.page); setHasMoreGrounds(discovery.pagination.has_more);
     } catch (error) {
       console.log('[PlayerHome] Ground load failed:', error);
     } finally { setRefreshing(false); }
   }, []);
+
+  const loadMoreGrounds = useCallback(async () => {
+    if (loadingMoreGrounds || !hasMoreGrounds) return;
+    setLoadingMoreGrounds(true);
+    try {
+      const discovery = await listPublicGrounds(groundPage + 1);
+      const additional = discovery.grounds.map((ground) => {
+        const available = discovery.availability_by_ground[ground.id]?.available_count ?? 0;
+        return { ...toPlayerGround(ground, userLocation ? distanceKm(userLocation, ground) : null), slotsAvailable: available, isAvailableNow: ground.is_active && available > 0 };
+      });
+      setGroundList((current) => [...current, ...additional].sort((a, b) => a.distanceKm === null ? 1 : b.distanceKm === null ? -1 : a.distanceKm - b.distanceKm));
+      setGroundPage(discovery.pagination.page); setHasMoreGrounds(discovery.pagination.has_more);
+    } catch (error) {
+      showToast('Unable to load more grounds.');
+    } finally { setLoadingMoreGrounds(false); }
+  }, [groundPage, hasMoreGrounds, loadingMoreGrounds, userLocation]);
 
   useEffect(() => { loadGrounds(); }, [loadGrounds]);
 
@@ -189,7 +207,7 @@ export default function PlayerHome() {
       <View className="absolute top-3 left-3 flex-row space-x-2">
         {ground.isAvailableNow && ground.slotsAvailable > 0 && (
           <View className="bg-[#4CAF50] px-2.5 py-1 rounded-full">
-            <Text className="text-white text-[10px] font-bold">Available Now</Text>
+            <Text className="text-white text-[10px] font-bold">Upcoming slots</Text>
           </View>
         )}
         {ground.slotsAvailable === 0 && (
@@ -356,6 +374,11 @@ export default function PlayerHome() {
             nearYouGrounds.map((ground) => renderGroundCard(ground, false))
           ) : (
             availableGrounds.map((ground) => renderGroundCard(ground, false))
+          )}
+          {hasMoreGrounds && (
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load more grounds" disabled={loadingMoreGrounds} onPress={loadMoreGrounds} className={`mt-2 rounded-xl py-3 items-center ${loadingMoreGrounds ? 'bg-[#A3A3A3]' : 'bg-[#E8F5E9]'}`}>
+              <Text className="text-[#2E7D32] font-bold">{loadingMoreGrounds ? 'Loading grounds...' : 'Load more grounds'}</Text>
+            </TouchableOpacity>
           )}
         </View>
       </ScrollView>

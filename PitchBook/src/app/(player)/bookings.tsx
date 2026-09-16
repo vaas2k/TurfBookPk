@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { BookingProfile, listPlayerBookings } from '@/lib/api/bookings';
+import { BookingProfile, getPlayerBookings } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { goBackOrReplace } from '@/lib/navigation';
@@ -25,6 +25,10 @@ export default function BookingsScreen() {
   const [bookings, setBookings] = useState<BookingProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
@@ -32,8 +36,8 @@ export default function BookingsScreen() {
     else setLoading(true);
 
     try {
-      const data = await listPlayerBookings();
-      setBookings(data);
+      const data = await getPlayerBookings(1);
+      setBookings(data.bookings); setPage(1); setHasMore(data.pagination.has_more); setTotal(data.pagination.total);
     } catch (error: any) {
       setToast(error?.message || 'Unable to load bookings.');
     } finally {
@@ -41,6 +45,17 @@ export default function BookingsScreen() {
       setRefreshing(false);
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (loading || refreshing || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await getPlayerBookings(page + 1);
+      setBookings((current) => [...current, ...data.bookings]); setPage(data.pagination.page); setHasMore(data.pagination.has_more); setTotal(data.pagination.total);
+    } catch (error: any) {
+      setToast(error?.message || 'Unable to load more bookings.');
+    } finally { setLoadingMore(false); }
+  }, [hasMore, loading, loadingMore, page, refreshing]);
 
   useEffect(() => {
     load();
@@ -152,7 +167,7 @@ export default function BookingsScreen() {
         <View className="flex-1">
           <Text className="text-2xl font-bold text-[#1A1A2E]">MY BOOKINGS</Text>
           <Text className="text-[#737373] text-xs mt-0.5">
-            {bookings.length} {bookings.length === 1 ? 'total reservation' : 'total reservations'}
+            {total} {total === 1 ? 'total reservation' : 'total reservations'}
           </Text>
         </View>
       </View>
@@ -191,6 +206,9 @@ export default function BookingsScreen() {
           keyExtractor={(item) => item.id}
           renderItem={renderBookingItem}
           renderSectionHeader={renderSectionHeader}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={loadingMore ? <ActivityIndicator className="py-4" color="#4CAF50" /> : null}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
           showsVerticalScrollIndicator={false}
           refreshControl={

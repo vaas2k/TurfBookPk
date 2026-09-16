@@ -124,6 +124,8 @@ export class VendorController {
       values.businessCity = body.business_city.trim();
     }
     if (body.business_description !== undefined) values.businessDescription = typeof body.business_description === 'string' ? body.business_description.trim() || null : null;
+    if (body.business_logo !== undefined) values.businessLogo = typeof body.business_logo === 'string' ? body.business_logo.trim() || null : null;
+    if (body.business_cover_image !== undefined) values.businessCoverImage = typeof body.business_cover_image === 'string' ? body.business_cover_image.trim() || null : null;
     if (body.is_active !== undefined) values.isActive = Boolean(body.is_active);
     const [updated] = await db.update(vendors).set(values).where(eq(vendors.id, current.id)).returning();
     if (!updated) throw new AppError('vendor_update_failed', 'Unable to update vendor profile', 500);

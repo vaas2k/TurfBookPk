@@ -193,6 +193,7 @@ export default function GroundDetail() {
           </View>
 
           {/* Choose Date */}
+          <View className="mt-5 rounded-xl bg-[#E8F5E9] p-4"><Text className="font-bold text-[#1A1A2E]">Opening hours</Text><Text className="text-[#2E7D32] mt-1">{ground.operating_hours.open}–{ground.operating_hours.close} (Pakistan time)</Text>{ground.peak_percentage !== null && ground.peak_windows.length > 0 && <Text className="text-[#4B5563] mt-2 text-sm">Peak hours include a {ground.peak_percentage}% increase; the final price is shown on each slot.</Text>}</View>
           <View className="mt-7">
             <Text className="text-lg font-bold text-[#1A1A2E] mb-3">Choose a date</Text>
             {dates.length === 0 ? (

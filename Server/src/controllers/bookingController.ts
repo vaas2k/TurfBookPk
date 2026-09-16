@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { Response } from 'express';
-import { and, desc, eq, gte, isNull, lte, or, sql as expression } from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, lte, or, sql as expression } from 'drizzle-orm';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
@@ -18,10 +18,28 @@ function param(value: string | string[] | undefined, name: string): string {
   if (typeof value !== 'string' || !value) throw new AppError('invalid_request', `${name} is required`, 422);
   return value;
 }
+function pagination(request: AuthenticatedRequest): { page: number; limit: number; offset: number } {
+  const parse = (value: unknown, name: string, fallback: number, max: number): number => {
+    if (value === undefined || value === '') return fallback;
+    if (typeof value !== 'string' || !/^\d+$/.test(value)) throw new AppError('invalid_pagination', `${name} must be a whole number`, 422);
+    const number = Number(value);
+    if (!Number.isSafeInteger(number) || number < 1 || number > max) throw new AppError('invalid_pagination', `${name} must be between 1 and ${max}`, 422);
+    return number;
+  };
+  const page = parse(request.query.page, 'Page', 1, 10_000);
+  const limit = parse(request.query.limit, 'Limit', 50, 100);
+  return { page, limit, offset: (page - 1) * limit };
+}
 function bookingNumber(): string { return `BK-${Date.now()}-${randomUUID().slice(0, 8)}`; }
 function orderNumber(): string { return `ORD-${Date.now()}-${randomUUID().slice(0, 8)}`; }
 function hasStarted(date: string, time: string): boolean {
   return new Date(`${date}T${time.length === 5 ? `${time}:00` : time}+05:00`).getTime() <= Date.now();
+}
+function recurringPaymentWindow(date: string, startTime: string): { opensAt: Date; expiresAt: Date } {
+  const start = bookingStart(date, startTime);
+  const opensAt = new Date(start.getTime() - env.recurringPaymentOpensBeforeMinutes * 60_000);
+  const expiresAt = new Date(Math.min(start.getTime(), opensAt.getTime() + env.recurringPaymentWindowMinutes * 60_000));
+  return { opensAt, expiresAt };
 }
 function idempotencyKey(request: AuthenticatedRequest): string {
   const value = request.header('idempotency-key') ?? request.body?.idempotency_key;
@@ -42,6 +60,9 @@ function mapBooking(row: any) {
     hold_expires_at: booking.holdExpiresAt?.toISOString() ?? null, cancelled_at: booking.cancelledAt?.toISOString() ?? null,
     cancellation_reason: booking.cancellationReason, notes: booking.notes,
     cancellation_fee: booking.cancellationFee, refund_amount: booking.refundAmount,
+    is_recurring_reservation: booking.isRecurringReservation,
+    payment_window_opens_at: booking.paymentWindowOpensAt?.toISOString() ?? null,
+    reservation_expires_at: booking.reservationExpiresAt?.toISOString() ?? null,
     created_at: booking.createdAt.toISOString(), updated_at: booking.updatedAt.toISOString(),
   };
 }
@@ -62,13 +83,21 @@ export class BookingController {
       if (order.status === 'confirmed' && order.paymentStatus === 'paid') return { idempotent: true, order };
       if (order.status !== 'pending_payment') throw new AppError('order_not_payable', 'This order can no longer be paid', 409);
       const items = await tx.select({ booking: bookings, slot: slots, ground: grounds, vendor: vendors, player: users }).from(bookings).innerJoin(slots, eq(bookings.slotId, slots.id)).innerJoin(grounds, eq(bookings.groundId, grounds.id)).innerJoin(vendors, eq(bookings.vendorId, vendors.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(eq(bookings.orderId, id));
-      if (items.length < 2 || items.some((item) => item.booking.status !== 'pending_payment' || item.booking.holdExpiresAt === null || item.booking.holdExpiresAt <= now || item.slot.holdBookingId !== item.booking.id)) {
+      if (items.length < 2) throw new AppError('payment_hold_expired', 'Your selected slots are no longer available. Please start again.', 409);
+      const ordered = [...items].sort((a, b) => `${a.booking.date}${a.booking.startTime}`.localeCompare(`${b.booking.date}${b.booking.startTime}`));
+      const first = ordered[0]!;
+      const payNowDate = first.booking.date;
+      const recurringReservation = ordered.some((item) => item.booking.isRecurringReservation);
+      const payableItems = recurringReservation ? ordered.filter((item) => item.booking.date === payNowDate) : ordered;
+      if (payableItems.some((item) => item.booking.status !== 'pending_payment' || item.booking.holdExpiresAt === null || item.booking.holdExpiresAt <= now || item.slot.holdBookingId !== item.booking.id)) {
         throw new AppError('payment_hold_expired', 'One or more selected slots are no longer available. Please start again.', 409);
       }
-      const confirmation = await new MockPaymentProvider().confirm({ bookingId: id, amount: order.totalAmount, requestedReference: typeof request.body?.payment_reference === 'string' ? request.body.payment_reference : null });
+      if (recurringReservation && ordered.filter((item) => item.booking.date !== payNowDate).some((item) => item.booking.status !== 'pending_payment' || !item.booking.isRecurringReservation || item.booking.reservationExpiresAt === null || item.booking.reservationExpiresAt <= now || item.slot.holdBookingId !== item.booking.id)) throw new AppError('reservation_expired', 'One or more future reservations have expired. Please select them again.', 409);
+      const dueNow = payableItems.reduce((sum, item) => sum + item.booking.totalAmount, 0);
+      const confirmation = await new MockPaymentProvider().confirm({ bookingId: id, amount: dueNow, requestedReference: typeof request.body?.payment_reference === 'string' ? request.body.payment_reference : null });
       const [payment] = await tx.update(paymentAttempts).set({ status: confirmation.status, providerReference: confirmation.providerReference, paidAt: confirmation.paidAt, updatedAt: now }).where(and(eq(paymentAttempts.orderId, id), eq(paymentAttempts.status, 'pending'))).returning();
       if (!payment) throw new AppError('payment_attempt_missing', 'Order payment attempt was not found', 409);
-      for (const item of items) {
+      for (const item of payableItems) {
         const [claimed] = await tx.update(slots).set({ isBooked: true, bookedBy: request.auth!.userId, bookingId: item.booking.id, heldBy: null, holdBookingId: null, holdExpiresAt: null, updatedAt: now }).where(and(eq(slots.id, item.slot.id), eq(slots.holdBookingId, item.booking.id))).returning();
         if (!claimed) throw new AppError('slot_unavailable', 'One or more selected slots are no longer available', 409);
         await tx.update(bookings).set({ status: 'confirmed', paymentStatus: 'paid', paymentReference: confirmation.providerReference, holdExpiresAt: null, updatedAt: now }).where(eq(bookings.id, item.booking.id));
@@ -77,7 +106,7 @@ export class BookingController {
         await tx.insert(notifications).values({ userId: item.vendor.userId, type: 'booking', title: 'New booking', message: `${item.player?.fullName || 'A player'} booked a slot at ${item.ground.title}.`, data: { bookingId: item.booking.id, orderId: id } });
       }
       await tx.update(bookingOrders).set({ status: 'confirmed', paymentStatus: 'paid', updatedAt: now }).where(eq(bookingOrders.id, id));
-      await tx.insert(notifications).values({ userId: request.auth!.userId, type: 'booking', title: 'Bookings confirmed', message: `${items.length} slots were confirmed.`, data: { orderId: id } });
+      await tx.insert(notifications).values({ userId: request.auth!.userId, type: 'booking', title: recurringReservation ? 'Today\'s recurring slots confirmed' : 'Bookings confirmed', message: recurringReservation ? `${ordered.filter((item) => item.booking.date !== payNowDate).length} future slots are reserved. Payment opens two hours before each slot.` : `${items.length} slots were confirmed.`, data: { bookingId: first.booking.id, orderId: id } });
       return { idempotent: false, order: { ...order, status: 'confirmed', paymentStatus: 'paid' } };
     });
     response.json({ order: { id: result.order.id, order_number: result.order.orderNumber, status: result.order.status, payment_status: result.order.paymentStatus }, idempotent: result.idempotent });
@@ -85,6 +114,7 @@ export class BookingController {
   createOrder = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const slotIds = Array.isArray(request.body?.slot_ids) ? [...new Set(request.body.slot_ids.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0))] : [];
+    const recurringReservation = request.body?.reserve_future_slots === true;
     if (slotIds.length < 2 || slotIds.length > 20) throw new AppError('invalid_order', 'Select between 2 and 20 different slots', 422);
     const key = idempotencyKey(request); const now = new Date(); const holdExpiresAt = new Date(now.getTime() + HOLD_DURATION_MS);
     const order = await db.transaction(async (tx) => {
@@ -105,20 +135,27 @@ export class BookingController {
         const effective = effectiveSlotPrice(item.slot.date, item.slot.startTime, item.slot.endTime, { basePrice: item.slot.price, peakPercentage: item.ground.peakPercentage, peakWindows: item.ground.peakWindows });
         const price = calculateBookingPrice(effective.amount, env.platformCommissionBps); totalAmount += price.totalAmount; platformFee += price.platformFee;
       }
+      const ordered = [...selected].sort((a, b) => `${a.slot.date}${a.slot.startTime}`.localeCompare(`${b.slot.date}${b.slot.startTime}`));
+      const payNowDate = ordered[0]!.slot.date;
       const [created] = await tx.insert(bookingOrders).values({ orderNumber: orderNumber(), playerId: request.auth!.userId, totalAmount, platformFee, idempotencyKey: key }).returning();
       if (!created) throw new AppError('order_creation_failed', 'Unable to create booking order', 500);
+      let dueNow = 0;
       for (const item of selected) {
         const effective = effectiveSlotPrice(item.slot.date, item.slot.startTime, item.slot.endTime, { basePrice: item.slot.price, peakPercentage: item.ground.peakPercentage, peakWindows: item.ground.peakWindows });
         const price = calculateBookingPrice(effective.amount, env.platformCommissionBps);
-        const [booking] = await tx.insert(bookings).values({ bookingNumber: bookingNumber(), orderId: created.id, playerId: request.auth!.userId, vendorId: item.ground.vendorId, groundId: item.slot.groundId, slotId: item.slot.id, date: item.slot.date, startTime: item.slot.startTime, endTime: item.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee, vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: 'mock', idempotencyKey: `${key}:${item.slot.id}`, holdExpiresAt }).returning();
+        const isFutureReservation = recurringReservation && item.slot.date !== payNowDate;
+        const window = isFutureReservation ? recurringPaymentWindow(item.slot.date, item.slot.startTime) : null;
+        const reservationHoldExpiresAt = window?.expiresAt ?? holdExpiresAt;
+        const [booking] = await tx.insert(bookings).values({ bookingNumber: bookingNumber(), orderId: created.id, playerId: request.auth!.userId, vendorId: item.ground.vendorId, groundId: item.slot.groundId, slotId: item.slot.id, date: item.slot.date, startTime: item.slot.startTime, endTime: item.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee, vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: 'mock', idempotencyKey: `${key}:${item.slot.id}`, holdExpiresAt: reservationHoldExpiresAt, isRecurringReservation: isFutureReservation, paymentWindowOpensAt: window?.opensAt ?? null, reservationExpiresAt: window?.expiresAt ?? null }).returning();
         if (!booking) throw new AppError('booking_failed', 'Unable to create order bookings', 500);
-        const held = await tx.update(slots).set({ heldBy: request.auth!.userId, holdBookingId: booking.id, holdExpiresAt, updatedAt: now }).where(and(eq(slots.id, item.slot.id), eq(slots.isBooked, false), eq(slots.isBlocked, false), or(isNull(slots.holdExpiresAt), lte(slots.holdExpiresAt, now)))).returning({ id: slots.id });
+        const held = await tx.update(slots).set({ heldBy: request.auth!.userId, holdBookingId: booking.id, holdExpiresAt: reservationHoldExpiresAt, updatedAt: now }).where(and(eq(slots.id, item.slot.id), eq(slots.isBooked, false), eq(slots.isBlocked, false), or(isNull(slots.holdExpiresAt), lte(slots.holdExpiresAt, now)))).returning({ id: slots.id });
         if (!held[0]) throw new AppError('slot_unavailable', 'One or more selected slots are unavailable', 409);
+        if (!isFutureReservation) dueNow += price.totalAmount;
       }
-      await tx.insert(paymentAttempts).values({ orderId: created.id, playerId: request.auth!.userId, vendorId: selected[0]!.ground.vendorId, provider: 'mock', amount: totalAmount, status: 'pending', idempotencyKey: `payment:${created.id}:mock` });
-      return created;
+      await tx.insert(paymentAttempts).values({ orderId: created.id, playerId: request.auth!.userId, vendorId: selected[0]!.ground.vendorId, provider: 'mock', amount: dueNow, status: 'pending', idempotencyKey: `payment:${created.id}:mock` });
+      return { ...created, dueNow };
     });
-    response.status(201).json({ order: { id: order.id, order_number: order.orderNumber, total_amount: order.totalAmount, platform_fee: order.platformFee, status: order.status, payment_status: order.paymentStatus } });
+    response.status(201).json({ order: { id: order.id, order_number: order.orderNumber, total_amount: order.totalAmount, due_now_amount: 'dueNow' in order ? order.dueNow : order.totalAmount, platform_fee: order.platformFee, status: order.status, payment_status: order.paymentStatus } });
   };
   notifications = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
@@ -226,15 +263,43 @@ export class BookingController {
 
   playerList = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
-    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(eq(bookings.playerId, request.auth.userId)).orderBy(desc(bookings.createdAt));
-    response.json({ bookings: rows.map(mapBooking) });
+    const { page, limit, offset } = pagination(request);
+    const condition = eq(bookings.playerId, request.auth.userId);
+    const total = (await db.select({ total: count() }).from(bookings).where(condition))[0]?.total ?? 0;
+    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(condition).orderBy(desc(bookings.createdAt), desc(bookings.id)).limit(limit).offset(offset);
+    response.json({ bookings: rows.map(mapBooking), pagination: { page, limit, total, has_more: offset + rows.length < total } });
+  };
+  confirmRecurringReservationMock = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const id = param(request.params.id, 'Booking id'); const now = new Date();
+    await db.transaction(async (tx) => {
+      const item = (await tx.select({ booking: bookings, slot: slots, ground: grounds, vendor: vendors, player: users }).from(bookings).innerJoin(slots, eq(bookings.slotId, slots.id)).innerJoin(grounds, eq(bookings.groundId, grounds.id)).innerJoin(vendors, eq(bookings.vendorId, vendors.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(eq(bookings.id, id)).limit(1))[0];
+      if (!item || item.booking.playerId !== request.auth!.userId || !item.booking.isRecurringReservation) throw new AppError('not_found', 'Recurring reservation was not found', 404);
+      if (item.booking.status === 'confirmed' && item.booking.paymentStatus === 'paid') return;
+      if (item.booking.status !== 'pending_payment' || !item.booking.paymentWindowOpensAt || !item.booking.reservationExpiresAt || now < item.booking.paymentWindowOpensAt) throw new AppError('payment_window_not_open', 'Payment opens two hours before this reserved slot', 409);
+      if (now >= item.booking.reservationExpiresAt || item.slot.holdBookingId !== id || !item.slot.holdExpiresAt || item.slot.holdExpiresAt <= now) throw new AppError('reservation_expired', 'This reservation window has expired and the slot is available to others', 409);
+      const confirmation = await new MockPaymentProvider().confirm({ bookingId: id, amount: item.booking.totalAmount, requestedReference: typeof request.body?.payment_reference === 'string' ? request.body.payment_reference : null });
+      const [payment] = await tx.insert(paymentAttempts).values({ bookingId: id, playerId: request.auth!.userId, vendorId: item.booking.vendorId, provider: 'mock', amount: item.booking.totalAmount, status: confirmation.status, providerReference: confirmation.providerReference, paidAt: confirmation.paidAt, idempotencyKey: `recurring-payment:${id}` }).onConflictDoNothing().returning();
+      if (!payment) return;
+      const [claimed] = await tx.update(slots).set({ isBooked: true, bookedBy: request.auth!.userId, bookingId: id, heldBy: null, holdBookingId: null, holdExpiresAt: null, updatedAt: now }).where(and(eq(slots.id, item.slot.id), eq(slots.holdBookingId, id))).returning();
+      if (!claimed) throw new AppError('slot_unavailable', 'This slot is no longer available', 409);
+      await tx.update(bookings).set({ status: 'confirmed', paymentStatus: 'paid', paymentReference: confirmation.providerReference, holdExpiresAt: null, updatedAt: now }).where(eq(bookings.id, id));
+      await tx.insert(ledgerEntries).values({ vendorId: item.booking.vendorId, bookingId: id, paymentAttemptId: payment.id, type: 'booking_earning', status: 'pending', amount: item.booking.vendorAmount, description: `Pending earning for recurring booking ${item.booking.bookingNumber}`, idempotencyKey: `earning:${id}` }).onConflictDoNothing();
+      await tx.update(vendors).set({ pendingEarnings: expression`${vendors.pendingEarnings} + ${item.booking.vendorAmount}`, updatedAt: now }).where(eq(vendors.id, item.booking.vendorId));
+      await tx.insert(notifications).values([{ userId: item.vendor.userId, type: 'booking', title: 'Recurring slot paid', message: `${item.player?.fullName || 'A player'} paid for a reserved slot at ${item.ground.title}.`, data: { bookingId: id } }, { userId: request.auth!.userId, type: 'booking', title: 'Reserved slot confirmed', message: `Your reserved slot at ${item.ground.title} is confirmed.`, data: { bookingId: id } }]);
+    });
+    const booking = await fetchBooking(id);
+    response.json({ booking: booking ? mapBooking(booking) : null });
   };
   vendorList = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const vendor = (await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
     if (!vendor) throw new AppError('vendor_required', 'A vendor profile is required', 403);
-    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(eq(bookings.vendorId, vendor.id)).orderBy(desc(bookings.createdAt));
-    response.json({ bookings: rows.map(mapBooking) });
+    const { page, limit, offset } = pagination(request);
+    const condition = eq(bookings.vendorId, vendor.id);
+    const total = (await db.select({ total: count() }).from(bookings).where(condition))[0]?.total ?? 0;
+    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(condition).orderBy(desc(bookings.createdAt), desc(bookings.id)).limit(limit).offset(offset);
+    response.json({ bookings: rows.map(mapBooking), pagination: { page, limit, total, has_more: offset + rows.length < total } });
   };
   detail = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
@@ -243,6 +308,17 @@ export class BookingController {
     const vendor = (await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
     if (current.booking.playerId !== request.auth.userId && vendor?.id !== current.booking.vendorId) throw new AppError('not_found', 'Booking was not found', 404);
     response.json({ booking: mapBooking(current) });
+  };
+  cancellationPreview = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const current = await fetchBooking(param(request.params.id, 'Booking id'));
+    if (!current) throw new AppError('not_found', 'Booking was not found', 404);
+    const vendor = (await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
+    const isVendor = vendor?.id === current.booking.vendorId;
+    if (!isVendor && current.booking.playerId !== request.auth.userId) throw new AppError('not_found', 'Booking was not found', 404);
+    if (!canCancelBooking(current.booking.status) || bookingStart(current.booking.date, current.booking.startTime) <= new Date()) throw new AppError('booking_not_cancellable', 'This booking can no longer be cancelled', 409);
+    const quote = cancellationQuote({ totalAmount: current.booking.totalAmount, paymentStatus: current.booking.paymentStatus, cancelledByVendor: isVendor, startsAt: bookingStart(current.booking.date, current.booking.startTime) });
+    response.json({ cancellation_fee: quote.cancellationFee, refund_amount: quote.refundAmount, refund_required: quote.refundRequired, payment_status: current.booking.paymentStatus, is_mock_payment: current.booking.paymentMethod === 'mock' });
   };
   markNoShow = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);

@@ -20,6 +20,9 @@ export interface BookingProfile {
   payment_method: string;
   payment_reference: string | null;
   hold_expires_at: string | null;
+  is_recurring_reservation: boolean;
+  payment_window_opens_at: string | null;
+  reservation_expires_at: string | null;
   cancelled_at: string | null;
   cancellation_reason: string | null;
   cancellation_fee: number;

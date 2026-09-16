@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Toast } from "@/components/ui/toast";
 import { goBackOrReplace } from "@/lib/navigation";
 import { TimePicker } from "@/components/ui/time-picker";
+import { deleteOwnedImageUrl, uploadImage } from "@/lib/api/media";
 
 const MOCK_GROUND_IMAGE =
   "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200";
@@ -43,6 +44,8 @@ type FormState = {
   rules: string[];
   coordinates: string;
   cancellation_policy: string;
+  operating_open: string;
+  operating_close: string;
 };
 
 const emptyForm: FormState = {
@@ -63,6 +66,8 @@ const emptyForm: FormState = {
   rules: [],
   coordinates: "",
   cancellation_policy: "",
+  operating_open: "06:00",
+  operating_close: "23:00",
 };
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -124,6 +129,8 @@ export default function AddGround() {
               ? `${ground.latitude}, ${ground.longitude}`
               : "",
           cancellation_policy: ground.cancellation_policy || "",
+          operating_open: ground.operating_hours.open,
+          operating_close: ground.operating_hours.close,
         });
       })
       .catch(() =>
@@ -158,7 +165,7 @@ export default function AddGround() {
       allowsEditing: true,
       quality: 0.8,
     });
-    if (!result.canceled) update("cover_image", result.assets[0].uri);
+    if (!result.canceled) { setSaving(true); try { const uploaded = await uploadImage(result.assets[0], 'ground'); await deleteOwnedImageUrl(form.cover_image).catch(() => undefined); update('cover_image', uploaded.url); } catch (error: any) { setToast(error?.message || 'Unable to upload cover image.'); } finally { setSaving(false); } }
   };
 
   const addImages = async () => {
@@ -170,12 +177,9 @@ export default function AddGround() {
       allowsMultipleSelection: true,
       quality: 0.8,
     });
-    if (!result.canceled)
-      setForm((current) => ({
-        ...current,
-        images: [...current.images, ...result.assets.map((asset) => asset.uri)],
-      }));
+    if (!result.canceled) { setSaving(true); try { const uploaded = await Promise.all(result.assets.map((asset) => uploadImage(asset, 'ground'))); setForm((current) => ({ ...current, images: [...current.images, ...uploaded.map((item) => item.url)] })); } catch (error: any) { setToast(error?.message || 'Unable to upload ground images.'); } finally { setSaving(false); } }
   };
+  const removeGroundImage = async (uri: string) => { setForm((current) => ({ ...current, images: current.images.filter((item) => item !== uri) })); await deleteOwnedImageUrl(uri).catch(() => setToast('Image removed from the ground, but cloud cleanup will be retried later.')); };
 
   const save = async () => {
     if (
@@ -217,6 +221,7 @@ export default function AddGround() {
         form.peak_start_time >= form.peak_end_time)
     )
       return setToast("Choose peak days and valid peak start/end times.");
+    if (form.operating_open >= form.operating_close) return setToast('Closing time must be later than opening time.');
     setSaving(true);
     const images = form.images.length ? form.images : [MOCK_GROUND_IMAGE];
     const data = {
@@ -246,6 +251,7 @@ export default function AddGround() {
       latitude,
       longitude,
       cancellation_policy: form.cancellation_policy.trim(),
+      operating_hours: { open: form.operating_open, close: form.operating_close },
     };
     try {
       if (existing) {
@@ -336,6 +342,7 @@ export default function AddGround() {
         <Text className="text-[#737373] mb-4">
           Add the details players need to find and book this ground.
         </Text>
+        <View className="mb-4 rounded-2xl border border-[#E5E5E5] bg-white p-4"><Text className="text-[#1A1A2E] font-bold mb-1">Regular operating hours</Text><Text className="text-[#737373] text-xs mb-3">Slots must fit inside these hours. You can choose the regular booking times after creating the ground.</Text><View className="flex-row"><View className="flex-1 mr-2"><TimePicker label="Opens" value={form.operating_open} onChange={(value) => update('operating_open', value)} maximum="22:30" /></View><View className="flex-1"><TimePicker label="Closes" value={form.operating_close} onChange={(value) => update('operating_close', value)} minimum="00:30" /></View></View></View>
         {(
           [
             ["title", "Ground title *"],
@@ -459,14 +466,7 @@ export default function AddGround() {
               <TouchableOpacity
                 accessibilityRole="button"
                 accessibilityLabel={`Remove ground image ${index + 1}`}
-                onPress={() =>
-                  setForm((current) => ({
-                    ...current,
-                    images: current.images.filter(
-                      (_, imageIndex) => imageIndex !== index,
-                    ),
-                  }))
-                }
+                onPress={() => removeGroundImage(uri)}
                 className="absolute -right-1 -top-1 h-11 w-11 items-center justify-center"
               >
                 <Ionicons name="close-circle" size={22} color="#DC2626" />

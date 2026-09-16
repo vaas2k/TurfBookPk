@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCallback, useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { deleteGround, Ground, listGroundSlots, listVendorGrounds, Slot, updateGround } from '@/lib/api/vendors';
+import { deleteGround, getVendorGrounds, Ground, listGroundSlots, Slot, updateGround } from '@/lib/api/vendors';
 import { Toast } from '@/components/ui/toast';
 import { goBackOrReplace } from '@/lib/navigation';
 import { appDialog } from '@/components/ui/app-dialog';
@@ -16,16 +16,32 @@ export default function VendorGrounds() {
   const [updatingGroundId, setUpdatingGroundId] = useState<string | null>(null);
   const [deletingGroundId, setDeletingGroundId] = useState<string | null>(null);
   const [slotsByGround, setSlotsByGround] = useState<Record<string, Slot[]>>({});
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const loadGrounds = useCallback(async () => {
     setLoading(true);
     try {
-      const items = await listVendorGrounds();
-      setGrounds(items);
+      const result = await getVendorGrounds(1);
+      const items = result.grounds;
+      setGrounds(items); setPage(1); setHasMore(result.pagination.has_more);
       const slotEntries = await Promise.all(items.map(async (ground) => [ground.id, await listGroundSlots(ground.id)] as const));
       setSlotsByGround(Object.fromEntries(slotEntries));
     } catch (error: any) { setToast(error?.message || 'Unable to load your grounds.'); } finally { setLoading(false); }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (loading || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const result = await getVendorGrounds(page + 1);
+      const slotEntries = await Promise.all(result.grounds.map(async (ground) => [ground.id, await listGroundSlots(ground.id)] as const));
+      setGrounds((current) => [...current, ...result.grounds]);
+      setSlotsByGround((current) => ({ ...current, ...Object.fromEntries(slotEntries) }));
+      setPage(result.pagination.page); setHasMore(result.pagination.has_more);
+    } catch (error: any) { setToast(error?.message || 'Unable to load more grounds.'); } finally { setLoadingMore(false); }
+  }, [hasMore, loading, loadingMore, page]);
 
   useEffect(() => { loadGrounds(); }, [loadGrounds]);
 
@@ -97,6 +113,7 @@ export default function VendorGrounds() {
             </TouchableOpacity>
             </View></View>
         ))}
+        {hasMore && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load more grounds" disabled={loadingMore} onPress={loadMore} className={`rounded-xl py-3 items-center mb-6 ${loadingMore ? 'bg-[#A3A3A3]' : 'bg-[#E8F5E9]'}`}><Text className="text-[#2E7D32] font-bold">{loadingMore ? 'Loading grounds...' : 'Load more grounds'}</Text></TouchableOpacity>}
       </ScrollView>
       <Modal visible={Boolean(pendingDelete)} transparent animationType="fade" onRequestClose={() => setPendingDelete(null)}><View className="flex-1 bg-black/40 items-center justify-center px-8"><View className="bg-white rounded-2xl p-6 w-full"><Text className="text-xl font-bold text-[#1A1A2E]">Delete ground?</Text><Text className="text-[#737373] mt-2">Grounds with booked slots cannot be deleted.</Text><View className="flex-row justify-end mt-6"><TouchableOpacity disabled={Boolean(deletingGroundId)} onPress={() => setPendingDelete(null)} className="px-4 py-3"><Text className="text-[#737373] font-medium">Cancel</Text></TouchableOpacity><TouchableOpacity disabled={Boolean(deletingGroundId)} onPress={handleDelete} className={`rounded-xl px-4 py-3 ${deletingGroundId ? 'bg-[#9CA3AF]' : 'bg-[#DC2626]'}`}><Text className="text-white font-bold">{deletingGroundId ? 'Deleting...' : 'Delete'}</Text></TouchableOpacity></View></View></View></Modal>
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />

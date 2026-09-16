@@ -3,6 +3,8 @@ export interface UploadTarget {
   uploadUrl: string;
   publicUrl: string;
   expiresAt: Date;
+  method: 'POST' | 'PUT';
+  fields: Record<string, string>;
 }
 
 export interface ObjectStorageProvider {

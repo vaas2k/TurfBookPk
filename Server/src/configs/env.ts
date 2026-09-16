@@ -44,4 +44,9 @@ export const env = {
   platformCommissionBps: integerInRange('PLATFORM_COMMISSION_BPS', 0, 0, 10_000),
   maxSlotDurationMinutes: integerInRange('MAX_SLOT_DURATION_MINUTES', 240, 30, 1_440),
   maxAdvanceBookingDays: integerInRange('MAX_ADVANCE_BOOKING_DAYS', 90, 1, 365),
+  recurringPaymentOpensBeforeMinutes: integerInRange('RECURRING_PAYMENT_OPENS_BEFORE_MINUTES', 120, 30, 1_440),
+  recurringPaymentWindowMinutes: integerInRange('RECURRING_PAYMENT_WINDOW_MINUTES', 30, 5, 240),
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || '',
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || '',
 };

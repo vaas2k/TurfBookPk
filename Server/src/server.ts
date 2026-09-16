@@ -21,6 +21,9 @@ import { NotificationController } from './controllers/notificationController.js'
 import { createNotificationRouter } from './router/notificationRoutes.js';
 import { ReviewController } from './controllers/reviewController.js';
 import { createReviewRouter } from './router/reviewRoutes.js';
+import { MediaController } from './controllers/mediaController.js';
+import { CloudinaryStorageProvider } from './services/cloudinaryStorageProvider.js';
+import { createMediaRouter } from './router/mediaRoutes.js';
 
 const app = express();
 
@@ -50,6 +53,7 @@ const bookingController = new BookingController();
 const bookingMaintenance = new BookingMaintenanceService();
 const notificationController = new NotificationController();
 const reviewController = new ReviewController();
+const mediaController = new MediaController(new CloudinaryStorageProvider());
 
 app.use('/api/auth', createAuthRouter(authController, tokenService));
 app.use('/api/vendors', createVendorRouter(vendorController, tokenService));
@@ -57,6 +61,7 @@ app.use('/api/grounds', createGroundRouter(groundController, tokenService));
 app.use('/api/bookings', createBookingRouter(bookingController, tokenService));
 app.use('/api/notifications', createNotificationRouter(notificationController, tokenService));
 app.use('/api/reviews', createReviewRouter(reviewController, tokenService));
+app.use('/api/media', createMediaRouter(mediaController, tokenService));
 
 app.get("/api/health", (_req, res) => {
   res.json({
