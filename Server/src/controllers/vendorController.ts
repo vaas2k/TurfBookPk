@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { desc, eq } from 'drizzle-orm';
+import { count, desc, eq } from 'drizzle-orm';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
@@ -52,6 +52,11 @@ export class VendorController {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const vendor = (await db.select().from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
     if (!vendor) throw new AppError('vendor_required', 'A vendor profile is required', 403);
+    const page = request.query.page === undefined ? 1 : Number(request.query.page);
+    const limit = request.query.limit === undefined ? 30 : Number(request.query.limit);
+    if (!Number.isSafeInteger(page) || page < 1 || page > 10_000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new AppError('invalid_pagination', 'Use a valid page and limit', 422);
+    const offset = (page - 1) * limit;
+    const [{ total = 0 } = {}] = await db.select({ total: count() }).from(ledgerEntries).where(eq(ledgerEntries.vendorId, vendor.id));
     const entries = await db.select({
       id: ledgerEntries.id, bookingId: ledgerEntries.bookingId, type: ledgerEntries.type, status: ledgerEntries.status,
       amount: ledgerEntries.amount, description: ledgerEntries.description, postedAt: ledgerEntries.postedAt, createdAt: ledgerEntries.createdAt,
@@ -60,8 +65,9 @@ export class VendorController {
       .innerJoin(bookings, eq(ledgerEntries.bookingId, bookings.id))
       .innerJoin(grounds, eq(bookings.groundId, grounds.id))
       .where(eq(ledgerEntries.vendorId, vendor.id))
-      .orderBy(desc(ledgerEntries.createdAt));
-    const pendingRefunds = entries
+      .orderBy(desc(ledgerEntries.createdAt), desc(ledgerEntries.id)).limit(limit).offset(offset);
+    const refundEntries = await db.select({ amount: ledgerEntries.amount, type: ledgerEntries.type, status: ledgerEntries.status }).from(ledgerEntries).where(eq(ledgerEntries.vendorId, vendor.id));
+    const pendingRefunds = refundEntries
       .filter((entry) => entry.type === 'refund' && entry.status === 'pending')
       .reduce((total, entry) => total + Math.abs(entry.amount), 0);
     response.json({
@@ -83,6 +89,7 @@ export class VendorController {
         posted_at: entry.postedAt?.toISOString() || null,
         created_at: entry.createdAt.toISOString(),
       })),
+      pagination: { page, limit, total, has_more: offset + entries.length < total },
     });
   };
 

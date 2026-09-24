@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, Modal, Image } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, Modal, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCallback, useEffect, useState } from 'react';
 import { router } from 'expo-router';
@@ -11,6 +11,7 @@ import { appDialog } from '@/components/ui/app-dialog';
 export default function VendorGrounds() {
   const [grounds, setGrounds] = useState<Ground[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Ground | null>(null);
   const [updatingGroundId, setUpdatingGroundId] = useState<string | null>(null);
@@ -22,13 +23,18 @@ export default function VendorGrounds() {
 
   const loadGrounds = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const result = await getVendorGrounds(1);
       const items = result.grounds;
       setGrounds(items); setPage(1); setHasMore(result.pagination.has_more);
       const slotEntries = await Promise.all(items.map(async (ground) => [ground.id, await listGroundSlots(ground.id)] as const));
       setSlotsByGround(Object.fromEntries(slotEntries));
-    } catch (error: any) { setToast(error?.message || 'Unable to load your grounds.'); } finally { setLoading(false); }
+    } catch (error: any) {
+      const message = error?.message || 'Unable to load your grounds.';
+      setLoadError(message);
+      setToast(message);
+    } finally { setLoading(false); }
   }, []);
 
   const loadMore = useCallback(async () => {
@@ -74,7 +80,7 @@ export default function VendorGrounds() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-      <ScrollView className="flex-1 px-6" refreshControl={<RefreshControl refreshing={loading} onRefresh={loadGrounds} />}>
+      <View className="px-6">
         <View className="flex-row items-center py-4">
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" className="w-11 h-11 rounded-full bg-white items-center justify-center mr-3 border border-[#E5E5E5]" onPress={() => goBackOrReplace('/(vendor)')}><Ionicons name="arrow-back" size={20} color="#1A1A2E" /></TouchableOpacity>
           <View className="flex-1"><Text className="text-2xl font-bold text-[#1A1A2E]">My Grounds</Text><Text className="text-[#737373] text-sm mt-1">{grounds.length} {grounds.length === 1 ? 'ground' : 'grounds'} · manage availability</Text></View>
@@ -82,9 +88,26 @@ export default function VendorGrounds() {
             <Ionicons name="add" size={20} color="white" />
           </TouchableOpacity>
         </View>
-        {loading && grounds.length === 0 ? <ActivityIndicator color="#4CAF50" /> : grounds.length === 0 ? (
+      </View>
+      <FlatList
+        className="flex-1 px-6"
+        data={grounds}
+        keyExtractor={(ground) => ground.id}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadGrounds} />}
+        contentContainerStyle={{ paddingBottom: 24, flexGrow: 1 }}
+        ListEmptyComponent={loading ? <ActivityIndicator className="mt-8" color="#4CAF50" /> : loadError ? (
+          <View className="items-center rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-6 py-10">
+            <Ionicons name="cloud-offline-outline" size={42} color="#DC2626" />
+            <Text className="mt-3 text-center text-lg font-bold text-[#991B1B]">Could not load your grounds</Text>
+            <Text className="mt-1 text-center text-sm text-[#B91C1C]">Check your connection, then try again.</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry loading grounds" onPress={loadGrounds} className="mt-5 min-h-11 rounded-xl bg-[#DC2626] px-5 justify-center">
+              <Text className="font-bold text-white">Try again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
           <View className="items-center py-20"><Ionicons name="business-outline" size={48} color="#D4D4D4" /><Text className="text-[#737373] mt-3">No grounds yet</Text></View>
-        ) : grounds.map((ground) => (
+        )}
+        renderItem={({ item: ground }) => (
           <View key={ground.id} className="bg-white rounded-2xl overflow-hidden mb-4 border border-[#E5E5E5]">
             <Image source={{ uri: ground.cover_image || ground.images[0] || 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800' }} className="w-full h-32" resizeMode="cover" />
             <View className="p-4">
@@ -112,9 +135,9 @@ export default function VendorGrounds() {
               </Text>
             </TouchableOpacity>
             </View></View>
-        ))}
-        {hasMore && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load more grounds" disabled={loadingMore} onPress={loadMore} className={`rounded-xl py-3 items-center mb-6 ${loadingMore ? 'bg-[#A3A3A3]' : 'bg-[#E8F5E9]'}`}><Text className="text-[#2E7D32] font-bold">{loadingMore ? 'Loading grounds...' : 'Load more grounds'}</Text></TouchableOpacity>}
-      </ScrollView>
+        )}
+        ListFooterComponent={hasMore ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load more grounds" disabled={loadingMore} onPress={loadMore} className={`rounded-xl py-3 items-center mb-6 ${loadingMore ? 'bg-[#A3A3A3]' : 'bg-[#E8F5E9]'}`}><Text className="text-[#2E7D32] font-bold">{loadingMore ? 'Loading grounds...' : 'Load more grounds'}</Text></TouchableOpacity> : null}
+      />
       <Modal visible={Boolean(pendingDelete)} transparent animationType="fade" onRequestClose={() => setPendingDelete(null)}><View className="flex-1 bg-black/40 items-center justify-center px-8"><View className="bg-white rounded-2xl p-6 w-full"><Text className="text-xl font-bold text-[#1A1A2E]">Delete ground?</Text><Text className="text-[#737373] mt-2">Grounds with booked slots cannot be deleted.</Text><View className="flex-row justify-end mt-6"><TouchableOpacity disabled={Boolean(deletingGroundId)} onPress={() => setPendingDelete(null)} className="px-4 py-3"><Text className="text-[#737373] font-medium">Cancel</Text></TouchableOpacity><TouchableOpacity disabled={Boolean(deletingGroundId)} onPress={handleDelete} className={`rounded-xl px-4 py-3 ${deletingGroundId ? 'bg-[#9CA3AF]' : 'bg-[#DC2626]'}`}><Text className="text-white font-bold">{deletingGroundId ? 'Deleting...' : 'Delete'}</Text></TouchableOpacity></View></View></View></Modal>
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
     </SafeAreaView>

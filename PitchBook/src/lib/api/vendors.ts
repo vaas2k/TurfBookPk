@@ -1,5 +1,6 @@
 import { apiRequest } from './client';
 import { VendorProfile } from '@/store/vendorStore';
+import { Pagination } from './types';
 
 export interface Ground {
   id: string;
@@ -95,11 +96,11 @@ export interface EarningsSummary {
   pending_refunds: number;
 }
 
-export async function getVendorEarnings(): Promise<{ summary: EarningsSummary; entries: EarningsEntry[] }> {
-  return apiRequest('/vendors/earnings');
+export async function getVendorEarnings(page = 1, limit = 30): Promise<{ summary: EarningsSummary; entries: EarningsEntry[]; pagination: Pagination }> {
+  return apiRequest(`/vendors/earnings?page=${page}&limit=${limit}`);
 }
 
-export async function getVendorGrounds(page = 1, limit = 50): Promise<{ grounds: Ground[]; pagination: { page: number; limit: number; total: number; has_more: boolean } }> {
+export async function getVendorGrounds(page = 1, limit = 50): Promise<{ grounds: Ground[]; pagination: Pagination }> {
   return apiRequest(`/grounds/vendor/mine?page=${page}&limit=${limit}`);
 }
 
@@ -163,7 +164,7 @@ export async function deleteGroundBlackout(groundId: string, date: string): Prom
 export interface PublicGroundListResult {
   grounds: Ground[];
   availability_by_ground: Record<string, { available_count: number; next_available_at: string | null }>;
-  pagination: { page: number; limit: number; total: number; has_more: boolean };
+  pagination: Pagination;
 }
 
 export async function listPublicGrounds(page = 1, limit = 24): Promise<PublicGroundListResult> {
@@ -173,7 +174,7 @@ export async function listPublicGrounds(page = 1, limit = 24): Promise<PublicGro
 export interface PublicGroundSearchResult {
   grounds: Ground[];
   slots_by_ground: Record<string, Slot[]>;
-  pagination: { page: number; limit: number; total: number; has_more: boolean };
+  pagination: Pagination;
 }
 
 export interface PublicGroundSearchOptions {

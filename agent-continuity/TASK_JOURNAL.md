@@ -1501,3 +1501,33 @@
 ### Next immediate step
 
 - Run a manual recurring-reservation flow with test slots whose payment window is near, then add remote push delivery to the same maintenance notification event once development builds are available.
+
+## 2026-09-24 - P0 recurring reservation regression coverage
+
+### Completed
+
+- Added PostgreSQL-backed tests verifying that recurring reservation expiry marks the booking expired and releases its held slot.
+- Added regression coverage that the recurring payment-window notification is created once only, even when maintenance runs repeatedly.
+- Corrected test cleanup to release slot hold fields before deleting test bookings, matching the database hold-consistency constraint.
+- Audited stale checklist items: server-backed Search and the vendor dashboard's real operational summaries were already implemented.
+
+### Verification
+
+- `npm test` in `Server/`: 20/20 passed.
+- `npm run typecheck` in `Server/`: passed.
+
+### Next immediate step
+
+- Complete vendor earnings pagination and transaction-detail presentation.
+## 2026-09-24 - Vendor earnings history completed
+
+- Added paginated vendor earnings activity loading with refresh-safe reset and an explicit load-more action.
+- Added a transaction-detail sheet with a plain-language explanation, amount, ground, booking reference, status, and timestamp.
+- Confirmed mobile and server TypeScript checks pass.
+## 2026-09-24 - P0 regression and navigation hardening
+
+- Replaced unsafe direct back navigation in profile editing and review flows with `goBackOrReplace`, ensuring a safe destination for deep-linked users.
+- Added accessibility role/label/state metadata to the updated review controls and safe back headers.
+- Corrected the splash animation state initialization so the current React lint rules no longer report a ref-during-render error.
+- Verified server P0 regression suite: 20 passing tests, including booking constraints, holds, cancellation safety, recurring reservation expiry, auth safety, pricing, payment adapter, and peak pricing.
+- Verified server production build and mobile TypeScript checks. Mobile lint has zero errors; remaining warnings are non-blocking pre-existing cleanup items.

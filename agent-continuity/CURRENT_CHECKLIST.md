@@ -13,15 +13,15 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Stop creating mock bookings as implicitly `paid` without an explicit mock-payment decision.
 - [x] Stop marking every cancelled booking as automatically `refunded`.
 - [x] Make cancellation conditional and idempotent.
-  - [ ] Lock or conditionally update the booking only from a cancellable state.
-  - [ ] Release the slot only when `slots.booking_id` matches the cancelled booking.
-  - [ ] Prevent concurrent cancellations from releasing a newly rebooked slot.
-  - [ ] Prevent duplicate cancellation notifications.
-  - [ ] Record cancellation actor, reason, and timestamp.
+  - [x] Lock or conditionally update the booking only from a cancellable state.
+  - [x] Release the slot only when `slots.booking_id` matches the cancelled booking.
+  - [x] Prevent concurrent cancellations from releasing a newly rebooked slot.
+  - [x] Prevent duplicate cancellation notifications.
+  - [x] Record cancellation actor, reason, and timestamp.
 - [x] Add temporary slot holds for checkout.
-  - [ ] Store hold owner and expiry.
-  - [ ] Prevent other players from booking an active hold.
-  - [ ] Release expired holds safely.
+  - [x] Store hold owner and expiry.
+  - [x] Prevent other players from booking an active hold.
+  - [x] Release expired holds safely.
 - [x] Add booking/payment idempotency keys for retries and future gateway webhooks.
 - [x] Require both the ground and owning vendor to be active before booking.
 - [x] Decide whether verification is mandatory, then consistently enforce vendor/ground verification in public discovery and booking. (Decision: not mandatory until an admin verification workflow exists.)
@@ -33,7 +33,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
   - [x] Confirm the required `btree_gist` extension can be installed.
   - [x] Map exclusion-constraint violations to a user-facing HTTP `409`.
 - [x] Add PostgreSQL constraints preventing contradictory slot flags/states.
-- [x] Add integration tests for double booking, overlapping slots, cancellation races, slot holds, and state transitions. (Rollback-only PostgreSQL tests cover overlap, contradictory state, and one-active-booking constraints; lifecycle tests cover holds and transitions.)
+- [x] Add integration tests for double booking, overlapping slots, cancellation/slot-release safety, slot holds, recurring reservation expiry, notification de-duplication, and state transitions.
 
 ## P0 - Authentication and API safety
 
@@ -74,7 +74,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 
 ## P0 - Mobile UI/UX correctness and navigation
 
-- [ ] Add a consistent accessible back button/header to every pushed player and vendor screen, starting with player notifications, booking lists reached from deep links, and profile edit flows.
+- [x] Add a consistent accessible back button/header to every pushed player and vendor screen, including player notifications, booking lists reached from deep links, profile edit flows, review screens, and vendor ground management.
 - [x] Connect player and vendor notification screens to the new notification API: unread badge/count, visible read state, mark-one-read, mark-all-read, pull-to-refresh, and booking deep links.
 - [x] Remove the disconnected player-home notification modal so the notification bell has one reliable destination.
 - [x] Wire or remove player discovery filter/settings controls that currently render without an action.
@@ -86,7 +86,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 
 ## P1 - Mobile UI/UX completeness
 
-- [ ] Redesign the vendor earnings screen around clear business balances: available-to-withdraw, pending/processing, paid out, and refunds/adjustments; replace raw ledger labels and booking IDs with plain-language explanations, dates, booking/ground context, status badges, filters, and a transaction-detail view.
+- [x] Redesign the vendor earnings screen around clear business balances: available-to-withdraw, pending/processing, paid out, and refunds/adjustments; replace raw ledger labels and booking IDs with plain-language explanations, dates, booking/ground context, status badges, filters, and a transaction-detail view.
 - [x] Add editable operating-hours controls to vendor ground creation/editing and display them on public ground detail.
 - [ ] Define and expose peak-price UI only after the business provides peak-hour rules; do not display a price users cannot understand.
 - [ ] Replace raw date/time text fields with platform-accessible date/time pickers and validate them inline.

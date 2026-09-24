@@ -50,11 +50,13 @@ export default function GroundSlots() {
   const [blackouts, setBlackouts] = useState<GroundBlackout[]>([]);
   const [date, setDate] = useState(pakistanDate());
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Slot | null>(null);
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const [currentSlots, currentBlackouts] = await Promise.all([
         listGroundSlots(id),
@@ -63,7 +65,9 @@ export default function GroundSlots() {
       setSlots(currentSlots);
       setBlackouts(currentBlackouts);
     } catch (error: any) {
-      setToast(error?.message || "Unable to load slots.");
+      const message = error?.message || "Unable to load slots.";
+      setLoadError(message);
+      setToast(message);
     } finally {
       setLoading(false);
     }
@@ -151,6 +155,16 @@ export default function GroundSlots() {
             </Text>
           </View>
         </View>
+        {loadError && slots.length === 0 && !loading && (
+          <View className="mb-5 items-center rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-6 py-7">
+            <Ionicons name="cloud-offline-outline" size={36} color="#DC2626" />
+            <Text className="mt-3 text-center text-lg font-bold text-[#991B1B]">Could not load slots</Text>
+            <Text className="mt-1 text-center text-sm text-[#B91C1C]">Check your connection, then try again.</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry loading slots" onPress={load} className="mt-4 min-h-11 justify-center rounded-xl bg-[#DC2626] px-5">
+              <Text className="font-bold text-white">Try again</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <TouchableOpacity
           onPress={() =>
             router.push({

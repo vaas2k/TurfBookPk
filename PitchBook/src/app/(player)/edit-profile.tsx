@@ -8,13 +8,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { updateProfile } from "@/lib/api/auth";
 import { useAuthStore } from "@/store/authStore";
 import { Toast } from "@/components/ui/toast";
 import * as ImagePicker from "expo-image-picker";
 import { deleteOwnedImageUrl, uploadImage } from "@/lib/api/media";
+import { goBackOrReplace } from "@/lib/navigation";
 
 const input =
   "bg-white border border-[#E5E5E5] rounded-xl px-4 py-3 text-[#1A1A2E]";
@@ -46,7 +46,7 @@ export default function EditPlayerProfile() {
         avatar_url: avatar,
       });
       useAuthStore.setState({ user: result.user, profile: result.profile });
-      router.back();
+      goBackOrReplace("/(player)/profile");
     } catch (error: any) {
       setToast(error?.message || "Unable to update profile.");
     } finally {
@@ -63,7 +63,7 @@ export default function EditPlayerProfile() {
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() => router.back()}
+            onPress={() => goBackOrReplace("/(player)/profile")}
             className="w-11 h-11 rounded-full bg-white border border-[#E5E5E5] items-center justify-center mr-3"
           >
             <Text className="text-[#1A1A2E] text-xl">‹</Text>

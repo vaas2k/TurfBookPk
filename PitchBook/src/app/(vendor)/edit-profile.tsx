@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { updateVendorProfile } from "@/lib/api/vendors";
 import { useVendorStore } from "@/store/vendorStore";
@@ -16,6 +15,7 @@ import { Toast } from "@/components/ui/toast";
 import * as ImagePicker from "expo-image-picker";
 import { deleteOwnedImageUrl, uploadImage } from "@/lib/api/media";
 import { appDialog } from "@/components/ui/app-dialog";
+import { goBackOrReplace } from "@/lib/navigation";
 
 const input =
   "bg-white border border-[#E5E5E5] rounded-xl px-4 py-3 text-[#1A1A2E]";
@@ -67,7 +67,7 @@ export default function EditVendorProfile() {
         business_cover_image: cover,
       });
       useVendorStore.setState({ vendorProfile: profile });
-      router.back();
+      goBackOrReplace("/(vendor)/profile");
     } catch (error: any) {
       setToast(error?.message || "Unable to update business profile.");
     } finally {
@@ -85,7 +85,7 @@ export default function EditVendorProfile() {
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() => router.back()}
+            onPress={() => goBackOrReplace("/(vendor)/profile")}
             className="w-11 h-11 rounded-full bg-white border border-[#E5E5E5] items-center justify-center mr-3"
           >
             <Text className="text-[#1A1A2E] text-xl">‹</Text>

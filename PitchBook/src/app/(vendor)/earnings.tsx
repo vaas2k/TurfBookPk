@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   RefreshControl,
   ScrollView,
   Text,
@@ -8,7 +9,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {
   EarningsEntry,
@@ -82,12 +82,19 @@ export default function VendorEarnings() {
   const [entries, setEntries] = useState<EarningsEntry[]>([]);
   const [period, setPeriod] = useState<'all' | 'week' | 'month'>('all');
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<EarningsEntry | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const result = await getVendorEarnings();
+      const result = await getVendorEarnings(1);
       setSummary(result.summary);
       setEntries(result.entries);
+      setPage(result.pagination.page);
+      setHasMore(result.pagination.has_more);
     } catch (error: any) {
       setToast(error?.message || "Unable to load earnings.");
     } finally {
@@ -97,6 +104,20 @@ export default function VendorEarnings() {
   useEffect(() => {
     load();
   }, [load]);
+  const loadMore = useCallback(async () => {
+    if (loadingMore || loading || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const result = await getVendorEarnings(page + 1);
+      setEntries((current) => [...current, ...result.entries]);
+      setPage(result.pagination.page);
+      setHasMore(result.pagination.has_more);
+    } catch (error: any) {
+      setToast(error?.message || "Unable to load more earnings.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [hasMore, loading, loadingMore, page]);
   const visibleEntries = entries.filter((entry) => {
     if (period === 'all') return true;
     const age = Date.now() - new Date(entry.posted_at || entry.created_at).getTime();
@@ -190,7 +211,7 @@ export default function VendorEarnings() {
             </Text>
           </View>
           <Text className="text-xs font-semibold text-[#4B5563]">
-            {visibleEntries.length} entries
+            {visibleEntries.length}{hasMore ? "+" : ""} entries
           </Text>
         </View>
         <View className="flex-row mb-4">{([['all', 'All time'], ['week', 'Last 7 days'], ['month', 'Last 31 days']] as const).map(([key, label]) => <TouchableOpacity key={key} onPress={() => setPeriod(key)} className={`mr-2 rounded-full px-4 py-2 ${period === key ? 'bg-[#1A1A2E]' : 'bg-white border border-[#E5E5E5]'}`}><Text className={period === key ? 'text-white text-xs font-bold' : 'text-[#4B5563] text-xs font-bold'}>{label}</Text></TouchableOpacity>)}</View>
@@ -223,8 +244,11 @@ export default function VendorEarnings() {
                   ? "Reversed"
                   : "Pending";
             return (
-              <View
+              <TouchableOpacity
                 key={entry.id}
+                accessibilityRole="button"
+                accessibilityLabel={`View details for ${copy.title}`}
+                onPress={() => setSelectedEntry(entry)}
                 className="bg-white rounded-2xl p-4 mb-3 border border-[#E5E5E5]"
               >
                 <View className="flex-row">
@@ -256,11 +280,72 @@ export default function VendorEarnings() {
                     {state}
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
+        {hasMore && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Load more earnings activity"
+            disabled={loadingMore}
+            onPress={loadMore}
+            className="mt-1 min-h-12 items-center justify-center rounded-xl border border-[#D1D5DB] bg-white"
+          >
+            {loadingMore ? (
+              <ActivityIndicator color="#4CAF50" />
+            ) : (
+              <Text className="text-sm font-bold text-[#2E7D32]">
+                Load more activity
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
       </ScrollView>
+      <Modal
+        visible={selectedEntry !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedEntry(null)}
+      >
+        <View className="flex-1 justify-end bg-black/40">
+          {selectedEntry && (() => {
+            const copy = describe(selectedEntry);
+            const date = new Date(selectedEntry.posted_at || selectedEntry.created_at).toLocaleString("en-PK", {
+              day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit",
+            });
+            const status = selectedEntry.status === "posted" ? "Available" : selectedEntry.status === "reversed" ? "Reversed" : "Pending";
+            return (
+              <View className="bg-white rounded-t-3xl px-6 pt-5 pb-9">
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-xl font-bold text-[#1A1A2E]">Transaction details</Text>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Close transaction details"
+                    onPress={() => setSelectedEntry(null)}
+                    className="h-11 w-11 items-center justify-center rounded-full bg-[#F5F5F5]"
+                  >
+                    <Ionicons name="close" size={22} color="#1A1A2E" />
+                  </TouchableOpacity>
+                </View>
+                <View className="mt-5 rounded-2xl bg-[#F8F9FA] p-4">
+                  <Text style={{ color: copy.color }} className="text-2xl font-bold">
+                    {selectedEntry.amount < 0 ? "−" : "+"}{money(selectedEntry.amount)}
+                  </Text>
+                  <Text className="mt-1 text-sm font-bold text-[#1A1A2E]">{copy.title}</Text>
+                  <Text className="mt-1 text-sm leading-5 text-[#5F6368]">{copy.detail}</Text>
+                </View>
+                <View className="mt-5 gap-4">
+                  <View><Text className="text-xs font-bold text-[#737373]">GROUND</Text><Text className="mt-1 text-base text-[#1A1A2E]">{selectedEntry.ground_title}</Text></View>
+                  <View><Text className="text-xs font-bold text-[#737373]">BOOKING</Text><Text className="mt-1 text-base text-[#1A1A2E]">#{selectedEntry.booking_number}</Text></View>
+                  <View><Text className="text-xs font-bold text-[#737373]">STATUS</Text><Text style={{ color: copy.color }} className="mt-1 text-base font-bold">{status}</Text></View>
+                  <View><Text className="text-xs font-bold text-[#737373]">RECORDED</Text><Text className="mt-1 text-base text-[#1A1A2E]">{date}</Text></View>
+                </View>
+              </View>
+            );
+          })()}
+        </View>
+      </Modal>
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
     </SafeAreaView>
   );

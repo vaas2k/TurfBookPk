@@ -1,13 +1,36 @@
-import { useEffect } from 'react';
-import { View, Text } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorStore } from '@/store/vendorStore';
+import { Ionicons } from '@expo/vector-icons';
+
+const { width, height } = Dimensions.get('window');
 
 export default function SplashScreen() {
-  const { isAuthenticated, isNewUser, isLoading, user, profile, lastMode } = useAuthStore();
+  const { isAuthenticated, isNewUser, isLoading, user, lastMode } = useAuthStore();
   const { isVendor } = useVendorStore();
+
+  const [fadeAnim] = useState(() => new Animated.Value(0));
+  const [scaleAnim] = useState(() => new Animated.Value(0.95));
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      })
+    ]).start();
+
+  }, []);
 
   useEffect(() => {
     if (isLoading) return;
@@ -18,34 +41,99 @@ export default function SplashScreen() {
         if (lastMode === 'vendor' && isVendor) {
           router.replace('/(vendor)');
         } else if (isNewUser) {
-          // New user needs to complete profile
           router.replace('/(auth)/profile-setup');
         } else {
-          // Default to player
           router.replace('/(player)');
         }
       } else {
-        // Not authenticated - show phone input
         router.replace('/(auth)/phone-input');
       }
-    }, 1500);
+    }, 2000); // slightly longer to appreciate the splash
 
     return () => clearTimeout(timer);
-  }, [isAuthenticated, isNewUser, isLoading, isVendor, lastMode, profile?.role, user]);
+  }, [isAuthenticated, isNewUser, isLoading, isVendor, lastMode, user]);
 
   return (
-    <View className="flex-1 items-center justify-center bg-[#1A1A2E]">
+    <View style={styles.container}>
       <StatusBar style="light" />
-      <View className="items-center">
-        <View className="w-24 h-24 rounded-full bg-[#4CAF50]/20 items-center justify-center mb-6">
-          <Text className="text-5xl">⚽</Text>
+      
+      {/* Background glow effects */}
+      <View style={styles.glowTop} />
+      <View style={styles.glowBottom} />
+
+      <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+        <View style={styles.iconContainer}>
+          <Ionicons name="football" size={48} color="#10B981" />
         </View>
-        <Text className="text-white text-5xl font-bold tracking-wider">KICKOFF</Text>
-        <View className="w-16 h-1 bg-[#4CAF50] rounded-full mt-4" />
-      </View>
-      <View className="absolute bottom-20 items-center">
-        <Text className="text-white/70 text-base">Find your ground. Book your game.</Text>
-      </View>
+        <Text style={styles.title}>KICKOFF</Text>
+        <View style={styles.divider} />
+        <Text style={styles.subtitle}>Premium Turf Booking</Text>
+      </Animated.View>
+
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#09090B', // Deep black/gray base
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glowTop: {
+    position: 'absolute',
+    top: -height * 0.2,
+    left: -width * 0.2,
+    width: width * 0.8,
+    height: width * 0.8,
+    borderRadius: width * 0.4,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    filter: 'blur(40px)',
+  },
+  glowBottom: {
+    position: 'absolute',
+    bottom: -height * 0.1,
+    right: -width * 0.2,
+    width: width * 0.9,
+    height: width * 0.9,
+    borderRadius: width * 0.45,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    filter: 'blur(50px)',
+  },
+  content: {
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  iconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 32,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  title: {
+    color: '#FAFAFA',
+    fontSize: 32,
+    fontWeight: '900',
+    letterSpacing: 4,
+  },
+  divider: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#10B981',
+    borderRadius: 2,
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  subtitle: {
+    color: '#A1A1AA',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 1.5,
+  }
+});
