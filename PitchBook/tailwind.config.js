@@ -10,10 +10,10 @@ module.exports = {
    theme: {
     extend: {
       fontFamily: {
-        regular: ['Inter_400Regular'],
-        medium: ['Inter_500Medium'],
-        semibold: ['Inter_600SemiBold'],
-        bold: ['Inter_700Bold'],
+        regular: ['SpaceGrotesk_400Regular'],
+        medium: ['SpaceGrotesk_500Medium'],
+        semibold: ['SpaceGrotesk_700Bold'],
+        bold: ['SpaceGrotesk_700Bold'],
       },
       colors: {
         primary: {

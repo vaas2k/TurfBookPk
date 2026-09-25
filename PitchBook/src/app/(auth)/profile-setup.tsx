@@ -89,20 +89,20 @@ export default function ProfileSetupScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-      <StatusBar style="dark" />
+    <SafeAreaView className="flex-1 bg-[#12130F]">
+      <StatusBar style="light" />
       
-      <View className="bg-white px-6 pt-4 pb-4 border-b border-[#E5E5E5] flex-row items-center">
+      <View className="bg-[#12130F] px-6 pt-4 pb-4 border-b border-[#2A3025] flex-row items-center">
         <TouchableOpacity 
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          className="w-11 h-11 rounded-full bg-[#F5F5F5] items-center justify-center"
+          className="w-11 h-11 rounded-full bg-[#1A1C16] border border-[#34382E] items-center justify-center"
           onPress={() => goBackOrReplace('/(auth)/phone-input')}
           activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={22} color="#1A1A2E" />
+          <Ionicons name="arrow-back" size={22} color="#F5F5F0" />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-[#1A1A2E] ml-3">Complete Your Profile</Text>
+        <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 26 }} className="text-[#F5F5F0] ml-3 uppercase">Complete profile</Text>
       </View>
 
       <KeyboardAvoidingView 
@@ -116,8 +116,8 @@ export default function ProfileSetupScreen() {
           contentContainerStyle={{ paddingBottom: 40 }}
         >
           <View className="px-6 pt-6">
-            <Text className="text-2xl font-bold text-[#1A1A2E] text-center">Tell us about yourself</Text>
-            <Text className="text-[#737373] text-center mt-1 text-sm">
+            <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 27, letterSpacing: .2 }} className="text-[#F5F5F0] text-center uppercase">Tell us about you</Text>
+            <Text style={{ fontFamily: 'SpaceGrotesk_400Regular' }} className="text-[#A1A39D] text-center mt-1 text-sm">
               Complete your profile to get the best experience
             </Text>
 
@@ -125,12 +125,12 @@ export default function ProfileSetupScreen() {
             <View className="mt-6 space-y-4">
               {/* Full Name */}
               <View>
-                <Text className="text-[#1A1A2E] font-medium mb-1.5">
+                <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] mb-1.5">
                   Full Name <Text className="text-red-500">*</Text>
                 </Text>
                 <TextInput
-                  className={`bg-white rounded-xl px-4 py-3.5 text-[#1A1A2E] text-base border ${
-                    errors.fullName ? 'border-red-500' : 'border-[#E5E5E5]'
+                  className={`bg-[#1A1C16] rounded-xl px-4 py-3.5 text-[#F5F5F0] text-base border ${
+                    errors.fullName ? 'border-red-500' : 'border-[#34382E]'
                   }`}
                   placeholder="Enter your full name"
                   placeholderTextColor="#A3A3A3"
@@ -150,10 +150,10 @@ export default function ProfileSetupScreen() {
 
               {/* Email */}
               <View>
-                <Text className="text-[#1A1A2E] font-medium mb-1.5">Email Address</Text>
+                <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] mb-1.5">Email Address</Text>
                 <TextInput
-                  className={`bg-white rounded-xl px-4 py-3.5 text-[#1A1A2E] text-base border ${
-                    errors.email ? 'border-red-500' : 'border-[#E5E5E5]'
+                  className={`bg-[#1A1C16] rounded-xl px-4 py-3.5 text-[#F5F5F0] text-base border ${
+                    errors.email ? 'border-red-500' : 'border-[#34382E]'
                   }`}
                   placeholder="Enter your email address (optional)"
                   placeholderTextColor="#A3A3A3"
@@ -176,9 +176,9 @@ export default function ProfileSetupScreen() {
               {/* Phone Number - Only show for Google users who don't have phone */}
               {!profile?.phone && (
                 <View>
-                  <Text className="text-[#1A1A2E] font-medium mb-1.5">Phone Number (Optional)</Text>
+                  <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] mb-1.5">Phone Number (Optional)</Text>
                   <TextInput
-                    className="bg-white rounded-xl px-4 py-3.5 text-[#1A1A2E] text-base border border-[#E5E5E5]"
+                    className="bg-[#1A1C16] rounded-xl px-4 py-3.5 text-[#F5F5F0] text-base border border-[#34382E]"
                     placeholder="331 5139044"
                     placeholderTextColor="#A3A3A3"
                     value={phone}
@@ -193,28 +193,28 @@ export default function ProfileSetupScreen() {
 
               {/* City */}
               <View>
-                <Text className="text-[#1A1A2E] font-medium mb-1.5">
+                <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] mb-1.5">
                   City <Text className="text-red-500">*</Text>
                 </Text>
                 <TouchableOpacity
-                  className={`bg-white rounded-xl px-4 py-3.5 flex-row items-center justify-between border ${
-                    errors.city ? 'border-red-500' : 'border-[#E5E5E5]'
+                  className={`bg-[#1A1C16] rounded-xl px-4 py-3.5 flex-row items-center justify-between border ${
+                    errors.city ? 'border-red-500' : 'border-[#34382E]'
                   }`}
                   style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
                   onPress={() => setShowCityDropdown(!showCityDropdown)}
                   activeOpacity={0.7}
                 >
-                  <Text className={city ? 'text-[#1A1A2E] text-base' : 'text-[#A3A3A3] text-base'}>
+                  <Text className={city ? 'text-[#F5F5F0] text-base' : 'text-[#A1A39D] text-base'}>
                     {city || 'Select your city'}
                   </Text>
-                  <Ionicons name={showCityDropdown ? 'chevron-up' : 'chevron-down'} size={20} color="#737373" />
+                  <Ionicons name={showCityDropdown ? 'chevron-up' : 'chevron-down'} size={20} color="#A1A39D" />
                 </TouchableOpacity>
                 {errors.city && (
                   <Text className="text-red-500 text-xs mt-1">{errors.city}</Text>
                 )}
 
                 {showCityDropdown && (
-                  <View className="bg-white rounded-xl mt-1 border border-[#E5E5E5] max-h-48 overflow-hidden"
+                  <View className="bg-[#1A1C16] rounded-xl mt-1 border border-[#34382E] max-h-48 overflow-hidden"
                        style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 }}>
                     <ScrollView showsVerticalScrollIndicator={false}>
                       {cities.map((c) => (
@@ -230,7 +230,7 @@ export default function ProfileSetupScreen() {
                           }}
                           activeOpacity={0.7}
                         >
-                          <Text className={city === c ? 'text-[#4CAF50] font-medium' : 'text-[#1A1A2E]'}>
+                          <Text className={city === c ? 'text-[#3EAF4C] font-medium' : 'text-[#F5F5F0]'}>
                             {c}
                           </Text>
                         </TouchableOpacity>
@@ -243,7 +243,7 @@ export default function ProfileSetupScreen() {
 
             <View className="mt-8">
               <TouchableOpacity
-                className="bg-[#4CAF50] py-4 rounded-full"
+                className="bg-[#3EAF4C] py-4 rounded-full"
                 style={{ shadowColor: '#4CAF50', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}
                 onPress={handleComplete}
                 disabled={isLoading}

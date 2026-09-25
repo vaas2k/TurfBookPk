@@ -1,7 +1,7 @@
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, Image, Dimensions, RefreshControl,
-  Platform, StatusBar, FlatList
+  StatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -67,6 +67,12 @@ export default function PlayerHome() {
   const [isVendorLoading, setIsVendorLoading] = useState(false);
   const { registerVendor, checkVendorStatus } = useVendorStore();
 
+    const showToast = (message: string) => {
+    setToastMessage(message);
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2500);
+  };
+
   const loadGrounds = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -113,11 +119,7 @@ export default function PlayerHome() {
     router.push(`/ground/${groundId}`);
   };
 
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 2500);
-  };
+
 
   const handleSwitchToVendor = async () => {
     if (!user) {
@@ -180,12 +182,14 @@ export default function PlayerHome() {
   });
 
   const availableGrounds = filteredGrounds.filter(g => g.isAvailableNow && g.slotsAvailable > 0);
-  const nearYouGrounds = filteredGrounds.filter(g => !g.isAvailableNow || g.slotsAvailable === 0);
+  // Ground list is already distance-sorted when location permission is granted.
+  // Keep the featured result out of the compact nearby list when possible.
+  const nearbyGrounds = filteredGrounds.filter(g => g.id !== availableGrounds[0]?.id);
 
   const renderGroundCard = (ground: PlayerGround, horizontal: boolean = false) => (
     <TouchableOpacity
       key={ground.id}
-      className={`bg-white rounded-2xl overflow-hidden ${horizontal ? 'mr-4' : 'mb-4'
+      className={`bg-[#1A1C16] border border-[#2A3025] rounded-2xl overflow-hidden ${horizontal ? 'mr-4' : 'mb-4'
         }`}
       style={{
         width: horizontal ? width * 0.82 : '100%',
@@ -217,22 +221,22 @@ export default function PlayerHome() {
         )}
       </View>
 
-      <View className="absolute top-3 right-3 bg-white/90 px-2.5 py-1 rounded-full flex-row items-center">
+      <View className="absolute top-3 right-3 bg-[#12130F]/90 px-2.5 py-1 rounded-full flex-row items-center">
         <Ionicons name="star" size={12} color="#F59E0B" />
-        <Text className="text-[#1A1A2E] font-bold text-xs ml-0.5">{ground.rating}</Text>
+        <Text className="text-[#F5F5F0] font-bold text-xs ml-0.5">{ground.rating}</Text>
       </View>
 
       <View className="p-4">
-        <Text className="text-[#1A1A2E] text-base font-bold">{ground.name}</Text>
+        <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] text-base">{ground.name}</Text>
 
         <View className="flex-row items-center mt-0.5">
           <Ionicons name="location-outline" size={13} color="#737373" />
-          <Text className="text-[#737373] text-xs ml-1 flex-1">{ground.location}</Text>
+          <Text className="text-[#A1A39D] text-xs ml-1 flex-1">{ground.location}</Text>
         </View>
 
         <View className="flex-row items-center mt-2">
-          <View className="bg-[#F5F5F5] px-2 py-0.5 rounded-full">
-            <Text className="text-[#737373] text-[10px]">{ground.type}</Text>
+          <View className="bg-[#283625] px-2 py-0.5 rounded-full">
+            <Text className="text-[#B9E5BF] text-[10px]">{ground.type}</Text>
           </View>
           <Text className="text-[#737373] text-[10px] ml-2">• {ground.distance}</Text>
           {ground.slotsAvailable > 0 && (
@@ -243,10 +247,10 @@ export default function PlayerHome() {
         </View>
 
         <View className="flex-row items-center justify-between mt-3 pt-3 border-t border-[#F5F5F5]">
-          <Text className="text-[#4CAF50] font-bold text-base">
+          <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#3EAF4C] text-base">
             PKR {ground.price}/hr
           </Text>
-          <View className="bg-[#4CAF50] px-4 py-1.5 rounded-full">
+          <View className="bg-[#3EAF4C] px-4 py-1.5 rounded-full">
             <Text className="text-white font-medium text-xs">Book Now</Text>
           </View>
         </View>
@@ -254,9 +258,30 @@ export default function PlayerHome() {
     </TouchableOpacity>
   );
 
+  const renderFeaturedCard = (ground: PlayerGround) => (
+    <TouchableOpacity key={ground.id} className="bg-[#1A1C16] border border-[#2E5030] rounded-[18px] overflow-hidden" onPress={() => handleGroundPress(ground.id)} activeOpacity={0.86}>
+      <Image source={{ uri: ground.image }} className="w-full h-56" resizeMode="cover" />
+      <View className="px-4 py-3">
+        <View className="flex-row items-center justify-between">
+          <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-[17px] flex-1 mr-3" numberOfLines={1}>{ground.name}</Text>
+          <View className="flex-row items-center"><Ionicons name="star" size={14} color="#F5A623" /><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-xs ml-1">{ground.rating || 'New'}</Text></View>
+        </View>
+        <View className="flex-row items-center mt-1"><Ionicons name="location-outline" size={14} color="#E27A3F" /><Text style={{ fontFamily: 'SpaceGrotesk_400Regular' }} className="text-[#B8B9B2] text-xs ml-1 flex-1" numberOfLines={1}>{ground.location}</Text></View>
+        <View className="flex-row items-end justify-between mt-3"><View><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#53B65B] text-base">PKR {ground.price}/hr</Text><Text style={{ fontFamily: 'SpaceGrotesk_400Regular' }} className="text-[#B8B9B2] text-[11px] mt-0.5">{ground.slotsAvailable} slot{ground.slotsAvailable === 1 ? '' : 's'} available</Text></View><View className="border border-[#53B65B] rounded-full px-3 py-1.5"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#6FCC73] text-xs">BOOK</Text></View></View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderNearbyCard = (ground: PlayerGround) => (
+    <TouchableOpacity key={ground.id} onPress={() => handleGroundPress(ground.id)} activeOpacity={0.86} className="bg-[#1A1C16] border border-[#293B29] rounded-[16px] overflow-hidden flex-row mb-3">
+      <Image source={{ uri: ground.image }} className="w-[124px] h-[126px]" resizeMode="cover" />
+      <View className="flex-1 px-3 py-3 justify-between"><View><View className="flex-row items-center justify-between"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-[15px] flex-1 mr-2" numberOfLines={1}>{ground.name}</Text><View className="flex-row items-center"><Ionicons name="star" size={12} color="#F5A623" /><Text className="text-[#F8F7F0] text-[11px] ml-1">{ground.rating || 'New'}</Text></View></View><View className="flex-row items-center mt-1"><Ionicons name="location-outline" size={13} color="#E27A3F" /><Text className="text-[#AFAFA9] text-[11px] ml-1 flex-1" numberOfLines={1}>{ground.location}</Text></View></View><View className="flex-row items-end justify-between"><View><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#53B65B] text-sm">PKR {ground.price}/hr</Text><Text className="text-[#AFAFA9] text-[10px] mt-0.5">{ground.distance || `${ground.slotsAvailable} slots available`}</Text></View><Ionicons name="arrow-forward" size={19} color="#53B65B" /></View></View>
+    </TouchableOpacity>
+  );
+
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+    <SafeAreaView className="flex-1 bg-[#12130F]">
+      <StatusBar barStyle="light-content" backgroundColor="#12130F" />
 
       <ScrollView
         className="flex-1"
@@ -266,11 +291,12 @@ export default function PlayerHome() {
         showsVerticalScrollIndicator={false}
       >
         {/* ─── Header ─── */}
-        <View className="px-6 pt-2 pb-2 flex-row items-center justify-between">
+        <View className="px-5 pt-2 pb-3 flex-row items-center justify-between">
           <View className="flex-row items-center">
             <View accessibilityLabel="Current city: Rawalpindi" className="flex-row items-center">
-              <Ionicons name="location-outline" size={20} color="#4CAF50" />
-              <Text className="text-[#1A1A2E] font-semibold ml-1">Rawalpindi</Text>
+              <Ionicons name="location-outline" size={20} color="#E27A3F" />
+              <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] ml-1">Rawalpindi</Text>
+              <Ionicons name="chevron-down" size={16} color="#F8F7F0" />
             </View>
           </View>
           <View className="flex-row items-center space-x-2">
@@ -278,7 +304,7 @@ export default function PlayerHome() {
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Switch to vendor mode"
-              className="bg-[#F5F5F5] min-h-[44px] px-3 rounded-full flex-row items-center border border-[#E5E5E5]"
+              className="hidden"
               onPress={handleSwitchToVendor}
             >
               <Ionicons name="business-outline" size={14} color="#4CAF50" />
@@ -286,28 +312,28 @@ export default function PlayerHome() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              className="bg-white w-11 h-11 rounded-full items-center justify-center"
+              className="bg-[#1A1C16] w-11 h-11 rounded-full items-center justify-center border border-[#3A4032]"
               style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 }}
               onPress={handleNotifications}
               accessibilityRole="button"
               accessibilityLabel={unreadNotifications ? `${unreadNotifications} unread notifications` : 'Notifications'}
             >
-              <Ionicons name="notifications-outline" size={20} color="#1A1A2E" />
+              <Ionicons name="notifications-outline" size={21} color="#F8F7F0" />
               {unreadNotifications > 0 && <View className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#DC2626] items-center justify-center"><Text className="text-white text-[9px] font-bold">{unreadNotifications > 9 ? '9+' : unreadNotifications}</Text></View>}
             </TouchableOpacity>
           </View>
         </View>
 
         {/* ─── Search Bar ─── */}
-        <View className="px-6 mt-2">
-          <View className="flex-row items-center bg-white rounded-2xl px-4 py-3"
+        <View className="px-5 mt-1">
+          <View className="flex-row items-center bg-[#191B16] border border-[#3A4032] rounded-[12px] px-4 py-3"
             style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}
           >
-            <Ionicons name="search-outline" size={20} color="#737373" />
+            <Ionicons name="search-outline" size={20} color="#AFAFA9" />
             <TextInput
-              className="flex-1 ml-3 text-[#1A1A2E] text-base"
-              placeholder="Search grounds..."
-              placeholderTextColor="#A3A3A3"
+              style={{ fontFamily: 'SpaceGrotesk_500Medium' }} className="flex-1 ml-3 text-[#F5F5F0] text-base"
+              placeholder="Search for a ground"
+              placeholderTextColor="#AFAFA9"
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
@@ -318,12 +344,12 @@ export default function PlayerHome() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          className="px-6 mt-4"
+          className="px-5 mt-4"
         >
           {filterOptions.map((filter) => (
             <TouchableOpacity
               key={filter}
-              className={`px-5 py-2 rounded-full mr-2 ${selectedFilter === filter ? 'bg-[#4CAF50]' : 'bg-white'
+              className={`px-4 py-2 rounded-full mr-2 border ${selectedFilter === filter ? 'bg-[#53B65B] border-[#53B65B]' : 'bg-[#191B16] border-[#3A4032]'
                 }`}
               style={selectedFilter !== filter ? {
                 shadowColor: '#000',
@@ -334,7 +360,7 @@ export default function PlayerHome() {
               } : {}}
               onPress={() => setSelectedFilter(filter)}
             >
-              <Text className={selectedFilter === filter ? 'text-white font-medium' : 'text-[#737373] font-medium'}>
+              <Text style={{ fontFamily: 'SpaceGrotesk_500Medium' }} className={selectedFilter === filter ? 'text-[#10120F] text-xs' : 'text-[#D5D6CF] text-xs'}>
                 {filter}
               </Text>
             </TouchableOpacity>
@@ -343,41 +369,31 @@ export default function PlayerHome() {
 
         {/* ─── Available Now ─── */}
         {availableGrounds.length > 0 && (
-          <View className="mt-6">
-            <View className="px-6 flex-row items-center justify-between mb-3">
-              <Text className="text-[#1A1A2E] text-lg font-bold">AVAILABLE NOW</Text>
-              <TouchableOpacity>
-                <Text className="text-[#4CAF50] font-medium text-sm">See all</Text>
+          <View className="mt-7 px-5">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 24, letterSpacing: 0.3 }} className="text-[#F8F7F0]">AVAILABLE NOW</Text>
+              <TouchableOpacity onPress={() => router.push('/(player)/search')} accessibilityRole="button" accessibilityLabel="See all available grounds">
+                <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#61BD67] text-xs">SEE ALL</Text>
               </TouchableOpacity>
             </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className="px-6"
-            >
-              {availableGrounds.map((ground) => renderGroundCard(ground, true))}
-            </ScrollView>
+            {renderFeaturedCard(availableGrounds[0])}
           </View>
         )}
 
         {/* ─── Near You ─── */}
-        <View className="mt-6 px-6 pb-8">
+        <View className="mt-7 px-5 pb-8">
           <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-[#1A1A2E] text-lg font-bold">NEAR YOU</Text>
-            <TouchableOpacity>
-              <Text className="text-[#4CAF50] font-medium text-sm">See all</Text>
+            <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 24, letterSpacing: 0.3 }} className="text-[#F8F7F0]">NEAR YOU</Text>
+            <TouchableOpacity onPress={() => router.push('/(player)/search')} accessibilityRole="button" accessibilityLabel="See all nearby grounds">
+              <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#61BD67] text-xs">SEE ALL</Text>
             </TouchableOpacity>
           </View>
 
-          {nearYouGrounds.length > 0 ? (
-            nearYouGrounds.map((ground) => renderGroundCard(ground, false))
-          ) : (
-            availableGrounds.map((ground) => renderGroundCard(ground, false))
-          )}
+          {(nearbyGrounds.length > 0 ? nearbyGrounds : availableGrounds).slice(0, 3).map(renderNearbyCard)}
+          {filteredGrounds.length === 0 && !refreshing && <View className="border border-dashed border-[#3A4032] rounded-2xl py-8 items-center"><Ionicons name="football-outline" size={28} color="#61BD67" /><Text style={{ fontFamily: 'SpaceGrotesk_500Medium' }} className="text-[#B8B9B2] mt-2">No grounds match your search.</Text></View>}
           {hasMoreGrounds && (
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load more grounds" disabled={loadingMoreGrounds} onPress={loadMoreGrounds} className={`mt-2 rounded-xl py-3 items-center ${loadingMoreGrounds ? 'bg-[#A3A3A3]' : 'bg-[#E8F5E9]'}`}>
-              <Text className="text-[#2E7D32] font-bold">{loadingMoreGrounds ? 'Loading grounds...' : 'Load more grounds'}</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load more grounds" disabled={loadingMoreGrounds} onPress={loadMoreGrounds} className={`mt-2 rounded-xl py-3 items-center border ${loadingMoreGrounds ? 'bg-[#2B3127] border-[#3A4032]' : 'bg-[#1A1C16] border-[#53B65B]'}`}>
+              <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#61BD67] text-xs">{loadingMoreGrounds ? 'LOADING GROUNDS...' : 'LOAD MORE GROUNDS'}</Text>
             </TouchableOpacity>
           )}
         </View>

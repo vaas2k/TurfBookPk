@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
+  StatusBar,
   Text,
   TouchableOpacity,
   View,
@@ -131,6 +132,39 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
   const hasEnded = new Date(`${booking.date}T${booking.end_time}+05:00`).getTime() <= Date.now();
   const paymentWindowOpen = booking.payment_window_opens_at ? new Date(booking.payment_window_opens_at).getTime() <= Date.now() : false;
   const reservationActive = booking.is_recurring_reservation && booking.status === 'pending_payment' && booking.reservation_expires_at && new Date(booking.reservation_expires_at).getTime() > Date.now();
+
+  if (!vendorView) {
+    const isUpcoming = booking.status === 'confirmed' || booking.status === 'pending_payment';
+    const isCompleted = booking.status === 'completed' || booking.status === 'no_show';
+    const bookingDate = new Date(`${booking.date}T12:00:00`).toLocaleDateString('en-PK', { weekday: 'short', month: 'short', day: 'numeric' });
+    const slotTime = `${booking.start_time.slice(0, 5)} - ${booking.end_time.slice(0, 5)}`;
+
+    return (
+      <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
+        <StatusBar barStyle="light-content" backgroundColor="#10120F" translucent={false} />
+        <View className="px-6 pt-4 pb-5 flex-row items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace('/(player)/bookings')} className="w-11 h-11 items-center justify-center -ml-2"><Ionicons name="arrow-back" size={31} color="#F8F7F0" /></TouchableOpacity>
+          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 26, letterSpacing: 0.25 }} className="text-[#F8F7F0] ml-3">BOOKING DETAILS</Text>
+        </View>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+          <View className="bg-[#181C16] border border-[#30382B] rounded-[26px] p-4 flex-row items-center">
+            <View className="w-[96px] h-[96px] rounded-[18px] bg-[#24492A] items-center justify-center overflow-hidden"><Ionicons name="football" size={43} color="#B6E1B9" /></View>
+            <View className="flex-1 ml-4"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-[18px]" numberOfLines={2}>{booking.ground_title}</Text><Text className="text-[#3DB54A] text-[15px] mt-1">Pitch booking</Text><Text className="text-[#858A81] text-sm mt-2">Ref: #{booking.booking_number}</Text></View>
+          </View>
+          <View className="bg-[#252A21] rounded-[24px] px-5 py-5 mt-5 flex-row items-center"><Ionicons name="calendar" size={26} color="#3DB54A" /><Text style={{ fontFamily: 'SpaceGrotesk_500Medium' }} className="text-[#F3F4EF] text-[16px] ml-4 flex-1">{bookingDate} • {slotTime} (1 Hour)</Text></View>
+
+          {isUpcoming && <View className="bg-white rounded-[28px] mt-5 px-5 py-7 items-center"><Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 19 }} className="text-[#10120F]">GROUND CHECK-IN CODE</Text><View className="w-40 h-40 border-[7px] border-[#10120F] rounded-md mt-5 items-center justify-center"><Ionicons name="qr-code" size={120} color="#10120F" /></View><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#10120F] text-[21px] mt-5">{booking.booking_number}</Text></View>}
+
+          {booking.status === 'cancelled' && <View className="bg-[#2D1B19] border border-[#7C382E] rounded-[24px] p-5 mt-5"><Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 20 }} className="text-[#FF5C57]">BOOKING CANCELLED</Text><Text className="text-[#E2B5AF] text-sm mt-3">{booking.cancellation_reason || 'This booking has been cancelled.'}</Text><View className="flex-row justify-between pt-4 mt-4 border-t border-[#64322C]"><Text className="text-[#E2B5AF]">Refund amount</Text><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0]">PKR {booking.refund_amount.toLocaleString()}</Text></View></View>}
+
+          <View className="bg-[#20241D] rounded-[25px] p-5 mt-5"><Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 19 }} className="text-[#BFC1B9]">PAYMENT BREAKDOWN</Text><View className="flex-row justify-between mt-5"><Text className="text-[#BFC1B9] text-base">Pitch Booking Fee</Text><Text className="text-[#F8F7F0] text-base">Rs {booking.total_amount.toLocaleString()}</Text></View><View className="flex-row justify-between mt-4"><Text className="text-[#BFC1B9] text-base">Platform Fee</Text><Text className="text-[#F8F7F0] text-base">Rs {booking.platform_fee.toLocaleString()}</Text></View><View className="flex-row justify-between mt-5 pt-5 border-t border-[#383E32]"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-lg">Total {booking.payment_status === 'paid' ? 'Paid' : 'Amount'}</Text><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#3DB54A] text-lg">Rs {(booking.total_amount + booking.platform_fee).toLocaleString()}</Text></View></View>
+        </ScrollView>
+        {isUpcoming && isCancellable && <View className="absolute bottom-0 left-0 right-0 bg-[#10120F] px-6 py-5"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel booking" onPress={handleCancel} disabled={actionLoading} className="border-2 border-[#FA4747] rounded-full py-4 items-center bg-[#351B1B]"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#FF5757] text-xl">Cancel booking</Text></TouchableOpacity></View>}
+        {isCompleted && <View className="absolute bottom-0 left-0 right-0 bg-[#10120F] px-6 py-5"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Rate this ground" onPress={() => router.push({ pathname: '/(player)/reviews-write', params: { bookingId: booking.id, title: booking.ground_title } })} className="bg-[#3DB54A] rounded-full py-4 items-center"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-white text-xl">Rate this ground</Text></TouchableOpacity></View>}
+        <Toast message={toast} tone="error" onHide={() => setToast(null)} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">

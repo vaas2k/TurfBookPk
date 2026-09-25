@@ -17,7 +17,7 @@ import { deleteOwnedImageUrl, uploadImage } from "@/lib/api/media";
 import { goBackOrReplace } from "@/lib/navigation";
 
 const input =
-  "bg-white border border-[#E5E5E5] rounded-xl px-4 py-3 text-[#1A1A2E]";
+  "bg-[#181C16] border border-[#30372B] rounded-xl px-4 py-3 text-[#F8F7F0]";
 
 export default function EditPlayerProfile() {
   const profile = useAuthStore((state) => state.profile);
@@ -54,7 +54,7 @@ export default function EditPlayerProfile() {
     }
   };
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
       <ScrollView
         className="px-6"
         contentContainerStyle={{ paddingBottom: 32 }}
@@ -64,30 +64,30 @@ export default function EditPlayerProfile() {
             accessibilityRole="button"
             accessibilityLabel="Go back"
             onPress={() => goBackOrReplace("/(player)/profile")}
-            className="w-11 h-11 rounded-full bg-white border border-[#E5E5E5] items-center justify-center mr-3"
+            className="w-10 h-10 rounded-xl bg-[#181C16] border border-[#30372B] items-center justify-center mr-3"
           >
             <Text className="text-[#1A1A2E] text-xl">‹</Text>
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-[#1A1A2E] flex-1">
+          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 26 }} className="text-[#F8F7F0] flex-1">
             Edit Profile
           </Text>
         </View>
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose profile photo" disabled={saving} onPress={pickAvatar} className="items-center mb-5">{avatar ? <Image source={{ uri: avatar }} className="h-24 w-24 rounded-full" /> : <View className="h-24 w-24 rounded-full bg-[#E8F5E9] items-center justify-center"><Text className="text-[#2E7D32] text-2xl font-bold">{name.slice(0, 1).toUpperCase() || 'P'}</Text></View>}<Text className="text-[#2E7D32] font-bold mt-2">Change photo</Text></TouchableOpacity>
-        <Text className="text-[#1A1A2E] font-medium mb-2">Full name</Text>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose profile photo" disabled={saving} onPress={pickAvatar} className="items-center mb-5">{avatar ? <Image source={{ uri: avatar }} className="h-20 w-20 rounded-full border-2 border-[#3DB54A]" /> : <View className="h-20 w-20 rounded-full border-2 border-[#3DB54A] items-center justify-center"><Text className="text-[#3DB54A] text-xl font-bold">{name.slice(0, 1).toUpperCase() || 'P'}</Text></View>}<Text className="text-[#3DB54A] font-bold text-sm mt-2">Change photo</Text></TouchableOpacity>
+        <Text className="text-[#BFC1B9] font-medium text-sm mb-2">Full name</Text>
         <TextInput
           accessibilityLabel="Full name"
           value={name}
           onChangeText={setName}
           className={input}
         />
-        <Text className="text-[#1A1A2E] font-medium mt-4 mb-2">City</Text>
+        <Text className="text-[#BFC1B9] font-medium text-sm mt-4 mb-2">City</Text>
         <TextInput
           accessibilityLabel="City"
           value={city}
           onChangeText={setCity}
           className={input}
         />
-        <Text className="text-[#1A1A2E] font-medium mt-4 mb-2">Bio</Text>
+        <Text className="text-[#BFC1B9] font-medium text-sm mt-4 mb-2">Bio</Text>
         <TextInput
           accessibilityLabel="Bio"
           value={bio}
@@ -100,7 +100,7 @@ export default function EditPlayerProfile() {
           accessibilityLabel="Save profile changes"
           disabled={saving}
           onPress={save}
-          className={`rounded-xl py-4 items-center mt-6 ${saving ? "bg-[#9CA3AF]" : "bg-[#4CAF50]"}`}
+          className={`rounded-full py-4 items-center mt-6 ${saving ? "bg-[#596057]" : "bg-[#3DB54A]"}`}
         >
           {saving ? (
             <ActivityIndicator color="white" />

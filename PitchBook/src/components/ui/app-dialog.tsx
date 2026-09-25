@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Modal, PanResponder, Pressable, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export type AppDialogAction = {
   text: string;
@@ -22,6 +23,7 @@ export const appDialog = {
 export function AppDialogHost() {
   const [request, setRequest] = useState<DialogRequest | null>(null);
   const [busy, setBusy] = useState(false);
+  const sheetTranslateY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     listener = setRequest;
@@ -29,7 +31,7 @@ export function AppDialogHost() {
   }, []);
 
   const actions = request?.actions?.length ? request.actions : [{ text: 'OK' }];
-  const dismiss = () => { if (!busy) setRequest(null); };
+  const dismiss = () => { if (!busy) { sheetTranslateY.setValue(0); setRequest(null); } };
   const select = async (action: AppDialogAction) => {
     if (busy) return;
     setBusy(true);
@@ -37,26 +39,37 @@ export function AppDialogHost() {
     try { await action.onPress?.(); } finally { setBusy(false); }
   };
   const destructive = actions.some((action) => action.style === 'destructive');
+  const sheetPan = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderMove: (_, gesture) => sheetTranslateY.setValue(Math.max(0, gesture.dy)),
+    onPanResponderRelease: (_, gesture) => {
+      if (gesture.dy > 110 || gesture.vy > 1.25) dismiss();
+      else Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true }).start();
+    },
+  });
 
-  return <Modal visible={Boolean(request)} transparent animationType="fade" onRequestClose={dismiss}>
-    <View className="flex-1 items-center justify-center bg-black/45 px-6">
+  return <Modal visible={Boolean(request)} transparent animationType="slide" onRequestClose={dismiss}>
+    <View className="flex-1 justify-end bg-black/65">
       <Pressable className="absolute inset-0" onPress={dismiss} accessibilityLabel="Close dialog" />
-      <View accessibilityRole="alert" className="w-full max-w-md rounded-3xl bg-white p-6" style={{ elevation: 14 }}>
-        <View className={`h-12 w-12 items-center justify-center rounded-full ${destructive ? 'bg-red-50' : 'bg-green-50'}`}>
-          <Ionicons name={destructive ? 'warning-outline' : 'information-circle-outline'} size={27} color={destructive ? '#DC2626' : '#2E7D32'} />
+      <Animated.View style={{ transform: [{ translateY: sheetTranslateY }] }}>
+      <SafeAreaView edges={['bottom']} accessibilityRole="alert" className="w-full rounded-t-[32px] border-t border-[#30372B] bg-[#1A1E17] px-6 pt-3" style={{ elevation: 14 }}>
+        <View {...sheetPan.panHandlers} className="h-8 items-center justify-center -mt-3"><View className="h-1.5 w-12 rounded-full bg-[#6B7167]" /></View>
+        <View className={`mt-6 h-12 w-12 items-center justify-center rounded-full ${destructive ? 'bg-[#3A211E]' : 'bg-[#19331D]'}`}>
+          <Ionicons name={destructive ? 'warning-outline' : 'information-circle-outline'} size={27} color={destructive ? '#FF5A55' : '#3DB54A'} />
         </View>
-        <Text className="mt-4 text-xl font-bold text-[#1A1A2E]">{request?.title}</Text>
-        {!!request?.message && <Text className="mt-2 text-[15px] leading-6 text-[#5F6368]">{request.message}</Text>}
+        <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="mt-4 text-xl text-[#F8F7F0]">{request?.title}</Text>
+        {!!request?.message && <Text className="mt-2 text-[15px] leading-6 text-[#BFC1B9]">{request.message}</Text>}
         <View className="mt-6 gap-3">
           {actions.map((action) => {
             const isCancel = action.style === 'cancel';
             const isDestructive = action.style === 'destructive';
-            return <Pressable key={action.text} accessibilityRole="button" accessibilityLabel={action.text} disabled={busy} onPress={() => select(action)} className={`min-h-[48px] items-center justify-center rounded-xl px-4 ${isCancel ? 'border border-[#E5E7EB] bg-white' : isDestructive ? 'bg-[#DC2626]' : 'bg-[#2E7D32]'} ${busy ? 'opacity-60' : 'active:opacity-80'}`}>
+            return <Pressable key={action.text} accessibilityRole="button" accessibilityLabel={action.text} disabled={busy} onPress={() => select(action)} className={`min-h-[52px] items-center justify-center rounded-full px-4 ${isCancel ? 'border border-[#3A4034] bg-[#1A1E17]' : isDestructive ? 'bg-[#F24848]' : 'bg-[#3DB54A]'} ${busy ? 'opacity-60' : 'active:opacity-80'}`}>
               <Text className={`font-bold ${isCancel ? 'text-[#374151]' : 'text-white'}`}>{busy ? 'Please wait…' : action.text}</Text>
             </Pressable>;
           })}
         </View>
-      </View>
+      </SafeAreaView>
+      </Animated.View>
     </View>
   </Modal>;
 }

@@ -116,30 +116,30 @@ export default function OTPVerificationScreen() {
   const isComplete = otp.every(d => d !== '');
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <StatusBar style="dark" />
+    <SafeAreaView className="flex-1 bg-[#12130F]">
+      <StatusBar style="light" />
       
       <TouchableOpacity
         accessibilityRole="button"
         accessibilityLabel="Go back"
-        className="ml-4 mt-2 h-11 w-11 items-center justify-center rounded-full bg-[#F5F5F5]"
+        className="ml-4 mt-2 h-11 w-11 items-center justify-center rounded-full bg-[#1A1C16] border border-[#34382E]"
         onPress={() => goBackOrReplace('/(auth)/phone-input')}
         activeOpacity={0.7}
       >
-        <Ionicons name="arrow-back" size={24} color="#1A1A2E" />
+        <Ionicons name="arrow-back" size={24} color="#F5F5F0" />
       </TouchableOpacity>
 
       <View className="flex-1 px-6 pt-10">
         <View className="items-center">
-          <View className="w-20 h-20 rounded-full bg-[#E8F5E9] items-center justify-center mb-4">
-            <Ionicons name="chatbubble-ellipses-outline" size={32} color="#4CAF50" />
+          <View className="w-16 h-16 rounded-2xl bg-[#1A1C16] border border-[#34382E] items-center justify-center mb-4">
+            <Ionicons name="chatbubble-ellipses-outline" size={32} color="#3EAF4C" />
           </View>
-          <Text className="text-2xl font-bold text-[#1A1A2E]">Enter Code</Text>
-          <Text className="text-[#737373] text-center mt-2 text-base">
+          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 27, letterSpacing: .2 }} className="text-[#F5F5F0] uppercase">Enter code</Text>
+          <Text style={{ fontFamily: 'SpaceGrotesk_400Regular' }} className="text-[#A1A39D] text-center mt-2 text-base">
             We sent a 6-digit code to +92{phone}
           </Text>
-      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace('/(auth)/phone-input')} activeOpacity={0.7} className="h-11 w-11 items-center justify-center rounded-full bg-[#F5F5F5]">
-            <Text className="text-[#4CAF50] font-medium mt-1">Edit Number</Text>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit phone number" onPress={() => goBackOrReplace('/(auth)/phone-input')} activeOpacity={0.7} className="mt-2 px-3 py-2">
+            <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#3EAF4C]">Edit number</Text>
           </TouchableOpacity>
         </View>
 
@@ -150,8 +150,8 @@ export default function OTPVerificationScreen() {
               ref={(ref) => {
                 inputs.current[index] = ref;
               }}
-              className={`w-12 h-14 bg-[#F5F5F5] rounded-xl text-center text-2xl font-bold text-[#1A1A2E] border mx-1.5 ${
-                otp[index] ? 'border-[#4CAF50]' : 'border-[#E5E5E5]'
+              className={`w-11 h-[52px] bg-[#1A1C16] rounded-xl text-center text-xl font-bold text-[#F5F5F0] border mx-1 ${
+                otp[index] ? 'border-[#3EAF4C]' : 'border-[#34382E]'
               }`}
               maxLength={1}
               keyboardType="number-pad"
@@ -165,8 +165,8 @@ export default function OTPVerificationScreen() {
         </View>
 
         <View className="flex-row justify-center mt-6">
-          <Text className="text-[#737373]">Resend in </Text>
-          <Text className="text-[#1A1A2E] font-medium">
+        <Text className="text-[#A1A39D]">Resend in </Text>
+        <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0]">
             {String(Math.floor(timer / 60)).padStart(2, '0')}:{String(timer % 60).padStart(2, '0')}
           </Text>
         </View>
@@ -189,7 +189,7 @@ export default function OTPVerificationScreen() {
         )}
 
         <TouchableOpacity
-          className={`py-4 rounded-full mt-6 ${isComplete ? 'bg-[#4CAF50]' : 'bg-[#E5E5E5]'}`}
+          className={`py-4 rounded-full mt-6 ${isComplete ? 'bg-[#3EAF4C]' : 'bg-[#34382E]'}`}
           style={isComplete ? { 
             shadowColor: '#4CAF50', 
             shadowOffset: { width: 0, height: 4 }, 

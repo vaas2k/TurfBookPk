@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   SectionList,
+  StatusBar,
   Text,
   TouchableOpacity,
   View,
@@ -30,6 +31,7 @@ export default function BookingsScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [bookingTab, setBookingTab] = useState<'upcoming' | 'past' | 'cancelled'>('upcoming');
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -107,12 +109,16 @@ export default function BookingsScreen() {
     return result;
   }, [bookings]);
 
+  const visibleSections = useMemo(() => sections.filter((section) => bookingTab === 'upcoming'
+    ? section.key === 'pending' || section.key === 'upcoming'
+    : bookingTab === 'past' ? section.key === 'completed' : section.key === 'cancelled'), [bookingTab, sections]);
+
   const renderBookingItem = ({ item }: { item: BookingProfile }) => (
     <TouchableOpacity
       accessibilityRole="button"
       accessibilityLabel={`View booking ${item.booking_number} for ${item.ground_title}`}
       onPress={() => router.push({ pathname: '/(player)/booking/[id]', params: { id: item.id } })}
-      className="bg-white rounded-2xl p-4 mb-3 border border-[#E5E5E5]"
+      className="bg-[#181C16] rounded-[22px] p-4 mb-4 border border-[#254527]"
       style={{
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
@@ -123,21 +129,21 @@ export default function BookingsScreen() {
     >
       <View className="flex-row justify-between items-start">
         <View className="flex-1 mr-3">
-          <Text className="text-[#1A1A2E] text-base font-bold" numberOfLines={1}>
+            <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-lg" numberOfLines={1}>
             {item.ground_title}
           </Text>
-          <Text className="text-[#737373] text-sm mt-1">
+          <Text className="text-[#AFAFA9] text-sm mt-1">
             {item.date} · {item.start_time.slice(0, 5)} - {item.end_time.slice(0, 5)}
           </Text>
         </View>
         <BookingStatusBadge status={item.status} paymentStatus={item.payment_status} />
       </View>
 
-      <View className="flex-row justify-between items-center mt-3 pt-3 border-t border-[#F5F5F5]">
-        <Text className="text-[#A3A3A3] text-xs font-mono">
+      <View className="flex-row justify-between items-center mt-3 pt-3 border-t border-[#30382B]">
+        <Text className="text-[#888D84] text-xs font-mono">
           #{item.booking_number}
         </Text>
-        <Text className="text-[#4CAF50] font-bold text-base">
+        <Text className="text-[#3DB54A] font-bold text-base">
           PKR {item.total_amount.toLocaleString()}
         </Text>
       </View>
@@ -145,12 +151,12 @@ export default function BookingsScreen() {
   );
 
   const renderSectionHeader = ({ section }: { section: BookingSection }) => (
-    <View className="flex-row items-center justify-between pt-4 pb-2 bg-[#F8F9FA]">
-      <Text className="text-sm font-bold uppercase tracking-wider text-[#4B5563]">
+    <View className="flex-row items-center justify-between pt-5 pb-2 bg-[#10120F]">
+      <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 19 }} className="uppercase tracking-wider text-[#D6D7D0]">
         {section.title}
       </Text>
-      <View className="bg-[#E5E7EB] rounded-full px-2 py-0.5">
-        <Text className="text-xs font-bold text-[#4B5563]">
+      <View className="bg-[#22281E] rounded-full px-2 py-0.5">
+        <Text className="text-xs font-bold text-[#BFC1B9]">
           {section.data.length}
         </Text>
       </View>
@@ -158,39 +164,42 @@ export default function BookingsScreen() {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
+      <StatusBar barStyle="light-content" backgroundColor="#10120F" translucent={false} />
       {/* Top Header */}
-      <View className="bg-white px-5 py-3 border-b border-[#E5E5E5] flex-row items-center">
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace('/(player)')} className="w-11 h-11 rounded-full bg-[#F5F5F5] items-center justify-center mr-3">
-          <Ionicons name="arrow-back" size={20} color="#1A1A2E" />
-        </TouchableOpacity>
-        <View className="flex-1">
-          <Text className="text-2xl font-bold text-[#1A1A2E]">MY BOOKINGS</Text>
-          <Text className="text-[#737373] text-xs mt-0.5">
+      <View className="bg-[#10120F] px-5 pt-5 pb-3">
+        <View>
+          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 27, letterSpacing: 0.35 }} className="text-[#F8F7F0]">MY BOOKINGS</Text>
+          <Text className="text-[#AFAFA9] text-xs mt-0.5">
             {total} {total === 1 ? 'total reservation' : 'total reservations'}
           </Text>
+        </View>
+        <View className="mt-6 bg-[#1B1F19] rounded-full p-1 flex-row">
+          <TouchableOpacity accessibilityRole="tab" accessibilityState={{ selected: bookingTab === 'upcoming' }} onPress={() => setBookingTab('upcoming')} className={`flex-1 items-center py-3 rounded-full ${bookingTab === 'upcoming' ? 'bg-[#3DB54A]' : ''}`}><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className={bookingTab === 'upcoming' ? 'text-white text-sm' : 'text-[#AFAFA9] text-sm'}>Upcoming</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="tab" accessibilityState={{ selected: bookingTab === 'past' }} onPress={() => setBookingTab('past')} className={`flex-1 items-center py-3 rounded-full ${bookingTab === 'past' ? 'bg-[#3DB54A]' : ''}`}><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className={bookingTab === 'past' ? 'text-white text-sm' : 'text-[#AFAFA9] text-sm'}>Past</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="tab" accessibilityState={{ selected: bookingTab === 'cancelled' }} onPress={() => setBookingTab('cancelled')} className={`flex-1 items-center py-3 rounded-full ${bookingTab === 'cancelled' ? 'bg-[#3DB54A]' : ''}`}><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className={bookingTab === 'cancelled' ? 'text-white text-sm' : 'text-[#AFAFA9] text-sm'}>Cancelled</Text></TouchableOpacity>
         </View>
       </View>
 
       {loading && bookings.length === 0 ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#4CAF50" />
+          <ActivityIndicator size="large" color="#3DB54A" />
         </View>
       ) : bookings.length === 0 ? (
         <View className="flex-1 items-center justify-center px-6">
-          <View className="w-20 h-20 rounded-full bg-[#E5E7EB]/50 items-center justify-center mb-4">
-            <Ionicons name="calendar-outline" size={42} color="#9CA3AF" />
+          <View className="w-16 h-16 rounded-full bg-[#20251D] items-center justify-center mb-4">
+            <Ionicons name="calendar-outline" size={34} color="#3DB54A" />
           </View>
-          <Text className="text-[#1A1A2E] text-xl font-bold">No bookings yet</Text>
-          <Text className="text-[#737373] text-center mt-1 text-sm max-w-xs">
+          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 23 }} className="text-[#F8F7F0]">NO BOOKINGS YET</Text>
+          <Text className="text-[#AFAFA9] text-center mt-1 text-sm max-w-xs">
             Find the best turf football grounds in your city and book your next match slot.
           </Text>
           <TouchableOpacity
             accessibilityRole="button"
             onPress={() => router.push('/(player)')}
-            className="mt-6 bg-[#4CAF50] rounded-full px-7 py-3.5"
+            className="mt-6 bg-[#3DB54A] rounded-full px-7 py-3.5"
             style={{
-              shadowColor: '#4CAF50',
+              shadowColor: '#3DB54A',
               shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.25,
               shadowRadius: 8,
@@ -202,21 +211,22 @@ export default function BookingsScreen() {
         </View>
       ) : (
         <SectionList
-          sections={sections}
+          sections={visibleSections}
           keyExtractor={(item) => item.id}
           renderItem={renderBookingItem}
           renderSectionHeader={renderSectionHeader}
+          ListEmptyComponent={<View className="items-center pt-16"><Ionicons name="calendar-outline" size={34} color="#3DB54A" /><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F3F4EF] mt-3">No {bookingTab} bookings</Text><Text className="text-[#AFAFA9] text-sm mt-1">Your {bookingTab} reservations will appear here.</Text></View>}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
           ListFooterComponent={loadingMore ? <ActivityIndicator className="py-4" color="#4CAF50" /> : null}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32, backgroundColor: '#10120F' }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => load(true)}
-              tintColor="#4CAF50"
-              colors={['#4CAF50']}
+              tintColor="#3DB54A"
+              colors={['#3DB54A']}
             />
           }
         />

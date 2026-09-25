@@ -52,11 +52,6 @@ function BottomTabBar() {
       route: '/(player)/bookings' 
     },
     { 
-      name: 'Chat', 
-      icon: 'chatbubbles', 
-      route: '/(player)/chat' 
-    },
-    { 
       name: 'Profile', 
       icon: 'person', 
       route: '/(player)/profile' 
@@ -81,7 +76,7 @@ function BottomTabBar() {
 
   return (
     <View 
-      className="bg-white border-t border-[#E5E5E5] flex-row items-center justify-around px-2 pt-2"
+      className="bg-[#1A1C16] border-t border-[#2A3025] flex-row items-center justify-around px-5 pt-2"
       style={{ 
         paddingBottom: bottomPadding,
         minHeight: 64 + bottomPadding,
@@ -100,18 +95,18 @@ function BottomTabBar() {
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
             accessibilityLabel={tab.name}
-            className={`items-center justify-center flex-1 min-h-[44px] rounded-2xl py-1 ${active ? 'bg-[#E8F5E9]' : ''}`}
+            className="items-center justify-center flex-1 min-h-[44px] py-1"
             onPress={() => handlePress(tab.route)}
             activeOpacity={0.7}
           >
             <Ionicons 
               name={active ? tab.icon : `${tab.icon}-outline` as any} 
-              size={24} 
-              color={active ? '#4CAF50' : '#737373'} 
+              size={26} 
+              color={active ? '#3EAF4C' : '#A1A39D'} 
             />
             <Text 
-              className={`text-[11px] mt-0.5 ${
-                active ? 'text-[#4CAF50] font-medium' : 'text-[#737373]'
+              style={{ fontFamily: 'SpaceGrotesk_500Medium' }} className={`text-[11px] mt-1 ${
+                active ? 'text-[#3EAF4C] font-medium' : 'text-[#A1A39D]'
               }`}
             >
               {tab.name}
@@ -125,11 +120,11 @@ function BottomTabBar() {
 
 export default function PlayerLayout() {
   return (
-    <View className="flex-1 bg-[#F8F9FA]">
+    <View className="flex-1 bg-[#12130F]">
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: '#F8F9FA' },
+          contentStyle: { backgroundColor: '#12130F' },
         }}
       >
         <Stack.Screen name="index" />
@@ -137,6 +132,8 @@ export default function PlayerLayout() {
         <Stack.Screen name="bookings" />
         <Stack.Screen name="chat" />
         <Stack.Screen name="profile" />
+        <Stack.Screen name="ui-test" />
+        <Stack.Screen name="design-lab" />
         <Stack.Screen name="ground/[id]" />
         <Stack.Screen name="payment-method" />
         <Stack.Screen name="payment-jazzcash" />

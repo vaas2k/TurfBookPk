@@ -5,12 +5,16 @@ import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorStore } from '@/store/vendorStore';
 import { Ionicons } from '@expo/vector-icons';
+import { hasSeenOnboarding } from '@/lib/onboarding';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
 export default function SplashScreen() {
   const { isAuthenticated, isNewUser, isLoading, user, lastMode } = useAuthStore();
   const { isVendor } = useVendorStore();
+  const [onboardingReady, setOnboardingReady] = useState(false);
+  const [onboardingSeen, setOnboardingSeen] = useState(false);
 
   const [fadeAnim] = useState(() => new Animated.Value(0));
   const [scaleAnim] = useState(() => new Animated.Value(0.95));
@@ -31,12 +35,14 @@ export default function SplashScreen() {
     ]).start();
 
   }, []);
+  useEffect(() => { hasSeenOnboarding().then((seen) => { setOnboardingSeen(seen); setOnboardingReady(true); }); }, []);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !onboardingReady) return;
 
     const timer = setTimeout(() => {
-      if (isAuthenticated && user) {
+      if (!isAuthenticated && !onboardingSeen) { router.replace('/(auth)/onboarding'); }
+      else if (isAuthenticated && user) {
         // Get the latest role and vendor status
         if (lastMode === 'vendor' && isVendor) {
           router.replace('/(vendor)');
@@ -51,10 +57,10 @@ export default function SplashScreen() {
     }, 2000); // slightly longer to appreciate the splash
 
     return () => clearTimeout(timer);
-  }, [isAuthenticated, isNewUser, isLoading, isVendor, lastMode, user]);
+  }, [isAuthenticated, isNewUser, isLoading, isVendor, lastMode, user, onboardingReady, onboardingSeen]);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
       
       {/* Background glow effects */}
@@ -65,19 +71,19 @@ export default function SplashScreen() {
         <View style={styles.iconContainer}>
           <Ionicons name="football" size={48} color="#10B981" />
         </View>
-        <Text style={styles.title}>KICKOFF</Text>
+        <View style={styles.wordmark}><Text style={[styles.title, styles.titleGreen]}>TURF</Text><Text style={styles.title}>BOOKPK</Text></View>
         <View style={styles.divider} />
-        <Text style={styles.subtitle}>Premium Turf Booking</Text>
+        <Text style={styles.subtitle}>Find your ground. Book your game.</Text>
       </Animated.View>
 
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#09090B', // Deep black/gray base
+    backgroundColor: '#12130F',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -88,8 +94,7 @@ const styles = StyleSheet.create({
     width: width * 0.8,
     height: width * 0.8,
     borderRadius: width * 0.4,
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-    filter: 'blur(40px)',
+    backgroundColor: 'rgba(62, 175, 76, 0.12)',
   },
   glowBottom: {
     position: 'absolute',
@@ -98,8 +103,7 @@ const styles = StyleSheet.create({
     width: width * 0.9,
     height: width * 0.9,
     borderRadius: width * 0.45,
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
-    filter: 'blur(50px)',
+    backgroundColor: 'rgba(62, 175, 76, 0.08)',
   },
   content: {
     alignItems: 'center',
@@ -117,23 +121,20 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   title: {
-    color: '#FAFAFA',
-    fontSize: 32,
-    fontWeight: '900',
-    letterSpacing: 4,
+    color: '#F5F5F0', fontSize: 36, lineHeight: 36, fontFamily: 'BigShouldersDisplay_800ExtraBold', letterSpacing: 0.7,
   },
+  wordmark: { flexDirection: 'row', alignItems: 'center' },
+  titleGreen: { color: '#3EAF4C' },
   divider: {
     width: 40,
     height: 4,
-    backgroundColor: '#10B981',
+    backgroundColor: '#3EAF4C',
     borderRadius: 2,
     marginTop: 16,
     marginBottom: 16,
   },
   subtitle: {
-    color: '#A1A1AA',
-    fontSize: 14,
-    fontWeight: '600',
+    color: '#A1A39D', fontSize: 14, fontFamily: 'SpaceGrotesk_500Medium',
     letterSpacing: 1.5,
   }
 });

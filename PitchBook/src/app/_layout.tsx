@@ -6,24 +6,41 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import {useVendorStore} from '@/store/vendorStore';
 import { useFonts } from 'expo-font';
-import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, Inter_900Black } from '@expo-google-fonts/inter';
+import { SpaceGrotesk_400Regular, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
+import { BigShouldersDisplay_700Bold, BigShouldersDisplay_800ExtraBold } from '@expo-google-fonts/big-shoulders-display';
 import { getApiConfigurationError } from '@/lib/api/client';
 import { AppDialogHost } from '@/components/ui/app-dialog';
+import { useAppearanceStore } from '@/store/appearanceStore';
 
 //@ts-ignore
 import '../global.css';
+
+const TextWithDefaults = Text as typeof Text & { defaultProps?: { style?: unknown } };
+TextWithDefaults.defaultProps = {
+  ...TextWithDefaults.defaultProps,
+  style: [{ fontFamily: 'SpaceGrotesk_400Regular' }, TextWithDefaults.defaultProps?.style],
+};
 
 export default function RootLayout() {
   const configurationError = getApiConfigurationError();
   const { checkAuth } = useAuthStore();
   const { checkVendorStatus } = useVendorStore();
   const [isReady, setIsReady] = useState(false);
+  const appearance = useAppearanceStore((state) => state.appearance);
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_900Black,
+    SpaceGrotesk_400Regular,
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_700Bold,
+    BigShouldersDisplay_700Bold,
+    BigShouldersDisplay_800ExtraBold,
   });
 
   useEffect(() => {
@@ -66,7 +83,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
+      <StatusBar style={appearance === 'dark' ? 'light' : 'dark'} />
       <Slot />
       <AppDialogHost />
     </SafeAreaProvider>

@@ -1,13 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Image,
+  Modal,
+  PanResponder,
+  Pressable,
   RefreshControl,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  StatusBar,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -75,6 +80,7 @@ export default function SearchScreen() {
     longitude: number;
   } | null>(null);
   const [locating, setLocating] = useState(false);
+  const filterSheetTranslateY = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(
     async (refresh = false, nextPage = 1) => {
@@ -137,7 +143,8 @@ export default function SearchScreen() {
   const activeFilters =
     (pitchType !== "All" ? 1 : 0) +
     selectedAmenities.length +
-    (maxPrice < MAX_PRICE ? 1 : 0);
+    (maxPrice < MAX_PRICE ? 1 : 0) +
+    (selectedDate !== pakistanToday() ? 1 : 0);
   const results = useMemo(
     () =>
       grounds
@@ -212,6 +219,8 @@ export default function SearchScreen() {
     );
   const clear = () => {
     setQuery("");
+    setSelectedDate(pakistanToday());
+    setDateInput(pakistanToday());
     setPitchType("All");
     setSelectedAmenities([]);
     setMaxPrice(MAX_PRICE);
@@ -258,16 +267,31 @@ export default function SearchScreen() {
       setLocating(false);
     }
   };
+  const closeFilters = () => {
+    Animated.timing(filterSheetTranslateY, { toValue: 500, duration: 180, useNativeDriver: true }).start(() => {
+      filterSheetTranslateY.setValue(0);
+      setShowFilters(false);
+    });
+  };
+  const filterSheetPan = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderMove: (_, gesture) => filterSheetTranslateY.setValue(Math.max(0, gesture.dy)),
+    onPanResponderRelease: (_, gesture) => {
+      if (gesture.dy > 110 || gesture.vy > 1.25) closeFilters();
+      else Animated.spring(filterSheetTranslateY, { toValue: 0, useNativeDriver: true }).start();
+    },
+  });
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-      <View className="bg-white px-5 pt-3 pb-4 border-b border-[#E5E5E5]">
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
+      <StatusBar barStyle="light-content" backgroundColor="#10120F" translucent={false} />
+      <View className="bg-[#10120F] px-5 pt-4 pb-4">
         <View className="flex-row items-center justify-between">
           <View>
-            <Text className="text-2xl font-bold text-[#1A1A2E]">
-              Find a ground
+            <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 26 }} className="text-[#F8F7F0]">
+              FIND A GROUND
             </Text>
-            <Text className="text-sm text-[#737373] mt-1">
+            <Text className="text-sm text-[#AFAFA9] mt-1">
               Search by venue, city, area, or amenity.
             </Text>
           </View>
@@ -276,25 +300,25 @@ export default function SearchScreen() {
             accessibilityLabel="Use my location"
             onPress={findMyLocation}
             disabled={locating}
-            className="h-11 w-11 rounded-full bg-[#E8F5E9] items-center justify-center"
+            className="h-11 w-11 rounded-full bg-[#1B2019] border border-[#315536] items-center justify-center"
           >
             <Ionicons
               name={locating ? "hourglass-outline" : "locate-outline"}
               size={21}
-              color="#2E7D32"
+              color="#3DB54A"
             />
           </TouchableOpacity>
         </View>
         <View className="flex-row items-center mt-4">
-          <View className="flex-1 flex-row items-center bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl px-3 min-h-[50px]">
-            <Ionicons name="search-outline" size={20} color="#737373" />
+          <View className="flex-1 flex-row items-center bg-[#181C16] border border-[#30372B] rounded-xl px-3 min-h-[50px]">
+            <Ionicons name="search-outline" size={20} color="#AFAFA9" />
             <TextInput
               accessibilityLabel="Search grounds by city or location"
               value={query}
               onChangeText={setQuery}
               placeholder="City, area, venue..."
-              placeholderTextColor="#9CA3AF"
-              className="flex-1 ml-2 text-[#1A1A2E]"
+              placeholderTextColor="#8C9188"
+              className="flex-1 ml-2 text-[#F8F7F0]"
               returnKeyType="search"
             />
             {!!query && (
@@ -304,7 +328,7 @@ export default function SearchScreen() {
                 onPress={() => setQuery("")}
                 className="h-11 w-10 items-center justify-center"
               >
-                <Ionicons name="close-circle" size={19} color="#737373" />
+                <Ionicons name="close-circle" size={19} color="#AFAFA9" />
               </TouchableOpacity>
             )}
           </View>
@@ -312,7 +336,7 @@ export default function SearchScreen() {
             accessibilityRole="button"
             accessibilityLabel="Open filters"
             onPress={() => setShowFilters((value) => !value)}
-            className={`ml-3 h-[50px] w-[50px] rounded-xl items-center justify-center ${showFilters || activeFilters ? "bg-[#4CAF50]" : "bg-[#1A1A2E]"}`}
+            className={`ml-3 h-[50px] w-[50px] rounded-xl items-center justify-center ${showFilters || activeFilters ? "bg-[#3DB54A]" : "bg-[#181C16] border border-[#30372B]"}`}
           >
             <Ionicons name="options-outline" size={22} color="white" />
             {activeFilters > 0 && (
@@ -324,60 +348,51 @@ export default function SearchScreen() {
             )}
           </TouchableOpacity>
         </View>
-        <Text className="text-xs text-[#4B5563] font-semibold mt-4 mb-2">
-          AVAILABLE DATE
-        </Text>
-        <View className="flex-row items-center">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            className="flex-1"
-          >
+      </View>
+      {showFilters && (
+        <Modal transparent animationType="slide" visible={showFilters} onRequestClose={closeFilters}>
+          <View className="flex-1 justify-end bg-black/70">
+            <Pressable className="absolute inset-0" onPress={closeFilters} accessibilityLabel="Close filters" />
+            <Animated.View style={{ transform: [{ translateY: filterSheetTranslateY }] }} className="max-h-[82%] rounded-t-[30px] border-t border-[#30372B] bg-[#181C16] pt-3">
+              <View {...filterSheetPan.panHandlers} className="h-8 items-center justify-center -mt-3 mb-1"><View className="h-1.5 w-12 rounded-full bg-[#6B7167]" /></View>
+        <ScrollView className="px-5" contentContainerStyle={{ paddingBottom: 18 }} showsVerticalScrollIndicator={false}>
+          <View className="flex-row justify-between items-center">
+            <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 23 }} className="text-[#F8F7F0]">FILTERS</Text>
+            <TouchableOpacity onPress={clear} className="px-2 py-2">
+              <Text className="text-[#3DB54A] font-bold">Clear all</Text>
+            </TouchableOpacity>
+          </View>
+          <Text className="text-xs font-semibold text-[#BFC1B9] mt-4 mb-2">
+            AVAILABLE DATE
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {dates.map((date, index) => (
               <TouchableOpacity
                 key={date}
                 onPress={() => chooseDate(date)}
-                className={`mr-2 rounded-xl px-4 py-2.5 border ${selectedDate === date ? "bg-[#4CAF50] border-[#4CAF50]" : "bg-white border-[#E5E5E5]"}`}
+                className={`mr-2 rounded-full px-4 py-2 border ${selectedDate === date ? "bg-[#3DB54A] border-[#3DB54A]" : "bg-[#242A20] border-[#30372B]"}`}
               >
-                <Text
-                  className={
-                    selectedDate === date
-                      ? "text-white font-bold text-sm"
-                      : "text-[#4B5563] font-medium text-sm"
-                  }
-                >
-                  {index === 0
-                    ? "Today"
-                    : index === 1
-                      ? "Tomorrow"
-                      : new Date(`${date}T00:00:00Z`).toLocaleDateString(
-                          "en-PK",
-                          { weekday: "short", day: "numeric", month: "short" },
-                        )}
+                <Text className={selectedDate === date ? "text-white text-sm font-bold" : "text-[#BFC1B9] text-sm"}>
+                  {index === 0 ? "Today" : index === 1 ? "Tomorrow" : new Date(`${date}T00:00:00Z`).toLocaleDateString("en-PK", { weekday: "short", day: "numeric", month: "short" })}
                 </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
-          <TextInput
-            accessibilityLabel="Custom availability date"
-            value={dateInput}
-            onChangeText={setDateInput}
-            onSubmitEditing={applyDate}
-            onBlur={applyDate}
-            placeholder="YYYY-MM-DD"
-            className="ml-2 w-[108px] border border-[#E5E5E5] rounded-xl px-2 py-2 text-xs text-[#1A1A2E]"
-          />
-        </View>
-      </View>
-      {showFilters && (
-        <ScrollView className="max-h-[330px] bg-white border-b border-[#E5E5E5] px-5 py-4">
-          <View className="flex-row justify-between">
-            <Text className="text-lg font-bold text-[#1A1A2E]">Filters</Text>
-            <TouchableOpacity onPress={clear}>
-              <Text className="text-[#2E7D32] font-bold">Clear all</Text>
+          <View className="flex-row mt-3">
+            <TextInput
+              accessibilityLabel="Custom availability date"
+              value={dateInput}
+              onChangeText={setDateInput}
+              onSubmitEditing={applyDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#8C9188"
+              className="flex-1 border border-[#30372B] bg-[#242A20] rounded-xl px-3 py-3 text-sm text-[#F8F7F0]"
+            />
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Apply selected date" onPress={applyDate} className="ml-2 rounded-xl bg-[#3DB54A] px-4 items-center justify-center">
+              <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-white text-sm">Apply</Text>
             </TouchableOpacity>
           </View>
-          <Text className="text-xs font-semibold text-[#4B5563] mt-4 mb-2">
+          <Text className="text-xs font-semibold text-[#BFC1B9] mt-4 mb-2">
             PITCH TYPE
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -385,13 +400,13 @@ export default function SearchScreen() {
               <TouchableOpacity
                 key={type}
                 onPress={() => setPitchType(type)}
-                className={`mr-2 px-4 py-2 rounded-full ${pitchType === type ? "bg-[#1A1A2E]" : "bg-[#F5F5F5]"}`}
+                className={`mr-2 px-4 py-2 rounded-full border ${pitchType === type ? "bg-[#3DB54A] border-[#3DB54A]" : "bg-[#242A20] border-[#30372B]"}`}
               >
                 <Text
                   className={
                     pitchType === type
                       ? "text-white text-sm font-bold"
-                      : "text-[#4B5563] text-sm"
+                      : "text-[#BFC1B9] text-sm"
                   }
                 >
                   {type}
@@ -400,10 +415,10 @@ export default function SearchScreen() {
             ))}
           </ScrollView>
           <View className="flex-row justify-between mt-4 mb-2">
-            <Text className="text-xs font-semibold text-[#4B5563]">
+            <Text className="text-xs font-semibold text-[#BFC1B9]">
               MAX SLOT PRICE
             </Text>
-            <Text className="text-[#2E7D32] font-bold">
+            <Text className="text-[#3DB54A] font-bold">
               PKR {maxPrice.toLocaleString()}
             </Text>
           </View>
@@ -418,13 +433,13 @@ export default function SearchScreen() {
               <TouchableOpacity
                 key={value}
                 onPress={() => setMaxPrice(value)}
-                className={`flex-1 items-center rounded-lg py-2 ${maxPrice === value ? "bg-[#4CAF50]" : "bg-[#F5F5F5]"}`}
+                className={`flex-1 items-center rounded-lg py-2 ${maxPrice === value ? "bg-[#3DB54A]" : "bg-[#242A20]"}`}
               >
                 <Text
                   className={
                     maxPrice === value
                       ? "text-white font-bold"
-                      : "text-[#4B5563]"
+                      : "text-[#BFC1B9]"
                   }
                 >
                   {label}
@@ -434,7 +449,7 @@ export default function SearchScreen() {
           </View>
           {amenities.length > 0 && (
             <>
-              <Text className="text-xs font-semibold text-[#4B5563] mt-4 mb-2">
+              <Text className="text-xs font-semibold text-[#BFC1B9] mt-4 mb-2">
                 AMENITIES
               </Text>
               <View className="flex-row flex-wrap">
@@ -442,13 +457,13 @@ export default function SearchScreen() {
                   <TouchableOpacity
                     key={amenity}
                     onPress={() => toggleAmenity(amenity)}
-                    className={`mr-2 mb-2 px-3 py-2 rounded-full ${selectedAmenities.includes(amenity) ? "bg-[#E8F5E9] border border-[#4CAF50]" : "bg-[#F5F5F5]"}`}
+                    className={`mr-2 mb-2 px-3 py-2 rounded-full ${selectedAmenities.includes(amenity) ? "bg-[#19331D] border border-[#3DB54A]" : "bg-[#242A20]"}`}
                   >
                     <Text
                       className={
                         selectedAmenities.includes(amenity)
-                          ? "text-[#2E7D32] text-xs font-bold"
-                          : "text-[#4B5563] text-xs"
+                          ? "text-[#3DB54A] text-xs font-bold"
+                          : "text-[#BFC1B9] text-xs"
                       }
                     >
                       {amenity}
@@ -458,7 +473,7 @@ export default function SearchScreen() {
               </View>
             </>
           )}
-          <Text className="text-xs font-semibold text-[#4B5563] mt-2 mb-2">
+          <Text className="text-xs font-semibold text-[#BFC1B9] mt-2 mb-2">
             SORT BY
           </Text>
           <View className="flex-row flex-wrap">
@@ -473,13 +488,13 @@ export default function SearchScreen() {
               <TouchableOpacity
                 key={value}
                 onPress={() => setSort(value)}
-                className={`mr-2 mb-2 px-3 py-2 rounded-full ${sort === value ? "bg-[#1A1A2E]" : "bg-[#F5F5F5]"}`}
+                className={`mr-2 mb-2 px-3 py-2 rounded-full ${sort === value ? "bg-[#3DB54A]" : "bg-[#242A20]"}`}
               >
                 <Text
                   className={
                     sort === value
                       ? "text-white text-xs font-bold"
-                      : "text-[#4B5563] text-xs"
+                      : "text-[#BFC1B9] text-xs"
                   }
                 >
                   {label}
@@ -488,6 +503,12 @@ export default function SearchScreen() {
             ))}
           </View>
         </ScrollView>
+        <View className="border-t border-[#30372B] px-5 py-4">
+          <TouchableOpacity accessibilityRole="button" onPress={closeFilters} className="rounded-full bg-[#3DB54A] py-4 items-center"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-white text-base">Show {results.length} ground{results.length === 1 ? '' : 's'}</Text></TouchableOpacity>
+        </View>
+            </Animated.View>
+          </View>
+        </Modal>
       )}
       <ScrollView
         className="flex-1 px-5 pt-4"
@@ -500,13 +521,13 @@ export default function SearchScreen() {
           />
         }
       >
-        <Text className="text-[#737373] text-sm mb-3">
+        <Text className="text-[#AFAFA9] text-sm mb-3">
           {loading
             ? "Finding grounds..."
             : `${results.length} available ${results.length === 1 ? "ground" : "grounds"} on ${selectedDate}`}
         </Text>
         {loading ? (
-          <ActivityIndicator className="mt-10" color="#4CAF50" />
+          <ActivityIndicator className="mt-10" color="#3DB54A" />
         ) : loadError ? (
           <View className="bg-white border border-[#FECACA] rounded-2xl p-8 items-center mt-3"><Ionicons name="cloud-offline-outline" size={40} color="#DC2626" /><Text className="text-[#1A1A2E] font-bold text-lg mt-3">Couldn’t load grounds</Text><Text className="text-[#737373] text-center text-sm mt-2">Check your connection and try again.</Text><TouchableOpacity onPress={() => load()} className="mt-5 bg-[#1A1A2E] rounded-xl px-5 py-3"><Text className="text-white font-bold">Try again</Text></TouchableOpacity></View>
         ) : results.length === 0 ? (
@@ -533,7 +554,7 @@ export default function SearchScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Open ${ground.title}`}
               onPress={() => router.push(`/(player)/ground/${ground.id}`)}
-              className="bg-white border border-[#E5E5E5] rounded-2xl overflow-hidden mb-4"
+              className="bg-[#181C16] border border-[#293B29] rounded-2xl overflow-hidden mb-4"
             >
               <Image
                 source={{
@@ -549,7 +570,7 @@ export default function SearchScreen() {
                 <View className="flex-row justify-between">
                   <View className="flex-1 mr-3">
                     <Text
-                      className="text-[#1A1A2E] font-bold text-lg"
+                      style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-[17px]"
                       numberOfLines={1}
                     >
                       {ground.title}
@@ -558,10 +579,10 @@ export default function SearchScreen() {
                       <Ionicons
                         name="location-outline"
                         size={14}
-                        color="#737373"
+                        color="#E27A3F"
                       />
                       <Text
-                        className="text-[#737373] text-sm ml-1"
+                        className="text-[#AFAFA9] text-sm ml-1"
                         numberOfLines={1}
                       >
                         {ground.location}, {ground.city}
@@ -571,21 +592,21 @@ export default function SearchScreen() {
                   <View className="items-end">
                     <View className="flex-row items-center">
                       <Ionicons name="star" size={14} color="#F59E0B" />
-                      <Text className="text-[#1A1A2E] text-sm font-bold ml-1">
+                      <Text className="text-[#F8F7F0] text-sm font-bold ml-1">
                         {ground.rating.toFixed(1)}
                       </Text>
                     </View>
-                    <Text className="text-[#737373] text-xs mt-1">
+                    <Text className="text-[#AFAFA9] text-xs mt-1">
                       {ground.total_reviews} reviews
                     </Text>
                   </View>
                 </View>
-                <View className="flex-row justify-between items-end mt-4 pt-3 border-t border-[#F5F5F5]">
+                <View className="flex-row justify-between items-end mt-4 pt-3 border-t border-[#30372B]">
                   <View>
-                    <Text className="text-[#4CAF50] font-bold">
+                    <Text className="text-[#3DB54A] font-bold">
                       From PKR {lowestPrice!.toLocaleString()}
                     </Text>
-                    <Text className="text-[#737373] text-xs mt-1">
+                    <Text className="text-[#AFAFA9] text-xs mt-1">
                       {availableSlots.length} slots available ·{" "}
                       {ground.pitch_type || "Turf"}
                     </Text>
@@ -596,8 +617,8 @@ export default function SearchScreen() {
                         </Text>
                       )}
                   </View>
-                  <View className="bg-[#4CAF50] rounded-full px-4 py-2">
-                    <Text className="text-white text-xs font-bold">
+                  <View className="border border-[#3DB54A] rounded-full px-4 py-2">
+                    <Text className="text-[#61C86A] text-xs font-bold">
                       View slots
                     </Text>
                   </View>

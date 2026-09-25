@@ -1,6 +1,6 @@
 import {
   View, Text, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator
+  KeyboardAvoidingView, Platform, ActivityIndicator, StyleSheet
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -16,7 +16,6 @@ export default function PhoneInputScreen() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const { sendOTP, signInWithGoogle, error, clearError } = useAuthStore();
 
-  // Clear errors when phone changes
   useEffect(() => {
     if (error) clearError();
   }, [phone]);
@@ -46,14 +45,12 @@ export default function PhoneInputScreen() {
       return;
     }
 
-
     setIsLoading(true);
     const { error: sendError } = await sendOTP(`92${cleanPhone}`);
     setIsLoading(false);
 
     if (sendError) {
       appDialog.alert('Error', sendError.message);
-
     } else {
       router.push({
         pathname: '/(auth)/otp-verification',
@@ -63,120 +60,144 @@ export default function PhoneInputScreen() {
   };
 
   const handleGoogleSignIn = async () => {
-  setIsGoogleLoading(true);
-  
-  const { error } = await signInWithGoogle();
-  
-  setIsGoogleLoading(false);
+    setIsGoogleLoading(true);
+    
+    const { error } = await signInWithGoogle();
+    
+    setIsGoogleLoading(false);
 
-  if (error && error.code !== 'redirect') {
-    appDialog.alert('Error', error.message);
-  } else {
-    // For web, the page will redirect - we don't need to navigate
-    if (Platform.OS !== 'web') {
-      // Check if the user is already authenticated
-      const { isAuthenticated, isNewUser } = useAuthStore.getState();
-      if (isAuthenticated) {
-        if (isNewUser) {
-          router.replace('/(auth)/profile-setup');
-        } else {
-          router.replace('/(player)');
+    if (error && error.code !== 'redirect') {
+      appDialog.alert('Error', error.message);
+    } else {
+      if (Platform.OS !== 'web') {
+        const { isAuthenticated, isNewUser } = useAuthStore.getState();
+        if (isAuthenticated) {
+          if (isNewUser) {
+            router.replace('/(auth)/profile-setup');
+          } else {
+            router.replace('/(player)');
+          }
         }
       }
     }
-  }
-};
+  };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <StatusBar style="dark" />
-
-      <View className="flex-1 px-6 pt-20">
-        <View className="items-center mb-10">
-          <View className="w-20 h-20 rounded-full bg-[#E8F5E9] items-center justify-center mb-4">
-            <Ionicons name="football-outline" size={32} color="#4CAF50" />
-          </View>
-          <Text className="text-2xl font-bold text-[#1A1A2E]">Welcome to KickOff</Text>
-          <Text className="text-[#737373] text-center mt-2 text-base">
-            Enter your phone number or continue with Google
-          </Text>
-        </View>
-
-        {/* Phone Input */}
-        <View>
-          <Text className="text-[#1A1A2E] font-medium mb-2">Phone Number</Text>
-          <View className="flex-row items-center bg-[#F5F5F5] rounded-xl px-4 border border-[#E5E5E5]">
-            <Text className="text-[#1A1A2E] font-medium py-4">+92</Text>
-            <View className="w-px h-6 bg-[#D4D4D4] mx-3" />
-            <TextInput
-              className="flex-1 py-4 text-[#1A1A2E] text-base"
-              placeholder="331 5139044"
-              placeholderTextColor="#A3A3A3"
-              value={phone}
-              onChangeText={handlePhoneChange}
-              keyboardType="phone-pad"
-              maxLength={13}
-              autoFocus={Platform.OS === 'ios'}
-              editable={!isLoading}
-            />
-          </View>
-        </View>
-
-        <TouchableOpacity
-          className="bg-[#4CAF50] py-4 rounded-full mt-6"
-          style={{
-            shadowColor: '#4CAF50',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 4
-          }}
-          onPress={handleSendCode}
-          disabled={isLoading}
-          activeOpacity={0.7}
-        >
-          {isLoading ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text className="text-white text-center font-semibold text-base">
-              Continue with Phone
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar style="light" />
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.content}>
+          
+          <View style={styles.header}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="football" size={32} color="#10B981" />
+            </View>
+            <Text style={styles.title}>Welcome to TurfBookPK</Text>
+            <Text style={styles.subtitle}>
+              Enter your phone number to continue
             </Text>
-          )}
-        </TouchableOpacity>
-
-        {/* Divider */}
-        <View className="flex-row items-center mt-6">
-          <View className="flex-1 h-px bg-[#E5E5E5]" />
-          <Text className="px-4 text-[#737373] text-sm">or</Text>
-          <View className="flex-1 h-px bg-[#E5E5E5]" />
-        </View>
-
-        {/* Google Sign In Button */}
-        <TouchableOpacity
-          className="flex-row items-center justify-center bg-white border border-[#E5E5E5] py-4 rounded-full mt-6"
-          onPress={handleGoogleSignIn}
-          disabled={isGoogleLoading}
-          activeOpacity={0.7}
-        >
-          {isGoogleLoading ? (
-            <ActivityIndicator color="#DB4437" />
-          ) : (
-            <>
-              <Ionicons name="logo-google" size={24} color="#DB4437" />
-              <Text className="text-[#1A1A2E] font-medium ml-3 text-base">
-                Continue with Google
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        {/* Error Display */}
-        {error && (
-          <View className="mt-4 bg-red-50 rounded-xl p-3 border border-red-200">
-            <Text className="text-red-500 text-center text-sm">{error.message}</Text>
           </View>
-        )}
-      </View>
+
+          <View style={styles.formContainer}>
+            <Text style={styles.label}>Phone Number</Text>
+            <View style={styles.inputWrapper}>
+              <View style={styles.prefixContainer}>
+                <Text style={styles.prefixText}>+92</Text>
+              </View>
+              <View style={styles.divider} />
+              <TextInput
+                style={styles.input}
+                placeholder="331 5139044"
+                placeholderTextColor="#64748B"
+                value={phone}
+                onChangeText={handlePhoneChange}
+                keyboardType="phone-pad"
+                maxLength={13}
+                autoFocus={Platform.OS === 'ios'}
+                editable={!isLoading}
+                keyboardAppearance="dark"
+              />
+            </View>
+            
+            {error && (
+              <View style={styles.errorBox}>
+                <Ionicons name="alert-circle-outline" size={16} color="#F43F5E" />
+                <Text style={styles.errorText}>{error.message}</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleSendCode}
+              disabled={isLoading}
+              activeOpacity={0.8}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Continue with Phone</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.orDivider}>
+              <View style={styles.line} />
+              <Text style={styles.orText}>OR</Text>
+              <View style={styles.line} />
+            </View>
+
+            <TouchableOpacity
+              style={styles.googleButton}
+              onPress={handleGoogleSignIn}
+              disabled={isGoogleLoading}
+              activeOpacity={0.8}
+            >
+              {isGoogleLoading ? (
+                <ActivityIndicator color="#FAFAFA" />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={20} color="#FAFAFA" />
+                  <Text style={styles.googleButtonText}>Continue with Google</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+          
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: '#12130F' },
+  content: { flex: 1, paddingHorizontal: 24, paddingTop: 28 },
+  
+  header: { alignItems: 'center', marginBottom: 30 },
+  iconContainer: { width: 60, height: 60, borderRadius: 20, backgroundColor: 'rgba(62,175,76,.12)', borderWidth: 1, borderColor: 'rgba(62,175,76,.3)', alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
+  title: { fontSize: 27, lineHeight: 29, fontFamily: 'BigShouldersDisplay_800ExtraBold', color: '#F5F5F0', letterSpacing: 0.2, marginBottom: 6, textTransform: 'uppercase' },
+  subtitle: { fontSize: 14, color: '#A1A39D', fontFamily: 'SpaceGrotesk_400Regular' },
+  
+  formContainer: { flex: 1 },
+  label: { fontSize: 13, fontFamily: 'SpaceGrotesk_700Bold', color: '#F5F5F0', marginBottom: 10, paddingLeft: 4 },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A1C16', borderWidth: 1, borderColor: '#34382E', borderRadius: 14, height: 60, paddingHorizontal: 16 },
+  prefixContainer: { justifyContent: 'center' },
+  prefixText: { color: '#F5F5F0', fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold' },
+  divider: { width: 1, height: 24, backgroundColor: '#34382E', marginHorizontal: 12 },
+  input: { flex: 1, color: '#F5F5F0', fontSize: 16, fontFamily: 'SpaceGrotesk_500Medium', height: '100%' },
+  
+  errorBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(244, 63, 94, 0.1)', padding: 12, borderRadius: 12, marginTop: 12, borderWidth: 1, borderColor: 'rgba(244, 63, 94, 0.2)' },
+  errorText: { color: '#F43F5E', fontSize: 13, fontWeight: '500', marginLeft: 8 },
+
+  primaryButton: { backgroundColor: '#3EAF4C', height: 56, borderRadius: 999, alignItems: 'center', justifyContent: 'center', marginTop: 24 },
+  primaryButtonText: { color: '#FFFFFF', fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold' },
+  
+  orDivider: { flexDirection: 'row', alignItems: 'center', marginVertical: 32 },
+  line: { flex: 1, height: 1, backgroundColor: 'rgba(255, 255, 255, 0.1)' },
+  orText: { color: '#A1A39D', paddingHorizontal: 16, fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 1 },
+  
+  googleButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 56, borderRadius: 999, backgroundColor: '#1A1C16', borderWidth: 1, borderColor: '#34382E' },
+  googleButtonText: { color: '#F5F5F0', fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', marginLeft: 12 },
+});
