@@ -11,7 +11,8 @@ import { useAuthStore } from '@/store/authStore';
 import VendorRegistrationModal from '@/components/vendor/VendorRegistrationModal';
 import { useVendorStore } from '@/store/vendorStore';
 import { VendorFormData } from '@/components/vendor/VendorRegistrationModal';
-import { Ground, listPublicGrounds } from '@/lib/api/vendors';
+import { Ground, listPublicGrounds, searchPublicGrounds } from '@/lib/api/vendors';
+import { listRecentlyViewedGrounds } from '@/lib/api/engagement';
 import { getNotifications } from '@/lib/api/notifications';
 import { appDialog } from '@/components/ui/app-dialog';
 import * as Location from 'expo-location';
@@ -57,6 +58,9 @@ export default function PlayerHome() {
   const [loadingMoreGrounds, setLoadingMoreGrounds] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [homeCity, setHomeCity] = useState(profile?.city || 'Your area');
+  const [todayGrounds, setTodayGrounds] = useState<PlayerGround[]>([]);
+  const [recentGrounds, setRecentGrounds] = useState<Ground[]>([]);
 
   // Modal states
   const [toastVisible, setToastVisible] = useState(false);
@@ -67,11 +71,47 @@ export default function PlayerHome() {
   const [isVendorLoading, setIsVendorLoading] = useState(false);
   const { registerVendor, checkVendorStatus } = useVendorStore();
 
-    const showToast = (message: string) => {
+  const showToast = (message: string) => {
     setToastMessage(message);
     setToastVisible(true);
     setTimeout(() => setToastVisible(false), 2500);
   };
+
+  const today = () => new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const loadHome = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const permission = await Location.getForegroundPermissionsAsync();
+      const result = permission.granted ? permission : await Location.requestForegroundPermissionsAsync();
+      let position: { latitude: number; longitude: number } | null = null;
+      if (result.granted) {
+        const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        position = { latitude: current.coords.latitude, longitude: current.coords.longitude };
+        try {
+          const place = (await Location.reverseGeocodeAsync(current.coords))[0];
+          setHomeCity(place?.city || place?.subregion || place?.district || place?.region || profile?.city || 'Your area');
+        } catch { setHomeCity(profile?.city || 'Your area'); }
+      } else setHomeCity(profile?.city || 'Your area');
+      const [discovery, notifications, viewed] = await Promise.all([
+        searchPublicGrounds({ availability_date: today(), page: 1, limit: 30, sort: 'recommended' }), getNotifications(), listRecentlyViewedGrounds(),
+      ]);
+      setUnreadNotifications(notifications.unread_count);
+      setRecentGrounds(viewed);
+      const current = discovery.grounds.map((ground) => {
+        const availableToday = (discovery.slots_by_ground[ground.id] || []).filter((slot) => slot.date === today() && !slot.is_booked && !slot.is_blocked && !slot.is_held).length;
+        return { ...toPlayerGround(ground, position ? distanceKm(position, ground) : null), slotsAvailable: availableToday, isAvailableNow: availableToday > 0 };
+      }).filter((ground) => ground.slotsAvailable > 0);
+      current.sort((a, b) => a.distanceKm === null ? 1 : b.distanceKm === null ? -1 : a.distanceKm - b.distanceKm);
+      setTodayGrounds(current);
+    } catch (error) { console.log('[PlayerHome] Unable to load home feed:', error); }
+    finally { setRefreshing(false); }
+  }, [profile?.city]);
+
+  useEffect(() => { loadHome(); }, [loadHome]);
+
+  const compactNearbyCard = (ground: PlayerGround) => <TouchableOpacity key={ground.id} onPress={() => router.push({ pathname: '/(player)/ground/[id]', params: { id: ground.id } })} activeOpacity={0.86} className="bg-[#1A1C16] border border-[#293B29] rounded-[16px] overflow-hidden flex-row mb-3"><Image source={{ uri: ground.image }} className="w-[124px] h-[126px]" resizeMode="cover" /><View className="flex-1 px-3 py-3 justify-between"><View><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-[15px]" numberOfLines={1}>{ground.name}</Text><View className="flex-row items-center mt-1"><Ionicons name="location-outline" size={13} color="#E27A3F" /><Text className="text-[#AFAFA9] text-[11px] ml-1 flex-1" numberOfLines={1}>{ground.location}</Text></View></View><View className="flex-row items-end justify-between"><View><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#53B65B] text-sm">PKR {ground.price}/hr</Text><Text className="text-[#AFAFA9] text-[10px] mt-0.5">{ground.distance || `${ground.slotsAvailable} slots today`}</Text></View><Ionicons name="arrow-forward" size={19} color="#53B65B" /></View></View></TouchableOpacity>;
+
+  const redesignedHome = <SafeAreaView className="flex-1 bg-[#12130F]"><StatusBar barStyle="light-content" backgroundColor="#12130F" /><ScrollView className="flex-1" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadHome} tintColor="#53B65B" />} showsVerticalScrollIndicator={false}><View className="px-5 pt-2 pb-3 flex-row items-center justify-between"><View className="flex-row items-center"><Ionicons name="location-outline" size={20} color="#E27A3F" /><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] ml-1" numberOfLines={1}>{homeCity}</Text><Ionicons name="chevron-down" size={16} color="#F8F7F0" /></View><TouchableOpacity className="bg-[#1A1C16] w-11 h-11 rounded-full items-center justify-center border border-[#3A4032]" onPress={() => router.push('/(player)/notifications')}><Ionicons name="notifications-outline" size={21} color="#F8F7F0" />{unreadNotifications > 0 && <View className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#DC2626] items-center justify-center"><Text className="text-white text-[9px] font-bold">{unreadNotifications > 9 ? '9+' : unreadNotifications}</Text></View>}</TouchableOpacity></View><View className="mx-5 mt-2 p-5 rounded-[24px] bg-[#24452A] border border-[#45724A] overflow-hidden"><Ionicons name="football-outline" size={100} color="#79CF7E" style={{ position: 'absolute', right: -19, bottom: -28, opacity: 0.23 }} /><Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 30 }} className="text-white">BOOK YOUR NEXT MATCH</Text><Text className="text-[#D3EBD4] text-sm mt-1 w-3/4">Discover pitches near you with slots available today.</Text><TouchableOpacity onPress={() => router.push('/(player)/search')} className="mt-5 self-start bg-[#F3F4EF] rounded-full px-4 py-2.5 flex-row items-center"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#1A2B1B] text-xs">EXPLORE GROUNDS</Text><Ionicons name="arrow-forward" size={15} color="#1A2B1B" style={{ marginLeft: 7 }} /></TouchableOpacity></View><View className="mt-7 px-5"><View className="flex-row items-center justify-between mb-3"><Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 24 }} className="text-[#F8F7F0]">NEAR YOU</Text><TouchableOpacity onPress={() => router.push('/(player)/nearby-grounds')}><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#61BD67] text-xs">SEE ALL</Text></TouchableOpacity></View>{todayGrounds.slice(0, 3).map(compactNearbyCard)}{todayGrounds.length === 0 && !refreshing && <Text className="text-[#B8B9B2] text-sm text-center py-6">No grounds have slots available today.</Text>}</View><View className="mt-7 pb-9"><View className="px-5 flex-row items-center justify-between mb-3"><Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 24 }} className="text-[#F8F7F0]">RECENTLY VIEWED</Text><TouchableOpacity onPress={() => router.push('/(player)/recently-viewed')}><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#61BD67] text-xs">SEE ALL</Text></TouchableOpacity></View>{recentGrounds.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 20, paddingRight: 8 }}>{recentGrounds.slice(0, 6).map((ground) => <TouchableOpacity key={ground.id} onPress={() => router.push({ pathname: '/(player)/ground/[id]', params: { id: ground.id } })} className="w-[180px] mr-3 bg-[#1A1C16] border border-[#293B29] rounded-[16px] overflow-hidden"><Image source={{ uri: ground.cover_image || ground.images[0] || 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800' }} className="w-full h-[105px]" resizeMode="cover" /><View className="p-3"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-sm" numberOfLines={1}>{ground.title}</Text><Text className="text-[#AFAFA9] text-[11px] mt-1" numberOfLines={1}>{ground.location}</Text><Text className="text-[#53B65B] text-xs mt-2">PKR {ground.price_per_hour}/hr</Text></View></TouchableOpacity>)}</ScrollView> : <View className="mx-5 bg-[#1A1C16] border border-[#293B29] rounded-2xl px-4 py-5 flex-row items-center"><Ionicons name="time-outline" size={22} color="#61BD67" /><Text className="text-[#B8B9B2] text-xs ml-3 flex-1">Grounds you open will appear here.</Text></View>}</View></ScrollView></SafeAreaView>;
 
   const loadGrounds = useCallback(async () => {
     setRefreshing(true);
@@ -279,7 +319,7 @@ export default function PlayerHome() {
     </TouchableOpacity>
   );
 
-  return (
+  if (false) return (
     <SafeAreaView className="flex-1 bg-[#12130F]">
       <StatusBar barStyle="light-content" backgroundColor="#12130F" />
 
@@ -421,4 +461,5 @@ export default function PlayerHome() {
       />
     </SafeAreaView>
   );
+  return redesignedHome;
 }

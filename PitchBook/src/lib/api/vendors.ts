@@ -2,6 +2,11 @@ import { apiRequest } from './client';
 import { VendorProfile } from '@/store/vendorStore';
 import { Pagination } from './types';
 
+export type CancellationPolicy = 'lenient' | 'standard' | 'strict';
+export const CANCELLATION_POLICY_LABELS: Record<CancellationPolicy, string> = {
+  lenient: 'Lenient', standard: 'Standard', strict: 'Strict',
+};
+
 export interface Ground {
   id: string;
   vendor_id: string;
@@ -26,7 +31,7 @@ export interface Ground {
   operating_hours: { open: string; close: string };
   scheduling_policy: { max_slot_duration_minutes: number; max_advance_booking_days: number };
   rules: string[];
-  cancellation_policy: string | null;
+  cancellation_policy: CancellationPolicy | null;
   created_at: string;
   updated_at: string;
 }

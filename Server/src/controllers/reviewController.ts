@@ -1,14 +1,14 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { Response } from 'express';
 import { db } from '../database/client.js';
-import { bookings, grounds, reviews, users } from '../database/schema.js';
+import { bookings, grounds, reviewReports, reviews, users, vendors } from '../database/schema.js';
 import { AppError } from '../helpers/errors.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 export class ReviewController {
   list = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const groundId = String(request.params.groundId || '');
-    const rows = await db.select({ review: reviews, player: users }).from(reviews).innerJoin(users, eq(reviews.playerId, users.id)).where(eq(reviews.groundId, groundId)).orderBy(desc(reviews.createdAt));
+    const rows = await db.select({ review: reviews, player: users }).from(reviews).innerJoin(users, eq(reviews.playerId, users.id)).where(and(eq(reviews.groundId, groundId), eq(reviews.isHidden, false))).orderBy(desc(reviews.createdAt));
     response.json({ reviews: rows.map(({ review, player }) => ({ id: review.id, rating: review.rating, comment: review.comment, player_name: player.fullName || 'Player', created_at: review.createdAt.toISOString() })) });
   };
   create = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -25,5 +25,28 @@ export class ReviewController {
       return created;
     });
     response.status(201).json({ review: { id: review.id, rating: review.rating, comment: review.comment, created_at: review.createdAt.toISOString() } });
+  };
+  report = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const reviewId = String(request.params.reviewId || '');
+    const reason = typeof request.body?.reason === 'string' ? request.body.reason.trim().slice(0, 300) : '';
+    if (!reason) throw new AppError('invalid_report', 'Please provide a report reason', 422);
+    const review = (await db.select({ id: reviews.id, playerId: reviews.playerId }).from(reviews).where(eq(reviews.id, reviewId)).limit(1))[0];
+    if (!review) throw new AppError('not_found', 'Review was not found', 404);
+    if (review.playerId === request.auth.userId) throw new AppError('invalid_report', 'You cannot report your own review', 422);
+    const existing = (await db.select({ id: reviewReports.id }).from(reviewReports).where(and(eq(reviewReports.reviewId, reviewId), eq(reviewReports.reporterId, request.auth.userId))).limit(1))[0];
+    if (!existing) await db.insert(reviewReports).values({ reviewId, reporterId: request.auth.userId, reason });
+    response.status(201).json({ reported: true });
+  };
+  moderate = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const reviewId = String(request.params.reviewId || '');
+    const isHidden = request.body?.is_hidden;
+    const hiddenReason = typeof request.body?.reason === 'string' ? request.body.reason.trim().slice(0, 300) : null;
+    if (typeof isHidden !== 'boolean') throw new AppError('invalid_review', 'is_hidden must be true or false', 422);
+    const row = (await db.select({ review: reviews, vendor: vendors }).from(reviews).innerJoin(grounds, eq(reviews.groundId, grounds.id)).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(eq(reviews.id, reviewId)).limit(1))[0];
+    if (!row || row.vendor.userId !== request.auth.userId) throw new AppError('not_found', 'Review was not found', 404);
+    await db.update(reviews).set({ isHidden, hiddenReason: isHidden ? hiddenReason || 'Hidden by ground owner pending moderation' : null, hiddenAt: isHidden ? new Date() : null, updatedAt: new Date() }).where(eq(reviews.id, reviewId));
+    response.json({ moderated: true, is_hidden: isHidden });
   };
 }

@@ -37,6 +37,7 @@ export const users = pgTable('users', {
   avatarUrl: text('avatar_url'),
   isVerified: boolean('is_verified').notNull().default(false),
   isSetupComplete: boolean('is_setup_complete').notNull().default(false),
+  noShowStrikes: integer('no_show_strikes').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -154,6 +155,7 @@ export const bookings = pgTable('bookings', {
   paymentWindowOpensAt: timestamp('payment_window_opens_at', { withTimezone: true }),
   reservationExpiresAt: timestamp('reservation_expires_at', { withTimezone: true }),
   paymentWindowNotifiedAt: timestamp('payment_window_notified_at', { withTimezone: true }),
+  cancellationPolicy: text('cancellation_policy').notNull().default('standard'),
   cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   cancelledBy: uuid('cancelled_by').references(() => users.id),
   cancellationReason: text('cancellation_reason'),
@@ -256,8 +258,33 @@ export const reviews = pgTable('reviews', {
   playerId: uuid('player_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   rating: integer('rating').notNull(),
   comment: text('comment'),
+  isHidden: boolean('is_hidden').notNull().default(false),
+  hiddenReason: text('hidden_reason'),
+  hiddenAt: timestamp('hidden_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const reviewReports = pgTable('review_reports', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  reviewId: uuid('review_id').notNull().references(() => reviews.id, { onDelete: 'cascade' }),
+  reporterId: uuid('reporter_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  reason: text('reason').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const favoriteGrounds = pgTable('favorite_grounds', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  groundId: uuid('ground_id').notNull().references(() => grounds.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const recentlyViewedGrounds = pgTable('recently_viewed_grounds', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  groundId: uuid('ground_id').notNull().references(() => grounds.id, { onDelete: 'cascade' }),
+  viewedAt: timestamp('viewed_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type UserRow = typeof users.$inferSelect;

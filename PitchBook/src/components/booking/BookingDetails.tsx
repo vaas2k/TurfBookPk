@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { formatTimeRange12 } from '@/lib/time';
 import { BookingProfile, cancelBooking, confirmRecurringReservationBooking, getBooking, getCancellationPreview, markBookingCompleted, markBookingNoShow } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
@@ -44,7 +45,7 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
     setActionLoading(false);
     appDialog.alert(
       'Review cancellation',
-      `Cancellation fee: PKR ${preview.cancellation_fee.toLocaleString()}\n${preview.payment_status === 'paid' ? `Refund due: PKR ${preview.refund_amount.toLocaleString()}` : 'No payment has been recorded.'}${preview.is_mock_payment ? '\nThis is a mock payment. No real money will move.' : ''}\n\nThe slot will become available again.`,
+      `${preview.cancellation_policy[0]!.toUpperCase() + preview.cancellation_policy.slice(1)} policy · ${preview.refund_percentage}% refund${preview.within_grace_window ? ` (within the ${preview.grace_window_minutes}-minute grace window)` : ''}\nCancellation fee: PKR ${preview.cancellation_fee.toLocaleString()}\n${preview.payment_status === 'paid' ? `Refund due: PKR ${preview.refund_amount.toLocaleString()}` : 'No payment has been recorded.'}${preview.is_mock_payment ? '\nThis is a mock payment. No real money will move.' : ''}\n\nThe slot will become available again.`,
       [
         { text: 'Keep Booking', style: 'cancel' },
         {
@@ -137,7 +138,10 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
     const isUpcoming = booking.status === 'confirmed' || booking.status === 'pending_payment';
     const isCompleted = booking.status === 'completed' || booking.status === 'no_show';
     const bookingDate = new Date(`${booking.date}T12:00:00`).toLocaleDateString('en-PK', { weekday: 'short', month: 'short', day: 'numeric' });
-    const slotTime = `${booking.start_time.slice(0, 5)} - ${booking.end_time.slice(0, 5)}`;
+    const slotTime = formatTimeRange12(booking.start_time, booking.end_time);
+    const graceMinutes = booking.cancellation_policy === 'lenient' ? 30 : booking.cancellation_policy === 'strict' ? 5 : 15;
+    const graceEndsAt = new Date(new Date(booking.created_at).getTime() + graceMinutes * 60_000);
+    const graceRemainingMinutes = Math.max(0, Math.ceil((graceEndsAt.getTime() - Date.now()) / 60_000));
 
     return (
       <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
@@ -152,6 +156,7 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
             <View className="flex-1 ml-4"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-[18px]" numberOfLines={2}>{booking.ground_title}</Text><Text className="text-[#3DB54A] text-[15px] mt-1">Pitch booking</Text><Text className="text-[#858A81] text-sm mt-2">Ref: #{booking.booking_number}</Text></View>
           </View>
           <View className="bg-[#252A21] rounded-[24px] px-5 py-5 mt-5 flex-row items-center"><Ionicons name="calendar" size={26} color="#3DB54A" /><Text style={{ fontFamily: 'SpaceGrotesk_500Medium' }} className="text-[#F3F4EF] text-[16px] ml-4 flex-1">{bookingDate} • {slotTime} (1 Hour)</Text></View>
+          {isUpcoming && <View className="bg-[#1A2119] border border-[#315536] rounded-[22px] px-5 py-4 mt-5"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F3F4EF] text-sm">{booking.cancellation_policy[0]!.toUpperCase() + booking.cancellation_policy.slice(1)} cancellation policy</Text>{graceRemainingMinutes > 0 ? <Text className="text-[#77D481] text-xs mt-1">Full refund grace window: {graceRemainingMinutes} minute{graceRemainingMinutes === 1 ? '' : 's'} remaining.</Text> : <Text className="text-[#AFAFA9] text-xs mt-1">Your cancellation refund is based on the time left before this slot starts.</Text>}</View>}
 
           {isUpcoming && <View className="bg-white rounded-[28px] mt-5 px-5 py-7 items-center"><Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 19 }} className="text-[#10120F]">GROUND CHECK-IN CODE</Text><View className="w-40 h-40 border-[7px] border-[#10120F] rounded-md mt-5 items-center justify-center"><Ionicons name="qr-code" size={120} color="#10120F" /></View><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#10120F] text-[21px] mt-5">{booking.booking_number}</Text></View>}
 
@@ -205,7 +210,7 @@ export function BookingDetails({ id, vendorView }: { id: string; vendorView: boo
             <View className="flex-row items-center">
               <Ionicons name="time-outline" size={16} color="#737373" />
               <Text className="text-[#1A1A2E] text-sm ml-2 font-semibold">
-                {booking.start_time.slice(0, 5)} - {booking.end_time.slice(0, 5)}
+                {formatTimeRange12(booking.start_time, booking.end_time)}
               </Text>
             </View>
           </View>

@@ -6,7 +6,7 @@ import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
 import { bookingOrders, bookings, grounds, ledgerEntries, notifications, paymentAttempts, slots, users, vendors } from '../database/schema.js';
 import { canCancelBooking, HOLD_DURATION_MS, paymentStatusForCancellation } from '../services/bookingLifecycle.js';
-import { bookingStart, cancellationQuote } from '../services/cancellationPolicy.js';
+import { bookingStart, cancellationPolicy, cancellationQuote } from '../services/cancellationPolicy.js';
 import { MockPaymentProvider } from '../services/paymentProvider.js';
 import { BookingMaintenanceService } from '../services/bookingMaintenance.js';
 import { calculateBookingPrice } from '../services/bookingPricing.js';
@@ -60,6 +60,7 @@ function mapBooking(row: any) {
     hold_expires_at: booking.holdExpiresAt?.toISOString() ?? null, cancelled_at: booking.cancelledAt?.toISOString() ?? null,
     cancellation_reason: booking.cancellationReason, notes: booking.notes,
     cancellation_fee: booking.cancellationFee, refund_amount: booking.refundAmount,
+    cancellation_policy: booking.cancellationPolicy,
     is_recurring_reservation: booking.isRecurringReservation,
     payment_window_opens_at: booking.paymentWindowOpensAt?.toISOString() ?? null,
     reservation_expires_at: booking.reservationExpiresAt?.toISOString() ?? null,
@@ -146,7 +147,7 @@ export class BookingController {
         const isFutureReservation = recurringReservation && item.slot.date !== payNowDate;
         const window = isFutureReservation ? recurringPaymentWindow(item.slot.date, item.slot.startTime) : null;
         const reservationHoldExpiresAt = window?.expiresAt ?? holdExpiresAt;
-        const [booking] = await tx.insert(bookings).values({ bookingNumber: bookingNumber(), orderId: created.id, playerId: request.auth!.userId, vendorId: item.ground.vendorId, groundId: item.slot.groundId, slotId: item.slot.id, date: item.slot.date, startTime: item.slot.startTime, endTime: item.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee, vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: 'mock', idempotencyKey: `${key}:${item.slot.id}`, holdExpiresAt: reservationHoldExpiresAt, isRecurringReservation: isFutureReservation, paymentWindowOpensAt: window?.opensAt ?? null, reservationExpiresAt: window?.expiresAt ?? null }).returning();
+        const [booking] = await tx.insert(bookings).values({ bookingNumber: bookingNumber(), orderId: created.id, playerId: request.auth!.userId, vendorId: item.ground.vendorId, groundId: item.slot.groundId, slotId: item.slot.id, date: item.slot.date, startTime: item.slot.startTime, endTime: item.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee, vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: 'mock', idempotencyKey: `${key}:${item.slot.id}`, holdExpiresAt: reservationHoldExpiresAt, isRecurringReservation: isFutureReservation, paymentWindowOpensAt: window?.opensAt ?? null, reservationExpiresAt: window?.expiresAt ?? null, cancellationPolicy: cancellationPolicy(item.ground.cancellationPolicy) }).returning();
         if (!booking) throw new AppError('booking_failed', 'Unable to create order bookings', 500);
         const held = await tx.update(slots).set({ heldBy: request.auth!.userId, holdBookingId: booking.id, holdExpiresAt: reservationHoldExpiresAt, updatedAt: now }).where(and(eq(slots.id, item.slot.id), eq(slots.isBooked, false), eq(slots.isBlocked, false), or(isNull(slots.holdExpiresAt), lte(slots.holdExpiresAt, now)))).returning({ id: slots.id });
         if (!held[0]) throw new AppError('slot_unavailable', 'One or more selected slots are unavailable', 409);
@@ -200,7 +201,7 @@ export class BookingController {
         vendorId: selected.ground.vendorId, groundId: selected.slot.groundId, slotId: selected.slot.id, date: selected.slot.date,
         startTime: selected.slot.startTime, endTime: selected.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee,
         vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: 'mock',
-        idempotencyKey: key, holdExpiresAt
+        idempotencyKey: key, holdExpiresAt, cancellationPolicy: cancellationPolicy(selected.ground.cancellationPolicy)
       }).returning())[0];
       if (!booking) throw new AppError('booking_failed', 'Booking could not be created', 500);
       await tx.insert(paymentAttempts).values({
@@ -317,8 +318,8 @@ export class BookingController {
     const isVendor = vendor?.id === current.booking.vendorId;
     if (!isVendor && current.booking.playerId !== request.auth.userId) throw new AppError('not_found', 'Booking was not found', 404);
     if (!canCancelBooking(current.booking.status) || bookingStart(current.booking.date, current.booking.startTime) <= new Date()) throw new AppError('booking_not_cancellable', 'This booking can no longer be cancelled', 409);
-    const quote = cancellationQuote({ totalAmount: current.booking.totalAmount, paymentStatus: current.booking.paymentStatus, cancelledByVendor: isVendor, startsAt: bookingStart(current.booking.date, current.booking.startTime) });
-    response.json({ cancellation_fee: quote.cancellationFee, refund_amount: quote.refundAmount, refund_required: quote.refundRequired, payment_status: current.booking.paymentStatus, is_mock_payment: current.booking.paymentMethod === 'mock' });
+    const quote = cancellationQuote({ amountPaid: current.booking.totalAmount, paymentStatus: current.booking.paymentStatus, cancelledByVendor: isVendor, startsAt: bookingStart(current.booking.date, current.booking.startTime), policy: cancellationPolicy(current.booking.cancellationPolicy), bookedAt: current.booking.createdAt });
+    response.json({ cancellation_fee: quote.cancellationFee, refund_amount: quote.refundAmount, refund_required: quote.refundRequired, refund_percentage: quote.refundPercentage, cancellation_policy: quote.policy, within_grace_window: quote.withinGraceWindow, grace_window_minutes: quote.graceWindowMinutes, payment_status: current.booking.paymentStatus, is_mock_payment: current.booking.paymentMethod === 'mock' });
   };
   markNoShow = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
@@ -328,7 +329,9 @@ export class BookingController {
     if (!current || vendor?.id !== current.booking.vendorId) throw new AppError('not_found', 'Booking was not found', 404);
     if (bookingStart(current.booking.date, current.booking.endTime) > new Date()) throw new AppError('booking_not_ended', 'A no-show can only be recorded after the slot ends', 409);
     if (!await new BookingMaintenanceService().finalizeBooking(id, 'no_show')) throw new AppError('booking_not_updatable', 'Only confirmed bookings can be marked as no-show', 409);
-    await db.insert(notifications).values({ userId: current.booking.playerId, type: 'booking', title: 'Booking marked as no-show', message: `Your booking at ${current.ground.title} was marked as a no-show.`, data: { bookingId: id } });
+    const [player] = await db.update(users).set({ noShowStrikes: expression`${users.noShowStrikes} + 1`, updatedAt: new Date() }).where(eq(users.id, current.booking.playerId)).returning({ noShowStrikes: users.noShowStrikes });
+    const strikeMessage = `Your booking at ${current.ground.title} was marked as a no-show.${player && player.noShowStrikes >= 3 ? ' Your account has been flagged for review after three no-shows.' : ''}`;
+    await db.insert(notifications).values({ userId: current.booking.playerId, type: 'booking', title: 'Booking marked as no-show', message: strikeMessage, data: { bookingId: id } });
     void sendExpoPush({ userIds: [current.booking.playerId], title: 'Booking marked as no-show', body: `Your booking at ${current.ground.title} was marked as a no-show.`, data: { bookingId: id } });
     const result = await fetchBooking(id);
     response.json({ booking: result ? mapBooking(result) : null });
@@ -360,8 +363,9 @@ export class BookingController {
       const now = new Date();
       if (bookingStart(current.booking.date, current.booking.startTime) <= now) throw new AppError('booking_started', 'Bookings cannot be cancelled after the slot starts', 409);
       const quote = cancellationQuote({
-        totalAmount: current.booking.totalAmount, paymentStatus: current.booking.paymentStatus,
-        cancelledByVendor: Boolean(isVendor), startsAt: bookingStart(current.booking.date, current.booking.startTime), now
+        amountPaid: current.booking.totalAmount, paymentStatus: current.booking.paymentStatus,
+        cancelledByVendor: Boolean(isVendor), startsAt: bookingStart(current.booking.date, current.booking.startTime),
+        policy: cancellationPolicy(current.booking.cancellationPolicy), bookedAt: current.booking.createdAt, now
       });
       const nextPaymentStatus = paymentStatusForCancellation(current.booking.paymentStatus, quote.refundRequired);
       const cancelled = await tx.update(bookings).set({ status: 'cancelled', paymentStatus: nextPaymentStatus, cancelledAt: now, cancelledBy: request.auth!.userId, cancellationReason: reason, cancellationFee: quote.cancellationFee, refundAmount: quote.refundAmount, holdExpiresAt: null, updatedAt: now })

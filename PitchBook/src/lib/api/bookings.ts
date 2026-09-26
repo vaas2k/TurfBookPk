@@ -73,7 +73,7 @@ export async function cancelBooking(id: string, reason?: string): Promise<Bookin
   return result.booking;
 }
 
-export async function getCancellationPreview(id: string): Promise<{ cancellation_fee: number; refund_amount: number; refund_required: boolean; payment_status: string; is_mock_payment: boolean }> {
+export async function getCancellationPreview(id: string): Promise<{ cancellation_fee: number; refund_amount: number; refund_required: boolean; refund_percentage: number; cancellation_policy: 'lenient' | 'standard' | 'strict'; within_grace_window: boolean; grace_window_minutes: number; payment_status: string; is_mock_payment: boolean }> {
   return apiRequest(`/bookings/${id}/cancellation-preview`);
 }
 

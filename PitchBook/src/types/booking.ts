@@ -27,6 +27,7 @@ export interface BookingProfile {
   cancellation_reason: string | null;
   cancellation_fee: number;
   refund_amount: number;
+  cancellation_policy: 'lenient' | 'standard' | 'strict';
   notes: string | null;
   created_at: string;
   updated_at: string;

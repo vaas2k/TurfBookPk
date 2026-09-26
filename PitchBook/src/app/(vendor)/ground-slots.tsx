@@ -26,6 +26,7 @@ import {
   updateGroundSlot,
 } from "@/lib/api/vendors";
 import { Ionicons } from "@expo/vector-icons";
+import { formatTimeRange12 } from "@/lib/time";
 import { Toast } from "@/components/ui/toast";
 import { goBackOrReplace } from "@/lib/navigation";
 
@@ -293,8 +294,7 @@ export default function GroundSlots() {
                 <View className="flex-row justify-between items-start">
                   <View>
                     <Text className="text-[#1A1A2E] text-xl font-bold">
-                      {slot.start_time.slice(0, 5)} –{" "}
-                      {slot.end_time.slice(0, 5)}
+                      {formatTimeRange12(slot.start_time, slot.end_time)}
                     </Text>
                     <Text className="text-[#737373] mt-1">
                       PKR {slot.price}

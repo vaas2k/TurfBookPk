@@ -1,0 +1,6 @@
+ALTER TABLE "reviews" ADD COLUMN IF NOT EXISTS "is_hidden" boolean NOT NULL DEFAULT false;
+ALTER TABLE "reviews" ADD COLUMN IF NOT EXISTS "hidden_reason" text;
+ALTER TABLE "reviews" ADD COLUMN IF NOT EXISTS "hidden_at" timestamp with time zone;
+CREATE TABLE IF NOT EXISTS "review_reports" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "review_id" uuid NOT NULL REFERENCES "reviews"("id") ON DELETE CASCADE, "reporter_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE, "reason" text NOT NULL, "created_at" timestamp with time zone NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS "favorite_grounds" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE, "ground_id" uuid NOT NULL REFERENCES "grounds"("id") ON DELETE CASCADE, "created_at" timestamp with time zone NOT NULL DEFAULT now(), UNIQUE ("user_id", "ground_id"));
+CREATE TABLE IF NOT EXISTS "recently_viewed_grounds" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE, "ground_id" uuid NOT NULL REFERENCES "grounds"("id") ON DELETE CASCADE, "viewed_at" timestamp with time zone NOT NULL DEFAULT now(), UNIQUE ("user_id", "ground_id"));

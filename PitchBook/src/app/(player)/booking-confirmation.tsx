@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity, ScrollView, StatusBar, Share } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { formatTimeRange12 } from '@/lib/time';
 import * as Calendar from 'expo-calendar';
 import { appDialog } from '@/components/ui/app-dialog';
 
@@ -48,7 +49,7 @@ export default function BookingConfirmation() {
     ground: params.ground || 'Ground',
     location: params.address || 'Address unavailable',
     date: params.date || 'Date unavailable',
-    time: `${params.startTime || ''} - ${params.endTime || ''}`,
+    time: formatTimeRange12(params.startTime, params.endTime),
     type: 'Ground slot',
     amount: `PKR ${params.amount || '0'}`,
   };

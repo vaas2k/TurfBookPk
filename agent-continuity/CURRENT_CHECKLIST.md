@@ -149,8 +149,8 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Implement map rendering, geolocation, distance calculation, and nearby-ground discovery.
 - [ ] Build the Search tab using server-side discovery APIs.
 - [x] Add reviews and ratings only after completed bookings, including vendor review visibility and player rating submission.
-- [ ] Add review reporting and moderation.
-- [ ] Add favorites and recently viewed grounds.
+- [x] Add review reporting, hide/unhide moderation, and public filtering for hidden reviews.
+- [x] Add favorites and recently viewed grounds.
 - [ ] Complete remote push-notification rollout and real-device validation.
   - [x] Persist Expo device tokens and apply the `push_tokens` migration.
   - [x] Add local single-booking reminders and booking deep-link handling.
@@ -195,9 +195,11 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Database changes include a reviewed migration and rollout note.
 - [ ] `agent-continuity/TASK_JOURNAL.md` is updated with outcome and next step.
 
-## meow
+## Booking policy follow-up
 - [ ] Pitch Side on select from (5,7,9,11)
-- [ ] Cancellation policy on select from (,,,,)
+- [x] Cancellation policy selectable as Lenient, Standard, or Strict and locked into each new booking.
+- [x] Time-tier cancellation quote, grace windows, exact cancellation preview, and no-show strike tracking.
+- [ ] Add payment-gateway refund execution, account-credit fallback, force-majeure review, rescheduling, and an enforcement workflow after three no-shows.
 - [ ] ammeneties select from (,,,) + add more 
 - [x] Allow a player to reserve future recurring slots while paying only the first slot. Future slots open a configurable payment window 2 hours before start (30 minutes by default); payment confirms that slot, otherwise maintenance releases it. In-app notifications are implemented; remote push will reuse this event later.
 - [x] allow vendors to activate or deactivate ground on future date

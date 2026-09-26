@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { formatTimeRange12 } from '@/lib/time';
 import { confirmMockBooking, confirmMockBookingOrder, createBooking, createBookingOrder } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { goBackOrReplace } from '@/lib/navigation';
@@ -41,6 +42,7 @@ export default function PaymentMethodScreen() {
     startTime: string;
     endTime: string;
     amount: string;
+    cancellationPolicy?: 'lenient' | 'standard' | 'strict';
   }>();
 
   const [reference, setReference] = useState('');
@@ -67,6 +69,12 @@ export default function PaymentMethodScreen() {
   const firstSelectedDate = selectedSlots.length ? [...selectedSlots].sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`))[0]?.date : null;
   const firstDayPrice = firstSelectedDate ? selectedSlots.filter((slot) => slot.date === firstSelectedDate).reduce((total, slot) => total + slot.price, 0) : slotPrice;
   const dueNow = reserveFutureSlots && isMultiSlotOrder ? firstDayPrice : slotPrice;
+  const cancellationPolicy = params.cancellationPolicy || 'standard';
+  const earliestSlot = selectedSlots.length ? [...selectedSlots].sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`))[0] : null;
+  const hoursUntilSlot = earliestSlot ? (new Date(`${earliestSlot.date}T${earliestSlot.startTime}:00+05:00`).getTime() - Date.now()) / 3_600_000 : Infinity;
+  const expectedRefundPercentage = cancellationPolicy === 'strict'
+    ? hoursUntilSlot >= 48 ? 100 : hoursUntilSlot >= 24 ? 70 : hoursUntilSlot >= 12 ? 50 : hoursUntilSlot >= 6 ? 30 : 0
+    : hoursUntilSlot >= 24 ? 100 : hoursUntilSlot >= 12 ? 75 : hoursUntilSlot >= 6 ? 50 : cancellationPolicy === 'lenient' ? 25 : 0;
 
   const handleConfirm = async () => {
     if (!slotIds.length) {
@@ -143,7 +151,7 @@ export default function PaymentMethodScreen() {
               <View className="flex-row items-center">
                 <Ionicons name="time-outline" size={16} color="#737373" />
                 <Text className="text-[#1A1A2E] text-sm ml-2 font-bold">
-                  {params.startTime} - {params.endTime}
+                  {formatTimeRange12(params.startTime, params.endTime)}
                 </Text>
               </View>
               {isMultiSlotOrder && (
@@ -161,6 +169,7 @@ export default function PaymentMethodScreen() {
             { id: 'bank' as const, title: 'Bank Transfer', subtitle: 'Direct bank payment', initials: '⌂', color: '#34382E' },
           ].map((method) => <TouchableOpacity key={method.id} accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === method.id }} onPress={() => setPaymentMethod(method.id)} className={`rounded-[22px] p-4 mb-3 flex-row items-center border ${paymentMethod === method.id ? 'border-[#3DB54A] bg-[#1B2019]' : 'border-[#343A30] bg-[#181C16]'}`}><View style={{ backgroundColor: method.color }} className="w-14 h-14 rounded-full items-center justify-center"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-white text-lg">{method.initials}</Text></View><View className="flex-1 ml-4"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-[18px]">{method.title}</Text><Text className="text-[#AFAFA9] text-base mt-0.5">{method.subtitle}</Text></View><Ionicons name={paymentMethod === method.id ? 'radio-button-on' : 'radio-button-off'} size={31} color={paymentMethod === method.id ? '#3DB54A' : '#70766D'} /></TouchableOpacity>)}
           <View className="mt-5"><View className="flex-row justify-between"><Text className="text-[#BFC1B9] text-lg">Slot Fee</Text><Text className="text-[#F8F7F0] text-lg">Rs {slotPrice.toLocaleString()}</Text></View><View className="flex-row justify-between mt-4"><Text className="text-[#BFC1B9] text-lg">Platform Fee</Text><Text className="text-[#F8F7F0] text-lg">Rs 0</Text></View><View className="flex-row justify-between mt-5 pt-5 border-t border-[#30372B]"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-xl">Total Amount</Text><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#3DB54A] text-[25px]">RS {dueNow.toLocaleString()}</Text></View></View>
+          <View className="bg-[#1A2119] border border-[#315536] rounded-2xl p-4 mt-5"><View className="flex-row items-center"><Ionicons name="shield-checkmark-outline" size={19} color="#59C462" /><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F3F4EF] ml-2 text-sm">{cancellationPolicy[0].toUpperCase() + cancellationPolicy.slice(1)} cancellation policy</Text></View><Text className="text-[#AFAFA9] text-xs leading-5 mt-2">If you cancel after payment, the current estimate is {expectedRefundPercentage}% of the amount paid. You will have a {cancellationPolicy === 'lenient' ? 30 : cancellationPolicy === 'strict' ? 5 : 15}-minute full-refund grace window after booking.</Text></View>
 
           {isMultiSlotOrder && (
             <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: reserveFutureSlots }} onPress={() => setReserveFutureSlots((value) => !value)} className={`rounded-2xl p-4 mb-4 border ${reserveFutureSlots ? 'bg-[#E8F5E9] border-[#4CAF50]' : 'bg-white border-[#E5E5E5]'}`}>

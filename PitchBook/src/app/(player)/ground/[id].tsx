@@ -12,11 +12,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { formatTimeRange12 } from '@/lib/time';
 import { getPublicGround, Ground, Slot } from '@/lib/api/vendors';
 import { Toast } from '@/components/ui/toast';
 import { goBackOrReplace } from '@/lib/navigation';
 import { GroundReview, listGroundReviews } from '@/lib/api/reviews';
 import { openGroundDirections } from '@/components/ground-discovery-map';
+import { CANCELLATION_POLICY_LABELS } from '@/lib/api/vendors';
+import { addFavoriteGround, listFavoriteGrounds, recordGroundView, removeFavoriteGround } from '@/lib/api/engagement';
 
 const fallbackImage = 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200';
 
@@ -47,6 +50,7 @@ export default function GroundDetail() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [reviews, setReviews] = useState<GroundReview[]>([]);
+  const [isFavorite, setIsFavorite] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
 
@@ -59,6 +63,8 @@ export default function GroundDetail() {
         setSlots(result.slots);
         setSelectedDate(result.slots[0]?.date || null);
         listGroundReviews(result.ground.id).then(setReviews).catch(() => undefined);
+        recordGroundView(result.ground.id).catch(() => undefined);
+        listFavoriteGrounds().then((items) => setIsFavorite(items.some((item) => item.id === result.ground.id))).catch(() => undefined);
       })
       .catch((error: any) => {
         setToast(error?.message || 'Unable to load ground details.');
@@ -158,7 +164,7 @@ export default function GroundDetail() {
           <Ionicons name="arrow-back" size={23} color="#F8F7F0" />
         </TouchableOpacity>
         <View className="flex-1" />
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Save ground" className="w-11 h-11 rounded-full bg-[#11140F]/90 items-center justify-center"><Ionicons name="heart-outline" size={24} color="#F8F7F0" /></TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel={isFavorite ? 'Remove ground from favorites' : 'Save ground to favorites'} onPress={async () => { try { if (isFavorite) await removeFavoriteGround(ground.id); else await addFavoriteGround(ground.id); setIsFavorite((value) => !value); } catch (error: any) { setToast(error?.message || 'Unable to update favorites.'); } }} className="w-11 h-11 rounded-full bg-[#11140F]/90 items-center justify-center"><Ionicons name={isFavorite ? 'heart' : 'heart-outline'} size={24} color={isFavorite ? '#FF5C57' : '#F8F7F0'} /></TouchableOpacity>
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 110 }}>
@@ -219,6 +225,13 @@ export default function GroundDetail() {
             <Text className="text-[#AFAFA9] leading-5 text-sm">
               {ground.description || 'No description provided by the venue owner.'}
             </Text>
+          </View>
+
+          <View className="mt-6 rounded-2xl bg-[#1A1D17] border border-[#292E25] p-4">
+            <View className="flex-row items-center"><Ionicons name="shield-checkmark-outline" size={20} color="#59C462" /><Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 19 }} className="text-[#D6D7D0] ml-2 uppercase">Cancellation & refunds</Text></View>
+            <Text className="text-[#F3F4EF] text-sm mt-3">{CANCELLATION_POLICY_LABELS[ground.cancellation_policy || 'standard']} policy</Text>
+            <Text className="text-[#AFAFA9] text-xs leading-5 mt-1">Full refund in the first {ground.cancellation_policy === 'lenient' ? '30' : ground.cancellation_policy === 'strict' ? '5' : '15'} minutes after booking. Refunds are calculated from the amount paid and the time left before the slot starts.</Text>
+            <Text className="text-[#AFAFA9] text-xs leading-5 mt-2">{ground.cancellation_policy === 'strict' ? '48h+ 100% · 24–48h 70% · 12–24h 50% · 6–12h 30%' : ground.cancellation_policy === 'lenient' ? '24h+ 100% · 12–24h 75% · 6–12h 50% · under 6h 25%' : '24h+ 100% · 12–24h 75% · 6–12h 50% · under 6h 0%'}</Text>
           </View>
 
           <View className="mt-6">
@@ -328,7 +341,7 @@ export default function GroundDetail() {
                     key={slot.id}
                     disabled={!isAvailable}
                     accessibilityRole="button"
-                    accessibilityLabel={`${slot.start_time.slice(0, 5)} to ${slot.end_time.slice(0, 5)} ${statusLabel}`}
+                    accessibilityLabel={`${formatTimeRange12(slot.start_time, slot.end_time)} ${statusLabel}`}
                     onPress={() => toggleSlot(slot)}
                     className={`w-[48.5%] min-h-[154px] justify-between rounded-2xl p-3.5 mb-3 border ${
                       isSelected
@@ -344,7 +357,7 @@ export default function GroundDetail() {
                           isSelected ? 'text-white' : isAvailable ? 'text-[#E8F2E8]' : 'text-[#5C6158]'
                         }`}
                       >
-                        {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
+                        {formatTimeRange12(slot.start_time, slot.end_time)}
                       </Text>
                       <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className={`text-sm mt-1 ${statusColor}`}>
                         {statusLabel}
@@ -384,6 +397,7 @@ export default function GroundDetail() {
                 startTime: selectedSlots[0]!.start_time.slice(0, 5),
                 endTime: selectedSlots[0]!.end_time.slice(0, 5),
                 amount: String(selectedTotal),
+                cancellationPolicy: ground.cancellation_policy || 'standard',
               },
             });
           }}

@@ -1,0 +1,15 @@
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Ground } from '@/lib/api/vendors';
+import { listFavoriteGrounds, listRecentlyViewedGrounds } from '@/lib/api/engagement';
+
+export default function SavedGroundsScreen() {
+  const [favorites, setFavorites] = useState<Ground[]>([]); const [recent, setRecent] = useState<Ground[]>([]); const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => { try { const [saved, viewed] = await Promise.all([listFavoriteGrounds(), listRecentlyViewedGrounds()]); setFavorites(saved); setRecent(viewed); } finally { setLoading(false); } }, []);
+  useEffect(() => { load(); }, [load]);
+  const card = (ground: Ground, saved: boolean) => <TouchableOpacity key={ground.id} onPress={() => router.push({ pathname: '/(player)/ground/[id]', params: { id: ground.id } })} className="bg-[#20241D] border border-[#30372B] rounded-2xl p-4 mb-3 flex-row items-center"><View className="w-12 h-12 rounded-xl bg-[#19331D] items-center justify-center"><Ionicons name={saved ? 'heart' : 'time-outline'} size={22} color={saved ? '#FF6B65' : '#59C462'} /></View><View className="flex-1 ml-3"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F3F4EF] text-base" numberOfLines={1}>{ground.title}</Text><Text className="text-[#AFAFA9] text-xs mt-1" numberOfLines={1}>{ground.location}, {ground.city}</Text><Text className="text-[#59C462] text-xs mt-1">From PKR {ground.price_per_hour.toLocaleString()}</Text></View><Ionicons name="chevron-forward" size={20} color="#858A81" /></TouchableOpacity>;
+  return <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]"><View className="px-5 pt-4 pb-4 flex-row items-center"><TouchableOpacity onPress={() => router.back()} className="w-10 h-10 border border-[#30372B] rounded-xl items-center justify-center mr-3"><Ionicons name="arrow-back" size={22} color="#F8F7F0" /></TouchableOpacity><Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 26 }} className="text-[#F8F7F0]">SAVED GROUNDS</Text></View>{loading ? <View className="flex-1 items-center justify-center"><ActivityIndicator color="#3DB54A" /></View> : <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }}><Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 18 }} className="text-[#91958D] mb-2">FAVORITES</Text>{favorites.length ? favorites.map((ground) => card(ground, true)) : <Text className="text-[#AFAFA9] text-sm mb-7">Tap the heart on any ground to save it here.</Text>}<Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 18 }} className="text-[#91958D] mt-4 mb-2">RECENTLY VIEWED</Text>{recent.length ? recent.map((ground) => card(ground, false)) : <Text className="text-[#AFAFA9] text-sm">Grounds you open will appear here.</Text>}</ScrollView>}</SafeAreaView>;
+}

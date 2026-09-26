@@ -11,6 +11,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import {
+  CancellationPolicy,
+  CANCELLATION_POLICY_LABELS,
   createGround,
   Ground,
   listVendorGrounds,
@@ -43,7 +45,7 @@ type FormState = {
   amenities: string[];
   rules: string[];
   coordinates: string;
-  cancellation_policy: string;
+  cancellation_policy: CancellationPolicy;
   operating_open: string;
   operating_close: string;
 };
@@ -65,7 +67,7 @@ const emptyForm: FormState = {
   amenities: [],
   rules: [],
   coordinates: "",
-  cancellation_policy: "",
+  cancellation_policy: "standard",
   operating_open: "06:00",
   operating_close: "23:00",
 };
@@ -128,7 +130,7 @@ export default function AddGround() {
             ground.latitude !== null && ground.longitude !== null
               ? `${ground.latitude}, ${ground.longitude}`
               : "",
-          cancellation_policy: ground.cancellation_policy || "",
+          cancellation_policy: ground.cancellation_policy || "standard",
           operating_open: ground.operating_hours.open,
           operating_close: ground.operating_hours.close,
         });
@@ -250,7 +252,7 @@ export default function AddGround() {
       rules: form.rules,
       latitude,
       longitude,
-      cancellation_policy: form.cancellation_policy.trim(),
+      cancellation_policy: form.cancellation_policy,
       operating_hours: { open: form.operating_open, close: form.operating_close },
     };
     try {
@@ -353,7 +355,6 @@ export default function AddGround() {
             ["price_per_hour", "Price per hour *"],
             ["peak_percentage", "Peak increase (%)"],
             ["pitch_type", "Pitch type"],
-            ["cancellation_policy", "Cancellation policy"],
           ] as [keyof FormState, string][]
         ).map(([key, label]) => (
           <View key={key} className="mb-3">
@@ -369,10 +370,18 @@ export default function AddGround() {
                   ? "numeric"
                   : "default"
               }
-              multiline={["description", "cancellation_policy"].includes(key)}
+              multiline={key === "description"}
             />
           </View>
         ))}
+        <View className="mb-4 rounded-xl border border-[#E5E7EB] bg-white p-4">
+          <Text className="text-[#1A1A2E] font-semibold">Cancellation & refund policy</Text>
+          <Text className="text-[#737373] text-xs mt-1 mb-3">Players see this before booking. The selected policy is locked into each booking.</Text>
+          <View className="flex-row">
+            {(['lenient', 'standard', 'strict'] as CancellationPolicy[]).map((policy) => <TouchableOpacity key={policy} accessibilityRole="radio" accessibilityState={{ selected: form.cancellation_policy === policy }} onPress={() => setForm((current) => ({ ...current, cancellation_policy: policy }))} className={`flex-1 rounded-xl border py-3 items-center ${form.cancellation_policy === policy ? 'bg-[#E8F5E9] border-[#4CAF50]' : 'border-[#E5E7EB] bg-[#FAFAFA]'}`}><Text className={form.cancellation_policy === policy ? 'text-[#2E7D32] font-bold text-sm' : 'text-[#4B5563] text-sm'}>{CANCELLATION_POLICY_LABELS[policy]}</Text></TouchableOpacity>)}
+          </View>
+          <Text className="text-[#737373] text-xs mt-3">Lenient: up to 25% within 6h. Standard: no refund within 6h. Strict: 48h notice for a full refund.</Text>
+        </View>
         <View className="mb-4">
           <Text className="text-[#1A1A2E] font-medium mb-1">
             Map coordinates

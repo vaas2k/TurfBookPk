@@ -120,6 +120,27 @@
       "when": 1789612800000,
       "tag": "0016_recurring_payment_reservations",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790403233049,
+      "tag": "0017_cancellation_policy_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790403300000,
+      "tag": "0018_no_show_strikes",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790403600000,
+      "tag": "0019_reviews_and_ground_engagement",
+      "breakpoints": true
     }
   ]
 }

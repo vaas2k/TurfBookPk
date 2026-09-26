@@ -5,6 +5,7 @@ import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
 import { groundBlackoutDates, grounds, slots, slotScheduleTemplates, vendors } from '../database/schema.js';
 import { env } from '../configs/env.js';
+import { CANCELLATION_POLICIES, cancellationPolicy } from '../services/cancellationPolicy.js';
 import { PeakWindow, effectiveSlotPrice } from '../services/peakPricing.js';
 
 function textArray(value: unknown): string[] {
@@ -33,6 +34,13 @@ function validDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function validatedCancellationPolicy(value: unknown): 'lenient' | 'standard' | 'strict' {
+  if (typeof value !== 'string' || !(CANCELLATION_POLICIES as readonly string[]).includes(value.toLowerCase())) {
+    throw new AppError('invalid_ground', 'Cancellation policy must be Lenient, Standard, or Strict', 422);
+  }
+  return cancellationPolicy(value);
 }
 
 function validTime(value: unknown): value is string {
@@ -140,7 +148,7 @@ async function materializeSchedule(ground: typeof grounds.$inferSelect): Promise
   }
 }
 
-function toGround(row: typeof grounds.$inferSelect) {
+export function toGround(row: typeof grounds.$inferSelect) {
   return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_percentage: row.peakPercentage, peak_windows: row.peakWindows.map((window) => ({ days: window.days, start_time: window.startTime, end_time: window.endTime })), is_active: row.isActive, is_verified: row.isVerified, rating: row.rating, total_reviews: row.totalReviews, operating_hours: row.operatingHours, scheduling_policy: { max_slot_duration_minutes: env.maxSlotDurationMinutes, max_advance_booking_days: env.maxAdvanceBookingDays }, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
@@ -268,7 +276,7 @@ export class GroundController {
       amenities: textArray(body.amenities), images: textArray(body.images), coverImage: typeof body.cover_image === 'string' ? body.cover_image.trim() || null : null,
       pitchType: body.pitch_type?.trim() || null, pricePerHour: body.price_per_hour, peakPercentage: configuredPeakPercentage, peakWindows: configuredPeakWindows,
       operatingHours: body.operating_hours === undefined ? { open: '06:00', close: '23:00' } : operatingHours(body.operating_hours),
-      rules: textArray(body.rules), cancellationPolicy: body.cancellation_policy?.trim() || null,
+      rules: textArray(body.rules), cancellationPolicy: body.cancellation_policy === undefined ? 'standard' : validatedCancellationPolicy(body.cancellation_policy),
     }).returning())[0];
     if (!row) throw new AppError('ground_creation_failed', 'Ground could not be created', 500);
     response.status(201).json({ ground: toGround(row) });
@@ -303,7 +311,7 @@ export class GroundController {
     validatePeakConfig(values.peakPercentage === undefined ? current.peakPercentage : values.peakPercentage, values.peakWindows === undefined ? current.peakWindows : values.peakWindows);
     if (body.is_active !== undefined) values.isActive = Boolean(body.is_active);
     if (body.rules !== undefined) values.rules = textArray(body.rules);
-    if (body.cancellation_policy !== undefined) values.cancellationPolicy = body.cancellation_policy?.trim() || null;
+    if (body.cancellation_policy !== undefined) values.cancellationPolicy = validatedCancellationPolicy(body.cancellation_policy);
     const row = (await db.update(grounds).set(values).where(eq(grounds.id, current.id)).returning())[0];
     if (!row) throw new AppError('ground_update_failed', 'Ground could not be updated', 500);
     response.json({ ground: toGround(row) });

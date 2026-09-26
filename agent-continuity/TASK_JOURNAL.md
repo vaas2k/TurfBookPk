@@ -1531,3 +1531,33 @@
 - Corrected the splash animation state initialization so the current React lint rules no longer report a ref-during-render error.
 - Verified server P0 regression suite: 20 passing tests, including booking constraints, holds, cancellation safety, recurring reservation expiry, auth safety, pricing, payment adapter, and peak pricing.
 - Verified server production build and mobile TypeScript checks. Mobile lint has zero errors; remaining warnings are non-blocking pre-existing cleanup items.
+
+## 2026-09-26 - Cancellation and refund policy engine
+
+### Completed
+
+- Vendors now select Lenient, Standard, or Strict when creating or editing a ground; arbitrary free-text policy values are rejected by the API.
+- The selected policy is copied into each booking at creation, so later vendor policy changes never alter an existing booking.
+- Replaced the previous fixed cancellation logic with the specified grace windows and tier boundaries, calculated in UTC from the paid booking amount.
+- Cancellation previews now return the locked policy, refund percentage, exact refund amount, cancellation fee, and grace-window state before confirmation.
+- Added player-facing policy information on ground detail, checkout estimates, post-booking grace countdown, and cancellation confirmation.
+- Added no-show strike tracking; the third strike is explicitly flagged in the player notification.
+- Added and applied migrations `0017_cancellation_policy_snapshot.sql` and `0018_no_show_strikes.sql` to the local PostgreSQL database.
+
+### Verification
+
+- `npm run db:migrate` in `Server/`: passed.
+- `npm run typecheck` in `Server/`: passed.
+- `npm test -- --test-name-pattern="cancellation"` in `Server/`: 21/21 passed.
+- `npx tsc --noEmit` in `PitchBook/`: passed.
+
+### Follow-up
+
+- Actual payment-gateway refunds, account-credit fallback, force-majeure review, and an enforcement action after three strikes remain payment/admin workflows.
+
+## 2026-09-26 - Review safety and player ground library
+
+- Added review reports, vendor-owned-ground hide/unhide moderation endpoints, and public review filtering for hidden content.
+- Added persisted favorites and recently viewed grounds, including player ground-detail heart controls and a saved-grounds screen API route.
+- Applied `0019_reviews_and_ground_engagement.sql` locally.
+- Verified server and mobile TypeScript checks pass.

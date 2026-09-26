@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { formatTimeRange12 } from '@/lib/time';
 import { BookingProfile, getVendorBookings } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { goBackOrReplace } from '@/lib/navigation';
@@ -117,7 +118,7 @@ export default function VendorBookings() {
             {item.ground_title}
           </Text>
           <Text className="text-[#737373] text-sm mt-1">
-            {item.date} · {item.start_time.slice(0, 5)} - {item.end_time.slice(0, 5)}
+            {item.date} · {formatTimeRange12(item.start_time, item.end_time)}
           </Text>
         </View>
         <BookingStatusBadge status={item.status} paymentStatus={item.payment_status} />
