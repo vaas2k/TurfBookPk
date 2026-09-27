@@ -1,7 +1,7 @@
-import { Stack, usePathname, router } from 'expo-router';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Stack, usePathname, router } from "expo-router";
+import { View, Text, TouchableOpacity, Platform } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Custom Tab Bar Component for Vendor
 function VendorTabBar() {
@@ -10,32 +10,36 @@ function VendorTabBar() {
   const bottomPadding = Math.max(insets.bottom, 8);
 
   const showTabBar = () => {
-    const mainRoutes = [
-      '/(vendor)',
-      '/(vendor)/index',
-      '/(vendor)/grounds',
-      '/(vendor)/bookings',
-      '/(vendor)/earnings',
-      '/(vendor)/profile',
+    const detailRoutes = [
+      "/add-ground",
+      "/ground-slots",
+      "/setup-schedule",
+      "/ground-reviews",
+      "/booking/",
+      "/notifications",
+      "/edit-profile",
     ];
-    return mainRoutes.includes(pathname) || pathname === '/(vendor)';
+    return !detailRoutes.some((route) => pathname.includes(route));
   };
 
   if (!showTabBar()) return null;
 
   const tabs = [
-    { name: 'Overview', icon: 'grid', route: '/(vendor)' },
-    { name: 'Grounds', icon: 'business', route: '/(vendor)/grounds' },
-    { name: 'Schedule', icon: 'calendar', route: '/(vendor)/bookings' },
-    { name: 'Money', icon: 'wallet', route: '/(vendor)/earnings' },
-    { name: 'Profile', icon: 'person', route: '/(vendor)/profile' },
+    { name: "Home", icon: "home", route: "/(vendor)" },
+    { name: "My Grounds", icon: "location", route: "/(vendor)/grounds" },
+    { name: "History", icon: "calendar", route: "/(vendor)/bookings" },
+    { name: "Earnings", icon: "bar-chart", route: "/(vendor)/earnings" },
+    { name: "Profile", icon: "person", route: "/(vendor)/profile" },
   ];
 
   const isActive = (route: string) => {
-    const cleanRoute = route.replace('/(vendor)', '');
-    const cleanPath = pathname.replace('/(vendor)', '');
-    
-    if (route === '/(vendor)' && (cleanPath === '' || cleanPath === '/' || cleanPath === '/index')) {
+    const cleanRoute = route.replace("/(vendor)", "");
+    const cleanPath = pathname.replace("/(vendor)", "");
+
+    if (
+      route === "/(vendor)" &&
+      (cleanPath === "" || cleanPath === "/" || cleanPath === "/index")
+    ) {
       return true;
     }
     return cleanPath === cleanRoute;
@@ -48,14 +52,14 @@ function VendorTabBar() {
   };
 
   return (
-    <View 
-      className="bg-white border-t border-[#E5E5E5]"
-      style={{ 
+    <View
+      className="bg-[#10120F] border-t border-[#30372B]"
+      style={{
         paddingBottom: bottomPadding,
         minHeight: 64 + bottomPadding,
-        shadowColor: '#0F172A',
+        shadowColor: "#0F172A",
         shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: Platform.OS === 'ios' ? 0.06 : 0.12,
+        shadowOpacity: Platform.OS === "ios" ? 0.06 : 0.12,
         shadowRadius: 8,
         elevation: 10,
       }}
@@ -69,18 +73,18 @@ function VendorTabBar() {
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               accessibilityLabel={tab.name}
-              className={`items-center justify-center flex-1 min-h-[44px] rounded-2xl py-1 ${active ? 'bg-[#E8F5E9]' : ''}`}
+              className={`items-center justify-center flex-1 min-h-[44px] rounded-2xl py-1 ${active ? "bg-[#1B321E]" : ""}`}
               onPress={() => handlePress(tab.route)}
               activeOpacity={0.7}
             >
-              <Ionicons 
-                name={active ? tab.icon : `${tab.icon}-outline` as any} 
-                size={24} 
-                color={active ? '#4CAF50' : '#737373'} 
+              <Ionicons
+                name={active ? tab.icon : (`${tab.icon}-outline` as any)}
+                size={24}
+                color={active ? "#4FD05B" : "#969B94"}
               />
-              <Text 
+              <Text
                 className={`text-[11px] mt-0.5 ${
-                  active ? 'text-[#4CAF50] font-medium' : 'text-[#737373]'
+                  active ? "text-[#4FD05B] font-medium" : "text-[#969B94]"
                 }`}
               >
                 {tab.name}
@@ -95,11 +99,11 @@ function VendorTabBar() {
 
 export default function VendorLayout() {
   return (
-    <View className="flex-1 bg-[#F8F9FA]">
+    <View className="flex-1 bg-[#10120F]">
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: '#F8F9FA' },
+          contentStyle: { backgroundColor: "#10120F" },
         }}
       >
         <Stack.Screen name="index" />

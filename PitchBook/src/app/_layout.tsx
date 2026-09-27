@@ -12,6 +12,7 @@ import { BigShouldersDisplay_700Bold, BigShouldersDisplay_800ExtraBold } from '@
 import { getApiConfigurationError } from '@/lib/api/client';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { useAppearanceStore } from '@/store/appearanceStore';
+import { colorScheme } from 'nativewind';
 
 //@ts-ignore
 import '../global.css';
@@ -28,6 +29,10 @@ export default function RootLayout() {
   const { checkVendorStatus } = useVendorStore();
   const [isReady, setIsReady] = useState(false);
   const appearance = useAppearanceStore((state) => state.appearance);
+
+  useEffect(() => {
+    colorScheme.set(appearance);
+  }, [appearance]);
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,

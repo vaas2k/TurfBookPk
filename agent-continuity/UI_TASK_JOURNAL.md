@@ -23,5 +23,16 @@ This journal is intentionally separate from `TASK_JOURNAL.md`. It records visual
 
 ## Next design task
 
-- Use the approved test UI to redesign the auth entry flow first: splash, phone input, OTP verification, and profile setup.
-- Keep the existing functional auth flow and route behavior unchanged.
+## 2026-09-27 - Vendor dark operational UI pass
+
+- Redesigned the vendor tab shell and the operational overview, My Grounds, booking history, earnings, notifications, booking detail, reviews, and profile around the supplied vendor Figma exports.
+- Preserved the vendor’s larger, high-contrast type, compact dark cards, restrained green action color, and fixed five-item navigation for easier day-to-day use.
+- Earnings now visually groups live ledger activity with period and status filters, daily-revenue bars, and ground-performance bars.
+- Booking detail now gives the player, time, ground, payment status, payout, and vendor action a clearer scan order.
+- Reviews now use a dark feedback-card pattern with rating summary and an owner moderation entry point.
+- Notifications now use Today/Earlier grouping, clear read state, contextual icons, and relative timestamps.
+- Validation: `npx tsc --noEmit` passed after the vendor UI slices.
+
+## Next design task
+
+- Complete the vendor ground creation/edit and slot-management references, then run an Android/iOS visual and safe-area pass before declaring the vendor visual phase complete.

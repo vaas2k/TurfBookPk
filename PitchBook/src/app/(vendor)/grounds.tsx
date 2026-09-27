@@ -1,12 +1,30 @@
-import { View, Text, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, Modal, Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useCallback, useEffect, useState } from 'react';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { deleteGround, getVendorGrounds, Ground, listGroundSlots, Slot, updateGround } from '@/lib/api/vendors';
-import { Toast } from '@/components/ui/toast';
-import { goBackOrReplace } from '@/lib/navigation';
-import { appDialog } from '@/components/ui/app-dialog';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+  Modal,
+  Image,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useCallback, useEffect, useState } from "react";
+import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import {
+  deleteGround,
+  getVendorGrounds,
+  Ground,
+  listGroundSlots,
+  Slot,
+  updateGround,
+} from "@/lib/api/vendors";
+import { Toast } from "@/components/ui/toast";
+import { goBackOrReplace } from "@/lib/navigation";
+import { appDialog } from "@/components/ui/app-dialog";
+import { listVendorBookings } from "@/lib/api/bookings";
+import { BookingProfile } from "@/types/booking";
 
 export default function VendorGrounds() {
   const [grounds, setGrounds] = useState<Ground[]>([]);
@@ -16,25 +34,56 @@ export default function VendorGrounds() {
   const [pendingDelete, setPendingDelete] = useState<Ground | null>(null);
   const [updatingGroundId, setUpdatingGroundId] = useState<string | null>(null);
   const [deletingGroundId, setDeletingGroundId] = useState<string | null>(null);
-  const [slotsByGround, setSlotsByGround] = useState<Record<string, Slot[]>>({});
+  const [slotsByGround, setSlotsByGround] = useState<Record<string, Slot[]>>(
+    {},
+  );
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [weeklyBookings, setWeeklyBookings] = useState<
+    Record<string, BookingProfile[]>
+  >({});
 
   const loadGrounds = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const result = await getVendorGrounds(1);
+      const [result, bookings] = await Promise.all([
+        getVendorGrounds(1),
+        listVendorBookings(),
+      ]);
       const items = result.grounds;
-      setGrounds(items); setPage(1); setHasMore(result.pagination.has_more);
-      const slotEntries = await Promise.all(items.map(async (ground) => [ground.id, await listGroundSlots(ground.id)] as const));
+      setGrounds(items);
+      setPage(1);
+      setHasMore(result.pagination.has_more);
+      const slotEntries = await Promise.all(
+        items.map(
+          async (ground) =>
+            [ground.id, await listGroundSlots(ground.id)] as const,
+        ),
+      );
       setSlotsByGround(Object.fromEntries(slotEntries));
+      const start = new Date();
+      start.setDate(start.getDate() - start.getDay());
+      start.setHours(0, 0, 0, 0);
+      const grouped: Record<string, BookingProfile[]> = {};
+      bookings
+        .filter(
+          (booking) =>
+            booking.status === "confirmed" &&
+            new Date(`${booking.date}T12:00:00+05:00`) >= start,
+        )
+        .forEach((booking) => {
+          (grouped[booking.ground_id] ||= []).push(booking);
+        });
+      setWeeklyBookings(grouped);
     } catch (error: any) {
-      const message = error?.message || 'Unable to load your grounds.';
+      const message = error?.message || "Unable to load your grounds.";
       setLoadError(message);
       setToast(message);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const loadMore = useCallback(async () => {
@@ -42,20 +91,44 @@ export default function VendorGrounds() {
     setLoadingMore(true);
     try {
       const result = await getVendorGrounds(page + 1);
-      const slotEntries = await Promise.all(result.grounds.map(async (ground) => [ground.id, await listGroundSlots(ground.id)] as const));
+      const slotEntries = await Promise.all(
+        result.grounds.map(
+          async (ground) =>
+            [ground.id, await listGroundSlots(ground.id)] as const,
+        ),
+      );
       setGrounds((current) => [...current, ...result.grounds]);
-      setSlotsByGround((current) => ({ ...current, ...Object.fromEntries(slotEntries) }));
-      setPage(result.pagination.page); setHasMore(result.pagination.has_more);
-    } catch (error: any) { setToast(error?.message || 'Unable to load more grounds.'); } finally { setLoadingMore(false); }
+      setSlotsByGround((current) => ({
+        ...current,
+        ...Object.fromEntries(slotEntries),
+      }));
+      setPage(result.pagination.page);
+      setHasMore(result.pagination.has_more);
+    } catch (error: any) {
+      setToast(error?.message || "Unable to load more grounds.");
+    } finally {
+      setLoadingMore(false);
+    }
   }, [hasMore, loading, loadingMore, page]);
 
-  useEffect(() => { loadGrounds(); }, [loadGrounds]);
+  useEffect(() => {
+    loadGrounds();
+  }, [loadGrounds]);
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
     setDeletingGroundId(pendingDelete.id);
-    try { await deleteGround(pendingDelete.id); setPendingDelete(null); await loadGrounds(); setToast('Ground deleted.'); }
-    catch (error: any) { setPendingDelete(null); setToast(error?.message || 'Unable to delete ground.'); } finally { setDeletingGroundId(null); }
+    try {
+      await deleteGround(pendingDelete.id);
+      setPendingDelete(null);
+      await loadGrounds();
+      setToast("Ground deleted.");
+    } catch (error: any) {
+      setPendingDelete(null);
+      setToast(error?.message || "Unable to delete ground.");
+    } finally {
+      setDeletingGroundId(null);
+    }
   };
 
   const setGroundActive = async (ground: Ground, isActive: boolean) => {
@@ -63,82 +136,251 @@ export default function VendorGrounds() {
     try {
       await updateGround(ground.id, { is_active: isActive });
       await loadGrounds();
-      setToast(isActive ? 'Ground activated and visible to players.' : 'Ground deactivated and hidden from players.');
+      setToast(
+        isActive
+          ? "Ground activated and visible to players."
+          : "Ground deactivated and hidden from players.",
+      );
     } catch (error: any) {
-      setToast(error?.message || 'Unable to change ground availability.');
+      setToast(error?.message || "Unable to change ground availability.");
     } finally {
       setUpdatingGroundId(null);
     }
   };
+
   const confirmGroundAvailability = (ground: Ground) => {
     const willActivate = !ground.is_active;
-    appDialog.alert(willActivate ? 'Activate ground?' : 'Deactivate ground?', willActivate ? 'Players will be able to find and book this ground.' : 'Players will no longer be able to find or book this ground. Existing bookings remain visible.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: willActivate ? 'Activate' : 'Deactivate', style: willActivate ? 'default' : 'destructive', onPress: () => setGroundActive(ground, willActivate) },
-    ]);
+    appDialog.alert(
+      willActivate ? "Activate ground?" : "Deactivate ground?",
+      willActivate
+        ? "Players will be able to find and book this ground."
+        : "Players will no longer be able to find or book this ground. Existing bookings remain visible.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: willActivate ? "Activate" : "Deactivate",
+          style: willActivate ? "default" : "destructive",
+          onPress: () => setGroundActive(ground, willActivate),
+        },
+      ],
+    );
+  };
+
+  const renderGround = ({ item: ground }: { item: Ground }) => {
+    const week = weeklyBookings[ground.id] || [];
+    const booked = week.length;
+    const earned = week.reduce(
+      (total, booking) => total + booking.vendor_amount,
+      0,
+    );
+
+    const today = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const todaySlots = (slotsByGround[ground.id] || []).filter((slot) => slot.date === today);
+    const bookedToday = todaySlots.filter((slot) => slot.is_booked).length;
+    return <View className="bg-[#1B1F19] border border-[#30372B] rounded-[18px] p-5 mb-4"><View className="flex-row"><Image source={{ uri: ground.cover_image || ground.images[0] || 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=300' }} className="h-16 w-16 rounded-xl" resizeMode="cover" /><View className="flex-1 ml-3"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] text-[18px]" numberOfLines={1}>{ground.title}</Text><Text className="text-[#92978F] text-sm mt-0.5" numberOfLines={1}>{ground.location || ground.city}</Text><View className={`self-start px-2 py-0.5 rounded mt-1 ${ground.is_active ? 'bg-[#1B3B20]' : 'bg-[#383B35]'}`}><Text className={`text-xs font-bold ${ground.is_active ? 'text-[#55C561]' : 'text-[#B0B4AD]'}`}>{ground.is_active ? 'Live' : 'Draft'}</Text></View></View><TouchableOpacity onPress={() => router.push({ pathname: '/(vendor)/add-ground', params: { id: ground.id } })} className="h-10 w-10 rounded-full bg-[#30352C] items-center justify-center"><Ionicons name="create-outline" size={21} color="#F5F5F0" /></TouchableOpacity></View><View className="flex-row items-center mt-4"><Ionicons name="star" size={17} color="#F5A623" /><Text className="text-[#F5A623] text-lg">★★★★</Text><Ionicons name="star-outline" size={17} color="#8E938C" /><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] text-sm ml-2">{ground.rating.toFixed(1)}</Text><Text className="text-[#92978F] text-sm ml-2">({ground.total_reviews} reviews)</Text></View><TouchableOpacity onPress={() => router.push({ pathname: '/(vendor)/ground-reviews', params: { id: ground.id, title: ground.title, rating: String(ground.rating), count: String(ground.total_reviews) } })} className="mt-3 self-start min-h-[36px] justify-center"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#50C15B] text-sm">View Reviews  ›</Text></TouchableOpacity><View className="h-px bg-[#30372B] mt-2" /><TouchableOpacity onPress={() => router.push({ pathname: '/(vendor)/ground-slots', params: { id: ground.id, title: ground.title } })} className="flex-row items-center justify-between pt-4"><Text className="text-[#F5F5F0] text-sm">{bookedToday} of {todaySlots.length} slots booked today</Text><Ionicons name="chevron-forward" size={21} color="#50C15B" /></TouchableOpacity><TouchableOpacity onPress={() => appDialog.alert(ground.title, 'Choose an action for this ground.', [{ text: ground.is_active ? 'Deactivate' : 'Activate', onPress: () => confirmGroundAvailability(ground) }, { text: 'Delete', style: 'destructive', onPress: () => setPendingDelete(ground) }, { text: 'Cancel', style: 'cancel' }])} className="absolute bottom-3 right-12 h-8 w-8 items-center justify-center"><Ionicons name="ellipsis-horizontal" size={17} color="#92978F" /></TouchableOpacity></View>;
+
+    return (
+      <TouchableOpacity
+        onPress={() =>
+          router.push({
+            pathname: "/(vendor)/ground-slots",
+            params: { id: ground.id, title: ground.title },
+          })
+        }
+        className="bg-[#1B1F19] border border-[#30372B] rounded-[20px] overflow-hidden mb-5"
+      >
+        {/* Image Section */}
+        <View className="relative">
+          <Image
+            source={{
+              uri:
+                ground.cover_image ||
+                ground.images[0] ||
+                "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800",
+            }}
+            className="w-full h-[160px]"
+            resizeMode="cover"
+          />
+          {/* Status Badge */}
+          <View
+            className={`absolute top-3 left-3 px-3 py-1.5 rounded-full flex-row items-center ${
+              ground.is_active ? "bg-[#1A261B]" : "bg-[#31342F]"
+            }`}
+          >
+            <View
+              className={`h-2 w-2 rounded-full mr-1.5 ${
+                ground.is_active ? "bg-[#3EAF4C]" : "bg-[#AFAFA9]"
+              }`}
+            />
+            <Text className="text-[#F5F5F0] text-[11px] font-bold">
+              {ground.is_active ? "Live" : "Draft"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Content Section */}
+        <View className="p-4">
+          <Text
+            style={{ fontFamily: "SpaceGrotesk_700Bold" }}
+            className="text-[#F5F5F0] text-[18px]"
+            numberOfLines={1}
+          >
+            {ground.title}
+          </Text>
+          <Text className="text-[#AFAFA9] text-[12px] mt-1">
+            {ground.location || `${ground.city}, Pakistan`}
+          </Text>
+
+          {/* Stats Row */}
+          <View className="flex-row items-center mt-3 pt-3 border-t border-[#30372B]">
+            <Ionicons name="stats-chart-outline" size={16} color="#4FD05B" />
+            <Text
+              style={{ fontFamily: "SpaceGrotesk_700Bold" }}
+              className="text-[#E9EAE5] text-[13px] ml-2"
+            >
+              {booked} booking{booked === 1 ? "" : "s"} this week · Rs{" "}
+              {earned.toLocaleString()} earned
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-      <View className="px-6">
-        <View className="flex-row items-center py-4">
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" className="w-11 h-11 rounded-full bg-white items-center justify-center mr-3 border border-[#E5E5E5]" onPress={() => goBackOrReplace('/(vendor)')}><Ionicons name="arrow-back" size={20} color="#1A1A2E" /></TouchableOpacity>
-          <View className="flex-1"><Text className="text-2xl font-bold text-[#1A1A2E]">My Grounds</Text><Text className="text-[#737373] text-sm mt-1">{grounds.length} {grounds.length === 1 ? 'ground' : 'grounds'} · manage availability</Text></View>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add ground" className="bg-[#4CAF50] rounded-full px-4 py-3" onPress={() => router.push('/(vendor)/add-ground')}>
-            <Ionicons name="add" size={20} color="white" />
+    <SafeAreaView className="flex-1 bg-[#10120F]">
+      {/* Header */}
+      <View className="px-6 pt-4 pb-2">
+        <View className="flex-row items-start justify-between">
+          <View className="flex-1 mr-4">
+            <Text
+              style={{
+                fontFamily: "SpaceGrotesk_700Bold",
+                fontSize: 28,
+                letterSpacing: -0.5,
+              }}
+              className="text-[#F5F5F0]"
+            >
+              MY GROUNDS
+            </Text>
+            <Text className="text-[#AFAFA9] text-[13px] mt-1">
+              Manage your venues & bookings
+            </Text>
+          </View>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Add ground"
+            className="bg-[#1B1F19] rounded-[14px] h-12 w-12 items-center justify-center border border-[#30372B]"
+            onPress={() => router.push("/(vendor)/add-ground")}
+          >
+            <Ionicons name="add" size={24} color="#4FD05B" />
           </TouchableOpacity>
         </View>
       </View>
+
       <FlatList
         className="flex-1 px-6"
         data={grounds}
         keyExtractor={(ground) => ground.id}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadGrounds} />}
-        contentContainerStyle={{ paddingBottom: 24, flexGrow: 1 }}
-        ListEmptyComponent={loading ? <ActivityIndicator className="mt-8" color="#4CAF50" /> : loadError ? (
-          <View className="items-center rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-6 py-10">
-            <Ionicons name="cloud-offline-outline" size={42} color="#DC2626" />
-            <Text className="mt-3 text-center text-lg font-bold text-[#991B1B]">Could not load your grounds</Text>
-            <Text className="mt-1 text-center text-sm text-[#B91C1C]">Check your connection, then try again.</Text>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry loading grounds" onPress={loadGrounds} className="mt-5 min-h-11 rounded-xl bg-[#DC2626] px-5 justify-center">
-              <Text className="font-bold text-white">Try again</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View className="items-center py-20"><Ionicons name="business-outline" size={48} color="#D4D4D4" /><Text className="text-[#737373] mt-3">No grounds yet</Text></View>
-        )}
-        renderItem={({ item: ground }) => (
-          <View key={ground.id} className="bg-white rounded-2xl overflow-hidden mb-4 border border-[#E5E5E5]">
-            <Image source={{ uri: ground.cover_image || ground.images[0] || 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800' }} className="w-full h-32" resizeMode="cover" />
-            <View className="p-4">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1"><Text className="text-lg font-bold text-[#1A1A2E]">{ground.title}</Text><Text className="text-[#737373] mt-1">{ground.city} · Rs {ground.price_per_hour}/hr</Text></View>
-              <View className={`px-2 py-1 rounded-full ${ground.is_active ? 'bg-[#E8F5E9]' : 'bg-[#F5F5F5]'}`}><Text className="text-xs">{ground.is_active ? 'Active' : 'Inactive'}</Text></View>
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={loadGrounds}
+            tintColor="#4CAF50"
+          />
+        }
+        contentContainerStyle={{ paddingBottom: 24, flexGrow: 1, paddingTop: 8 }}
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator className="mt-8" color="#4CAF50" />
+          ) : loadError ? (
+            <View className="items-center rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-6 py-10">
+              <Ionicons
+                name="cloud-offline-outline"
+                size={42}
+                color="#DC2626"
+              />
+              <Text className="mt-3 text-center text-lg font-bold text-[#991B1B]">
+                Could not load your grounds
+              </Text>
+              <Text className="mt-1 text-center text-sm text-[#B91C1C]">
+                Check your connection, then try again.
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading grounds"
+                onPress={loadGrounds}
+                className="mt-5 min-h-11 rounded-xl bg-[#DC2626] px-5 justify-center"
+              >
+                <Text className="font-bold text-white">Try again</Text>
+              </TouchableOpacity>
             </View>
-            <Text className="text-[#737373] text-sm mt-2" numberOfLines={2}>{ground.description || ground.address}</Text>
-            <View className="flex-row items-center mt-3"><Ionicons name="calendar-outline" size={16} color="#4CAF50" /><Text className="text-[#4CAF50] text-sm font-medium ml-2">{(slotsByGround[ground.id] || []).filter((slot) => !slot.is_booked && !slot.is_blocked).length} available</Text><Text className="text-[#A3A3A3] mx-2">·</Text><Text className="text-[#737373] text-sm">{(slotsByGround[ground.id] || []).filter((slot) => slot.is_booked).length} booked</Text></View>
-            <View className="flex-row mt-4">
-              <TouchableOpacity className="flex-1 bg-[#E8F5E9] rounded-xl py-3 mr-2 items-center" onPress={() => router.push({ pathname: '/(vendor)/ground-slots', params: { id: ground.id, title: ground.title } })}><Text className="text-[#4CAF50] font-bold">Manage Slots</Text></TouchableOpacity>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Edit ${ground.title}`} className="w-12 items-center justify-center" onPress={() => router.push({ pathname: '/(vendor)/add-ground', params: { id: ground.id } })}><Ionicons name="create-outline" size={22} color="#1A1A2E" /></TouchableOpacity>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Delete ${ground.title}`} className="w-12 items-center justify-center" onPress={() => setPendingDelete(ground)}><Ionicons name="trash-outline" size={22} color="#DC2626" /></TouchableOpacity>
+          ) : (
+            <View className="items-center py-20">
+              <Ionicons name="business-outline" size={48} color="#D4D4D4" />
+              <Text className="text-[#737373] mt-3">No grounds yet</Text>
             </View>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel={`View reviews for ${ground.title}`} onPress={() => router.push({ pathname: '/(vendor)/ground-reviews', params: { id: ground.id, title: ground.title, rating: String(ground.rating), count: String(ground.total_reviews) } })} className="mt-3 rounded-xl bg-[#FFF7ED] py-3 items-center"><Text className="text-[#C56A00] font-bold">Reviews · {ground.rating.toFixed(1)} ★ ({ground.total_reviews})</Text></TouchableOpacity>
+          )
+        }
+        renderItem={renderGround}
+        ListFooterComponent={
+          hasMore ? (
             <TouchableOpacity
-              disabled={updatingGroundId === ground.id}
-              onPress={() => confirmGroundAvailability(ground)}
               accessibilityRole="button"
-              accessibilityLabel={ground.is_active ? `Deactivate ${ground.title}` : `Activate ${ground.title}`}
-              className={`mt-3 rounded-xl py-3 items-center ${ground.is_active ? 'bg-[#FEF2F2]' : 'bg-[#E8F5E9]'}`}
+              accessibilityLabel="Load more grounds"
+              disabled={loadingMore}
+              onPress={loadMore}
+              className={`rounded-xl py-3 items-center mb-6 ${
+                loadingMore ? "bg-[#A3A3A3]" : "bg-[#E8F5E9]"
+              }`}
             >
-              <Text className={`font-bold ${ground.is_active ? 'text-[#DC2626]' : 'text-[#2E7D32]'}`}>
-                {updatingGroundId === ground.id ? 'Updating...' : ground.is_active ? 'Deactivate Ground' : 'Activate Ground'}
+              <Text className="text-[#2E7D32] font-bold">
+                {loadingMore ? "Loading grounds..." : "Load more grounds"}
               </Text>
             </TouchableOpacity>
-            </View></View>
-        )}
-        ListFooterComponent={hasMore ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load more grounds" disabled={loadingMore} onPress={loadMore} className={`rounded-xl py-3 items-center mb-6 ${loadingMore ? 'bg-[#A3A3A3]' : 'bg-[#E8F5E9]'}`}><Text className="text-[#2E7D32] font-bold">{loadingMore ? 'Loading grounds...' : 'Load more grounds'}</Text></TouchableOpacity> : null}
+          ) : null
+        }
       />
-      <Modal visible={Boolean(pendingDelete)} transparent animationType="fade" onRequestClose={() => setPendingDelete(null)}><View className="flex-1 bg-black/40 items-center justify-center px-8"><View className="bg-white rounded-2xl p-6 w-full"><Text className="text-xl font-bold text-[#1A1A2E]">Delete ground?</Text><Text className="text-[#737373] mt-2">Grounds with booked slots cannot be deleted.</Text><View className="flex-row justify-end mt-6"><TouchableOpacity disabled={Boolean(deletingGroundId)} onPress={() => setPendingDelete(null)} className="px-4 py-3"><Text className="text-[#737373] font-medium">Cancel</Text></TouchableOpacity><TouchableOpacity disabled={Boolean(deletingGroundId)} onPress={handleDelete} className={`rounded-xl px-4 py-3 ${deletingGroundId ? 'bg-[#9CA3AF]' : 'bg-[#DC2626]'}`}><Text className="text-white font-bold">{deletingGroundId ? 'Deleting...' : 'Delete'}</Text></TouchableOpacity></View></View></View></Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={Boolean(pendingDelete)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPendingDelete(null)}
+      >
+        <View className="flex-1 bg-black/60 items-center justify-center px-8">
+          <View className="bg-[#1B1F19] border border-[#30372B] rounded-2xl p-6 w-full">
+            <Text className="text-xl font-bold text-[#F5F5F0]">
+              Delete ground?
+            </Text>
+            <Text className="text-[#AFAFA9] mt-2">
+              Grounds with booked slots cannot be deleted.
+            </Text>
+            <View className="flex-row justify-end mt-6">
+              <TouchableOpacity
+                disabled={Boolean(deletingGroundId)}
+                onPress={() => setPendingDelete(null)}
+                className="px-4 py-3"
+              >
+                <Text className="text-[#AFAFA9] font-medium">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={Boolean(deletingGroundId)}
+                onPress={handleDelete}
+                className={`rounded-xl px-4 py-3 ${
+                  deletingGroundId ? "bg-[#9CA3AF]" : "bg-[#DC2626]"
+                }`}
+              >
+                <Text className="text-white font-bold">
+                  {deletingGroundId ? "Deleting..." : "Delete"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
     </SafeAreaView>
   );

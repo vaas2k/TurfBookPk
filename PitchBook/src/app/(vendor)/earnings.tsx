@@ -81,6 +81,7 @@ export default function VendorEarnings() {
   const [summary, setSummary] = useState<EarningsSummary>(emptySummary);
   const [entries, setEntries] = useState<EarningsEntry[]>([]);
   const [period, setPeriod] = useState<'all' | 'week' | 'month'>('all');
+  const [activityFilter, setActivityFilter] = useState<'all' | 'available' | 'pending' | 'reversed' | 'refunds' | 'payouts'>('all');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
@@ -123,26 +124,70 @@ export default function VendorEarnings() {
     const age = Date.now() - new Date(entry.posted_at || entry.created_at).getTime();
     return age <= (period === 'week' ? 7 : 31) * 86_400_000;
   });
+  const filteredActivity = visibleEntries.filter((entry) => {
+    if (activityFilter === 'all') return true;
+    if (activityFilter === 'available') return entry.type === 'booking_earning' && entry.status === 'posted';
+    if (activityFilter === 'pending') return entry.status === 'pending';
+    if (activityFilter === 'reversed') return entry.status === 'reversed';
+    if (activityFilter === 'refunds') return entry.type === 'refund';
+    return entry.type === 'payout';
+  });
+  const earningsEntries = visibleEntries.filter(
+    (entry) => entry.type === "booking_earning" && entry.status !== "reversed",
+  );
+  const periodRevenue = earningsEntries.reduce(
+    (total, entry) => total + Math.max(0, entry.amount),
+    0,
+  );
+  const dailyRevenue = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - (6 - index));
+    const value = earningsEntries
+      .filter((entry) => {
+        const posted = new Date(entry.posted_at || entry.created_at);
+        return (
+          posted.getFullYear() === date.getFullYear() &&
+          posted.getMonth() === date.getMonth() &&
+          posted.getDate() === date.getDate()
+        );
+      })
+      .reduce((total, entry) => total + Math.max(0, entry.amount), 0);
+    return { label: date.toLocaleDateString("en-PK", { weekday: "narrow" }), value };
+  });
+  const maxDailyRevenue = Math.max(...dailyRevenue.map((item) => item.value), 1);
+  const groundPerformance = Object.values(
+    earningsEntries.reduce<Record<string, { title: string; total: number; bookings: number }>>(
+      (result, entry) => {
+        const key = entry.ground_title || "Your ground";
+        const current = result[key] || { title: key, total: 0, bookings: 0 };
+        current.total += Math.max(0, entry.amount);
+        current.bookings += 1;
+        result[key] = current;
+        return result;
+      },
+      {},
+    ),
+  )
+    .sort((left, right) => right.total - left.total)
+    .slice(0, 3);
+  const maxGroundRevenue = Math.max(...groundPerformance.map((item) => item.total), 1);
+  const periodLabel = period === "week" ? "Weekly" : period === "month" ? "Monthly" : "All time";
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-      <View className="px-5 py-4 bg-white border-b border-[#E5E5E5] flex-row items-center">
+    <SafeAreaView className="flex-1 bg-[#10120F]">
+      <View className="px-6 pt-5 flex-row items-center justify-between">
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel="Go back"
           onPress={() => goBackOrReplace("/(vendor)")}
-          className="w-11 h-11 rounded-full bg-[#F5F5F5] items-center justify-center mr-3"
+          className="hidden"
         >
           <Ionicons name="arrow-back" size={20} color="#1A1A2E" />
         </TouchableOpacity>
-        <View>
-          <Text className="text-2xl font-bold text-[#1A1A2E]">Earnings</Text>
-          <Text className="text-xs text-[#737373] mt-0.5">
-            Booking income overview
-          </Text>
-        </View>
+        <View><Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 27 }} className="text-[#F5F5F0]">EARNINGS</Text><Text className="text-xs text-[#AFAFA9] mt-0.5">Revenue & performance</Text></View><View className="bg-[#1B1F19] border border-[#30372B] rounded-xl px-4 py-2"><Text className="text-[#F5F5F0] font-bold text-sm">{period === 'week' ? 'Weekly' : period === 'month' ? 'Monthly' : 'All time'}⌄</Text></View>
       </View>
       <ScrollView
-        className="flex-1 px-5 pt-5"
+        className="flex-1 px-6 pt-5"
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={
           <RefreshControl
@@ -152,52 +197,36 @@ export default function VendorEarnings() {
           />
         }
       >
-        <View className="bg-[#1A1A2E] rounded-3xl p-6">
-          <Text className="text-white/70 text-sm">Available to withdraw</Text>
-          <Text className="text-white text-3xl font-bold mt-1">
-            {money(summary.available_to_withdraw)}
+        <View className="bg-[#1B1F19] border border-[#30372B] rounded-[20px] p-5">
+          <Text className="text-[#AFAFA9] text-sm font-bold">TOTAL REVENUE</Text>
+          <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] text-[36px] mt-2">
+            {money(periodRevenue)}
           </Text>
-          <Text className="text-white/70 text-xs mt-3">
-            Completed bookings become available here. Payout requests will be
-            added when payments are live.
-          </Text>
+          <View className="flex-row mt-4"><View className="mr-6"><Text className="text-[#92978F] text-xs">Available now</Text><Text className="text-[#F5F5F0] font-bold">{money(summary.available_to_withdraw)}</Text></View><View><Text className="text-[#92978F] text-xs">Paid out</Text><Text className="text-[#50C15B] font-bold">{money(summary.total_paid_out)}</Text></View></View>
         </View>
-        <View className="flex-row mt-4 gap-3">
-          <View className="flex-1 bg-[#FFF7ED] rounded-2xl p-4 border border-[#FED7AA]">
-            <Text className="text-[#9A3412] text-xs font-semibold">
-              PENDING AFTER MATCH
-            </Text>
-            <Text className="text-[#9A3412] text-lg font-bold mt-1">
-              {money(summary.pending_earnings)}
-            </Text>
-            <Text className="text-[#9A3412] text-xs mt-1">
-              Not withdrawable yet
-            </Text>
+        <View className="mt-4 bg-[#1B1F19] border border-[#30372B] rounded-[20px] p-5">
+          <Text className="text-[#F5F5F0] text-base font-bold">Revenue by day</Text>
+          <View className="h-36 flex-row items-end justify-between mt-5 px-1">
+            {dailyRevenue.map((item, index) => <View key={`${item.label}-${index}`} className="items-center flex-1 h-full justify-end"><View style={{ height: Math.max(5, (item.value / maxDailyRevenue) * 94) }} className="w-5 rounded-t-md bg-[#50C15B]" /><Text className="text-[#92978F] text-[10px] mt-2">{item.label}</Text></View>)}
           </View>
-          <View className="flex-1 bg-white rounded-2xl p-4 border border-[#E5E5E5]">
-            <Text className="text-[#4B5563] text-xs font-semibold">
-              PAID OUT
-            </Text>
-            <Text className="text-[#1A1A2E] text-lg font-bold mt-1">
-              {money(summary.total_paid_out)}
-            </Text>
-            <Text className="text-[#737373] text-xs mt-1">
-              Total sent to you
-            </Text>
-          </View>
+          <Text className="text-[#92978F] text-xs mt-1">Booking income recorded each day</Text>
+        </View>
+        <View className="mt-4 bg-[#1B1F19] border border-[#30372B] rounded-[20px] p-5">
+          <Text className="text-[#F5F5F0] text-base font-bold">Bookings by ground</Text>
+          {groundPerformance.length ? groundPerformance.map((ground) => <View key={ground.title} className="mt-4"><View className="flex-row justify-between mb-2"><Text numberOfLines={1} className="text-[#D9DBD5] text-sm flex-1 mr-3">{ground.title}</Text><Text className="text-[#AFAFA9] text-xs">{ground.bookings} bookings</Text></View><View className="h-2 rounded-full bg-[#30372B] overflow-hidden"><View style={{ width: `${Math.max(8, (ground.total / maxGroundRevenue) * 100)}%` }} className="h-full rounded-full bg-[#50C15B]" /></View></View>) : <Text className="text-[#92978F] text-sm mt-3">Your completed booking income will appear here.</Text>}
         </View>
         {summary.pending_refunds > 0 && (
-          <View className="mt-3 bg-[#FEF2F2] rounded-2xl p-4 border border-[#FECACA] flex-row">
+          <View className="mt-3 bg-[#38201E] rounded-2xl p-4 border border-[#69332C] flex-row">
             <Ionicons
               name="information-circle-outline"
               size={20}
               color="#DC2626"
             />
             <View className="flex-1 ml-3">
-              <Text className="text-[#991B1B] font-bold">
+              <Text className="text-[#FFD1CB] font-bold">
                 Player refunds being processed: {money(summary.pending_refunds)}
               </Text>
-              <Text className="text-[#B91C1C] text-xs mt-1">
+              <Text className="text-[#E9A49B] text-xs mt-1">
                 This is separate from your available balance.
               </Text>
             </View>
@@ -205,30 +234,33 @@ export default function VendorEarnings() {
         )}
         <View className="flex-row items-end justify-between mt-7 mb-3">
           <View>
-            <Text className="text-lg font-bold text-[#1A1A2E]">Activity</Text>
-            <Text className="text-xs text-[#737373] mt-0.5">
+            <Text className="text-lg font-bold text-[#F5F5F0]">Activity</Text>
+            <Text className="text-xs text-[#92978F] mt-0.5">
               Newest transactions first
             </Text>
           </View>
-          <Text className="text-xs font-semibold text-[#4B5563]">
-            {visibleEntries.length}{hasMore ? "+" : ""} entries
+          <Text className="text-xs font-semibold text-[#AFAFA9]">
+            {filteredActivity.length}{hasMore ? "+" : ""} entries
           </Text>
         </View>
-        <View className="flex-row mb-4">{([['all', 'All time'], ['week', 'Last 7 days'], ['month', 'Last 31 days']] as const).map(([key, label]) => <TouchableOpacity key={key} onPress={() => setPeriod(key)} className={`mr-2 rounded-full px-4 py-2 ${period === key ? 'bg-[#1A1A2E]' : 'bg-white border border-[#E5E5E5]'}`}><Text className={period === key ? 'text-white text-xs font-bold' : 'text-[#4B5563] text-xs font-bold'}>{label}</Text></TouchableOpacity>)}</View>
+        <View className="flex-row mb-4">{([['all', 'All time'], ['week', 'Last 7 days'], ['month', 'Last 31 days']] as const).map(([key, label]) => <TouchableOpacity key={key} onPress={() => setPeriod(key)} className={`mr-2 rounded-full px-4 py-2 ${period === key ? 'bg-[#50C15B]' : 'bg-[#1B1F19] border border-[#30372B]'}`}><Text className={period === key ? 'text-[#0C170D] text-xs font-bold' : 'text-[#D9DBD5] text-xs font-bold'}>{label}</Text></TouchableOpacity>)}</View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ paddingRight: 12 }}>
+          {([['all', 'All'], ['available', 'Available'], ['pending', 'Pending'], ['reversed', 'Reversed'], ['refunds', 'Refunds'], ['payouts', 'Payouts']] as const).map(([key, label]) => <TouchableOpacity key={key} accessibilityRole="tab" accessibilityState={{ selected: activityFilter === key }} onPress={() => setActivityFilter(key)} className={`mr-2 rounded-full px-4 py-2.5 ${activityFilter === key ? 'bg-[#50C15B]' : 'bg-[#282E25] border border-[#3A4436]'}`}><Text className={activityFilter === key ? 'text-[#0C170D] text-xs font-bold' : 'text-[#D9DBD5] text-xs font-bold'}>{label}</Text></TouchableOpacity>)}
+        </ScrollView>
         {loading && entries.length === 0 ? (
           <ActivityIndicator color="#4CAF50" />
-        ) : visibleEntries.length === 0 ? (
-          <View className="bg-white rounded-2xl p-8 items-center border border-[#E5E5E5]">
+        ) : filteredActivity.length === 0 ? (
+          <View className="bg-[#1B1F19] rounded-2xl p-8 items-center border border-[#30372B]">
             <Ionicons name="wallet-outline" size={36} color="#9CA3AF" />
-            <Text className="text-[#1A1A2E] font-bold mt-3">
-              No earnings activity yet
+            <Text className="text-[#F5F5F0] font-bold mt-3">
+              No {activityFilter === 'all' ? 'earnings activity' : activityFilter} activity
             </Text>
-            <Text className="text-[#737373] text-sm text-center mt-1">
-              Confirmed bookings will appear here.
+            <Text className="text-[#92978F] text-sm text-center mt-1">
+              Try another status or time period.
             </Text>
           </View>
         ) : (
-          visibleEntries.map((entry) => {
+          filteredActivity.map((entry) => {
             const copy = describe(entry);
             const date = new Date(
               entry.posted_at || entry.created_at,
@@ -249,17 +281,17 @@ export default function VendorEarnings() {
                 accessibilityRole="button"
                 accessibilityLabel={`View details for ${copy.title}`}
                 onPress={() => setSelectedEntry(entry)}
-                className="bg-white rounded-2xl p-4 mb-3 border border-[#E5E5E5]"
+                className="bg-[#1B1F19] rounded-2xl p-4 mb-3 border border-[#30372B]"
               >
                 <View className="flex-row">
-                  <View className="h-10 w-10 rounded-full bg-[#F5F5F5] items-center justify-center mr-3">
+                  <View className="h-10 w-10 rounded-full bg-[#282E25] items-center justify-center mr-3">
                     <Ionicons name={copy.icon} size={20} color={copy.color} />
                   </View>
                   <View className="flex-1 mr-2">
-                    <Text className="text-[#1A1A2E] font-bold">
+                    <Text className="text-[#F5F5F0] font-bold">
                       {copy.title}
                     </Text>
-                    <Text className="text-[#737373] text-xs mt-1">
+                    <Text className="text-[#AFAFA9] text-xs mt-1">
                       {entry.ground_title} · #{entry.booking_number}
                     </Text>
                   </View>
@@ -268,11 +300,11 @@ export default function VendorEarnings() {
                     {money(entry.amount)}
                   </Text>
                 </View>
-                <Text className="text-[#5F6368] text-xs leading-5 mt-3">
+                <Text className="text-[#B8BBB5] text-xs leading-5 mt-3">
                   {copy.detail}
                 </Text>
-                <View className="flex-row justify-between mt-3 pt-3 border-t border-[#F5F5F5]">
-                  <Text className="text-[#737373] text-xs">{date}</Text>
+                <View className="flex-row justify-between mt-3 pt-3 border-t border-[#30372B]">
+                  <Text className="text-[#AFAFA9] text-xs">{date}</Text>
                   <Text
                     style={{ color: copy.color }}
                     className="text-xs font-bold uppercase"
@@ -290,7 +322,7 @@ export default function VendorEarnings() {
             accessibilityLabel="Load more earnings activity"
             disabled={loadingMore}
             onPress={loadMore}
-            className="mt-1 min-h-12 items-center justify-center rounded-xl border border-[#D1D5DB] bg-white"
+            className="mt-1 min-h-12 items-center justify-center rounded-xl border border-[#3D563A] bg-[#1B1F19]"
           >
             {loadingMore ? (
               <ActivityIndicator color="#4CAF50" />

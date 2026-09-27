@@ -17,11 +17,13 @@ import { useVendorStore } from "@/store/vendorStore";
 import VendorRegistrationModal, {
   VendorFormData,
 } from "@/components/vendor/VendorRegistrationModal";
+import { playerThemes } from "@/theme/playerTheme";
 
 export default function ProfileScreen() {
   const { profile, signOut, user, switchToVendor } = useAuthStore();
   const { isVendor, checkVendorStatus, registerVendor } = useVendorStore();
   const { appearance, toggleAppearance } = useAppearanceStore();
+  const theme = playerThemes[appearance];
   const [showVendorModal, setShowVendorModal] = useState(false);
   const [vendorLoading, setVendorLoading] = useState(false);
   const initials = (profile?.full_name || "User")
@@ -91,18 +93,20 @@ export default function ProfileScreen() {
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      className="min-h-[64px] px-4 flex-row items-center border-b border-[#30372B]"
+      className="min-h-[64px] px-4 flex-row items-center border-b"
+      style={{ borderBottomColor: theme.border }}
     >
       <Text
-        className={`flex-1 text-[16px] ${destructive ? "text-[#FF5A55]" : "text-[#F3F4EF]"}`}
+        className="flex-1 text-[16px]"
+        style={{ color: destructive ? "#FF5A55" : theme.text }}
       >
         {label}
       </Text>
-      {value && <Text className="text-[#AFAFA9] text-sm mr-2">{value}</Text>}
+      {value && <Text className="text-sm mr-2" style={{ color: theme.subtle }}>{value}</Text>}
       <Ionicons
         name={destructive ? "trash-outline" : "chevron-forward"}
         size={21}
-        color={destructive ? "#FF5A55" : "#858A81"}
+        color={destructive ? "#FF5A55" : theme.subtle}
       />
     </TouchableOpacity>
   );
@@ -110,11 +114,12 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView
       edges={["top", "left", "right"]}
-      className="flex-1 bg-[#10120F]"
+      className="flex-1"
+      style={{ backgroundColor: theme.canvas }}
     >
       <StatusBar
-        barStyle="light-content"
-        backgroundColor="#10120F"
+        barStyle={appearance === 'dark' ? "light-content" : "dark-content"}
+        backgroundColor={theme.canvas}
         translucent={false}
       />
       <ScrollView
@@ -126,24 +131,25 @@ export default function ProfileScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go back"
             onPress={() => router.replace("/(player)")}
-            className="w-10 h-10 rounded-xl border border-[#30372B] items-center justify-center mr-3"
+            className="w-10 h-10 rounded-xl border items-center justify-center mr-3"
+            style={{ borderColor: theme.border }}
           >
-            <Ionicons name="arrow-back" size={23} color="#F8F7F0" />
+            <Ionicons name="arrow-back" size={23} color={theme.text} />
           </TouchableOpacity>
           <Text
             style={{
               fontFamily: "BigShouldersDisplay_800ExtraBold",
-              fontSize: 26,
+              fontSize: 26, color: theme.text,
             }}
-            className="text-[#F8F7F0]"
+            className=""
           >
             PROFILE
           </Text>
         </View>
-        <View className="mx-5 border border-[#30372B] bg-[#181C16] rounded-[22px] px-4 py-4 flex-row items-center">
+        <View className="mx-5 border rounded-[22px] px-4 py-4 flex-row items-center" style={{ borderColor: theme.border, backgroundColor: theme.surfaceRaised }}>
           <View className="w-[82px] h-[82px] rounded-full border-2 border-[#3DB54A] items-center justify-center">
             <Text
-              style={{ fontFamily: "SpaceGrotesk_700Bold" }}
+              style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.text }}
               className="text-[#3DB54A] text-[23px]"
             >
               {initials}
@@ -152,12 +158,12 @@ export default function ProfileScreen() {
           <View className="flex-1 ml-4">
             <Text
               style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-              className="text-[#F8F7F0] text-[18px]"
+              className="text-[18px]"
               numberOfLines={1}
             >
               {profile?.full_name || "User"}
             </Text>
-            <Text className="text-[#AFAFA9] text-sm mt-1">
+            <Text className="text-sm mt-1" style={{ color: theme.subtle }}>
               {profile?.phone || "No phone number"}
             </Text>
             <TouchableOpacity
@@ -176,12 +182,12 @@ export default function ProfileScreen() {
         </View>
         <View className="px-5">
           <Text
-            style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 17 }}
-            className="text-[#91958D] mt-7 mb-2"
+            style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 17, color: theme.muted }}
+            className="mt-7 mb-2"
           >
             ACCOUNT
           </Text>
-          <View className="bg-[#20241D] rounded-[18px] overflow-hidden">
+          <View className="rounded-[18px] overflow-hidden" style={{ backgroundColor: theme.surface }}>
             {row("My Wallet & Payments", () => router.push("/(player)/wallet"))}
             {row("Saved & Recently Viewed", () =>
               router.push("/(player)/saved-grounds"),
@@ -195,19 +201,19 @@ export default function ProfileScreen() {
             )}
           </View>
           <Text
-            style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 17 }}
-            className="text-[#91958D] mt-7 mb-2"
+            style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 17, color: theme.muted }}
+            className="mt-7 mb-2"
           >
             PREFERENCES
           </Text>
-          <View className="bg-[#20241D] rounded-[18px] overflow-hidden">
+          <View className="rounded-[18px] overflow-hidden" style={{ backgroundColor: theme.surface }}>
             {row("Notification Alerts", () =>
               router.push("/(player)/notifications"),
             )}
-            <View className="min-h-[64px] px-4 flex-row items-center border-b border-[#30372B]">
+            <View className="min-h-[64px] px-4 flex-row items-center border-b" style={{ borderBottomColor: theme.border }}>
               <View className="flex-1">
-                <Text className="text-[#F3F4EF] text-[16px]">Dark mode</Text>
-                <Text className="text-[#AFAFA9] text-xs mt-0.5">
+                <Text className="text-[16px]" style={{ color: theme.text }}>Dark mode</Text>
+                <Text className="text-xs mt-0.5" style={{ color: theme.subtle }}>
                   Your appearance is saved on this device
                 </Text>
               </View>
@@ -231,8 +237,8 @@ export default function ProfileScreen() {
             )}
           </View>
           <Text
-            style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 17 }}
-            className="text-[#91958D] mt-7 mb-2"
+            style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 17, color: theme.muted }}
+            className="mt-7 mb-2"
           >
             BUSINESS
           </Text>
@@ -242,19 +248,20 @@ export default function ProfileScreen() {
               isVendor ? "Switch to vendor mode" : "Become a vendor"
             }
             onPress={handleSwitchToVendor}
-            className="bg-[#19331D] border border-[#315536] rounded-[18px] min-h-[70px] px-4 flex-row items-center"
+            className="border rounded-[18px] min-h-[70px] px-4 flex-row items-center"
+            style={{ backgroundColor: theme.businessSurface, borderColor: theme.businessBorder }}
           >
             <View className="h-10 w-10 rounded-xl bg-[#3DB54A] items-center justify-center">
               <Ionicons name="storefront-outline" size={21} color="#FFFFFF" />
             </View>
             <View className="flex-1 ml-3">
               <Text
-                style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                className="text-[#F3F4EF] text-[16px]"
+                style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.text }}
+                className="text-[16px]"
               >
                 {isVendor ? "Switch to Vendor" : "Become a Vendor"}
               </Text>
-              <Text className="text-[#A6CFA9] text-xs mt-0.5">
+              <Text className="text-xs mt-0.5" style={{ color: theme.businessMuted }}>
                 {isVendor
                   ? "Manage your grounds and bookings"
                   : "List your ground and accept bookings"}
@@ -263,17 +270,17 @@ export default function ProfileScreen() {
             <Ionicons name="arrow-forward" size={21} color="#59C462" />
           </TouchableOpacity>
           <Text
-            style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 17 }}
-            className="text-[#91958D] mt-7 mb-2"
+            style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 17, color: theme.muted }}
+            className="mt-7 mb-2"
           >
             SUPPORT
           </Text>
-          <View className="bg-[#20241D] rounded-[18px] overflow-hidden">
+          <View className="rounded-[18px] overflow-hidden" style={{ backgroundColor: theme.surface }}>
             {row("Help Center & Support", () =>
               router.push("/(player)/help-support"),
             )}
           </View>
-          <View className="bg-[#20241D] rounded-[18px] overflow-hidden mt-7">
+          <View className="rounded-[18px] overflow-hidden mt-7" style={{ backgroundColor: theme.surface }}>
             {row("Log Out", handleLogout)}
             {row(
               "Delete Account",

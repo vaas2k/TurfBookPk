@@ -31,6 +31,8 @@ export default function VendorBookings() {
   const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [range, setRange] = useState<'day' | 'week' | 'month'>('day');
+  const [selectedDate, setSelectedDate] = useState(() => new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10));
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -70,7 +72,13 @@ export default function VendorBookings() {
     const past: BookingProfile[] = [];
     const cancelled: BookingProfile[] = [];
 
-    bookings.forEach((b) => {
+    const selected = new Date(`${selectedDate}T12:00:00+05:00`);
+    const start = range === 'month' ? new Date(selected.getFullYear(), selected.getMonth(), 1) : new Date(selected);
+    if (range === 'week') start.setDate(selected.getDate() - selected.getDay());
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    if (range === 'month') end.setMonth(end.getMonth() + 1); else end.setDate(end.getDate() + (range === 'week' ? 7 : 1));
+    bookings.filter((b) => { const date = new Date(`${b.date}T12:00:00+05:00`); return date >= start && date < end; }).forEach((b) => {
       if (b.status === 'cancelled' || b.status === 'expired') {
         cancelled.push(b);
       } else if (b.date === todayStr) {
@@ -96,14 +104,14 @@ export default function VendorBookings() {
       result.push({ title: 'Cancelled & Expired', data: cancelled, key: 'cancelled' });
     }
     return result;
-  }, [bookings]);
+  }, [bookings, range, selectedDate]);
 
   const renderBookingCard = ({ item }: { item: BookingProfile }) => (
     <TouchableOpacity
       accessibilityRole="button"
       accessibilityLabel={`View booking ${item.booking_number} for ${item.ground_title}`}
       onPress={() => router.push({ pathname: '/(vendor)/booking/[id]', params: { id: item.id } })}
-      className="bg-white rounded-2xl p-4 mb-3 border border-[#E5E5E5]"
+      className="bg-[#1B1F19] rounded-[14px] p-4 mb-3 border border-[#30372B]"
       style={{
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
@@ -114,46 +122,25 @@ export default function VendorBookings() {
     >
       <View className="flex-row justify-between items-start">
         <View className="flex-1 mr-3">
-          <Text className="text-[#1A1A2E] text-base font-bold" numberOfLines={1}>
-            {item.ground_title}
+          <Text className="text-[#F5F5F0] text-base font-bold" numberOfLines={1}>
+            {formatTimeRange12(item.start_time, item.end_time)}
           </Text>
-          <Text className="text-[#737373] text-sm mt-1">
-            {item.date} · {formatTimeRange12(item.start_time, item.end_time)}
+          <Text className="text-[#AFAFA9] text-sm mt-1">
+            {item.player_name || 'Player'} · {item.ground_title}
           </Text>
         </View>
         <BookingStatusBadge status={item.status} paymentStatus={item.payment_status} />
       </View>
 
-      <View className="bg-[#F9FAFB] rounded-xl p-3 mt-3 border border-[#F3F4F6]">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center flex-1 mr-2">
-            <Ionicons name="person-circle-outline" size={18} color="#4B5563" />
-            <Text className="text-[#1A1A2E] font-semibold text-xs ml-1.5" numberOfLines={1}>
-              {item.player_name || 'Player'}
-            </Text>
-          </View>
-          <Text className="text-[#6B7280] text-xs font-mono">
-            {item.player_phone || 'No phone'}
-          </Text>
-        </View>
-      </View>
-
-      <View className="flex-row justify-between items-center mt-3 pt-3 border-t border-[#F5F5F5]">
-        <Text className="text-[#9CA3AF] text-xs font-mono">
-          #{item.booking_number}
-        </Text>
-        <View className="flex-row items-center">
-          <Text className="text-[#737373] text-xs mr-1.5">Net Payout:</Text>
-          <Text className="text-[#4CAF50] font-bold text-base">
-            PKR {item.vendor_amount.toLocaleString()}
-          </Text>
-        </View>
+      <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-[#30372B]">
+        <Text className="text-[#92978F] text-xs">Ref #{item.booking_number}</Text>
+        <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#50C15B] text-sm">PKR {item.vendor_amount.toLocaleString()}</Text>
       </View>
     </TouchableOpacity>
   );
 
   const renderSectionHeader = ({ section }: { section: VendorBookingSection }) => (
-    <View className="flex-row items-center justify-between pt-4 pb-2 bg-[#F8F9FA]">
+    <View className="hidden">
       <Text className="text-sm font-bold uppercase tracking-wider text-[#4B5563]">
         {section.title}
       </Text>
@@ -166,15 +153,9 @@ export default function VendorBookings() {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
+    <SafeAreaView className="flex-1 bg-[#10120F]">
       {/* Top Header */}
-      <View className="px-5 py-4 bg-white border-b border-[#E5E5E5] flex-row items-center">
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace('/(vendor)')} className="w-11 h-11 rounded-full bg-[#F5F5F5] items-center justify-center mr-3"><Ionicons name="arrow-back" size={20} color="#1A1A2E" /></TouchableOpacity>
-        <View className="flex-1"><Text className="text-2xl font-bold text-[#1A1A2E]">VENDOR BOOKINGS</Text>
-        <Text className="text-[#737373] text-xs mt-0.5">
-          {total} {total === 1 ? 'total booking' : 'total bookings across your venues'}
-        </Text></View>
-      </View>
+      <View className="px-6 pt-5"><Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 27 }} className="text-[#F5F5F0]">BOOKING HISTORY</Text><Text className="text-[#55C561] text-sm mt-0.5">{total} booking{total === 1 ? '' : 's'} across your grounds</Text><View className="bg-[#1B1F19] rounded-[14px] p-1 flex-row mt-4">{(['day', 'week', 'month'] as const).map((item) => <TouchableOpacity key={item} onPress={() => setRange(item)} className={`flex-1 min-h-[42px] rounded-[10px] items-center justify-center ${range === item ? 'bg-[#3EAF4C]' : ''}`}><Text className={range === item ? 'text-[#102012] font-bold' : 'text-[#B2B5AF] font-bold'}>{item[0].toUpperCase() + item.slice(1)}</Text></TouchableOpacity>)}</View><View className="flex-row items-center justify-between mt-4 mb-2"><TouchableOpacity onPress={() => { const next = new Date(`${selectedDate}T12:00:00+05:00`); next.setDate(next.getDate() - (range === 'day' ? 1 : range === 'week' ? 7 : 30)); setSelectedDate(next.toISOString().slice(0, 10)); }} className="h-9 w-9 rounded-lg bg-[#1B1F19] items-center justify-center"><Ionicons name="chevron-back" size={20} color="#F5F5F0" /></TouchableOpacity><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0]">{new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-PK', { weekday: range === 'day' ? 'long' : undefined, month: 'short', day: 'numeric', year: range === 'month' ? 'numeric' : undefined })}</Text><TouchableOpacity onPress={() => { const next = new Date(`${selectedDate}T12:00:00+05:00`); next.setDate(next.getDate() + (range === 'day' ? 1 : range === 'week' ? 7 : 30)); setSelectedDate(next.toISOString().slice(0, 10)); }} className="h-9 w-9 rounded-lg bg-[#1B1F19] items-center justify-center"><Ionicons name="chevron-forward" size={20} color="#F5F5F0" /></TouchableOpacity></View></View>
 
       {loading && bookings.length === 0 ? (
         <View className="flex-1 items-center justify-center">

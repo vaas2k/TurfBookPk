@@ -275,6 +275,8 @@ export default function SearchScreen() {
   };
   const filterSheetPan = PanResponder.create({
     onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onMoveShouldSetPanResponderCapture: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderTerminationRequest: () => false,
     onPanResponderMove: (_, gesture) => filterSheetTranslateY.setValue(Math.max(0, gesture.dy)),
     onPanResponderRelease: (_, gesture) => {
       if (gesture.dy > 110 || gesture.vy > 1.25) closeFilters();
@@ -353,8 +355,8 @@ export default function SearchScreen() {
         <Modal transparent animationType="slide" visible={showFilters} onRequestClose={closeFilters}>
           <View className="flex-1 justify-end bg-black/70">
             <Pressable className="absolute inset-0" onPress={closeFilters} accessibilityLabel="Close filters" />
-            <Animated.View style={{ transform: [{ translateY: filterSheetTranslateY }] }} className="max-h-[82%] rounded-t-[30px] border-t border-[#30372B] bg-[#181C16] pt-3">
-              <View {...filterSheetPan.panHandlers} className="h-8 items-center justify-center -mt-3 mb-1"><View className="h-1.5 w-12 rounded-full bg-[#6B7167]" /></View>
+            <Animated.View {...filterSheetPan.panHandlers} style={{ transform: [{ translateY: filterSheetTranslateY }] }} className="max-h-[82%] rounded-t-[30px] border-t border-[#30372B] bg-[#181C16] pt-3">
+              <View className="h-8 items-center justify-center -mt-3 mb-1"><View className="h-1.5 w-12 rounded-full bg-[#6B7167]" /></View>
         <ScrollView className="px-5" contentContainerStyle={{ paddingBottom: 18 }} showsVerticalScrollIndicator={false}>
           <View className="flex-row justify-between items-center">
             <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 23 }} className="text-[#F8F7F0]">FILTERS</Text>

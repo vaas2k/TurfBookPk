@@ -1,14 +1,27 @@
-import { View, Text, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StatusBar, Switch, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorStore } from '@/store/vendorStore';
 import { appDialog } from '@/components/ui/app-dialog';
 import { Ionicons } from '@expo/vector-icons';
+import { useState } from 'react';
+
+function SettingRow({ label, onPress, destructive = false, last = false }: { label: string; onPress: () => void; destructive?: boolean; last?: boolean }) {
+  return <TouchableOpacity accessibilityRole="button" accessibilityLabel={label} onPress={onPress} className={`min-h-[51px] px-4 flex-row items-center justify-between ${last ? "" : "border-b border-[#30372B]"}`}><Text className={`text-[15px] ${destructive ? "text-[#FF4668]" : "text-[#E5E7E1]"}`}>{label}</Text><Ionicons name="chevron-forward" size={18} color={destructive ? "#FF4668" : "#8C9289"} /></TouchableOpacity>;
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return <View className="mt-6"><Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 15 }} className="text-[#8E948B] mb-2">{title}</Text><View className="overflow-hidden rounded-xl border border-[#30372B] bg-[#1B1F19]">{children}</View></View>;
+}
 
 export default function VendorProfile() {
   const { profile, signOut, switchToPlayer } = useAuthStore();
   const { vendorProfile } = useVendorStore();
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const businessName = vendorProfile?.business_name || profile?.full_name || 'Your business';
+  const phone = vendorProfile?.business_phone || profile?.phone || 'No phone added';
+  const unavailable = (label: string) => appDialog.alert(label, 'This setting will be available when vendor payouts and account controls are connected.');
 
   const handleLogout = async () => {
     appDialog.alert(
@@ -46,109 +59,19 @@ export default function VendorProfile() {
     );
   };
 
-  return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
-      {/* Header */}
-      <View className="bg-white px-6 py-4 border-b border-[#E5E5E5]">
-        <Text className="text-2xl font-bold text-[#1A1A2E]">Vendor Profile</Text>
-      </View>
-
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* Profile Card */}
-        <View className="mx-4 mt-4 bg-white rounded-2xl p-6 items-center"
-          style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
-          
-          <View className="w-24 h-24 rounded-full bg-[#4CAF50] items-center justify-center">
-            <Text className="text-4xl font-bold text-white">
-              {vendorProfile?.business_name?.charAt(0) || profile?.full_name?.charAt(0) || 'V'}
-            </Text>
-          </View>
-          
-          <Text className="text-xl font-bold text-[#1A1A2E] mt-4">
-            {vendorProfile?.business_name || profile?.full_name || 'Vendor'}
-          </Text>
-          
-          <Text className="text-[#737373] text-sm mt-0.5">
-            {vendorProfile?.business_phone || profile?.phone || 'No phone'}
-          </Text>
-          
-          <View className="flex-row items-center mt-2">
-            <View className="bg-[#E8F5E9] px-3 py-1 rounded-full">
-              <Text className="text-[#4CAF50] text-xs font-medium">Vendor</Text>
-            </View>
-            {vendorProfile?.is_verified === false && (
-              <View className="bg-[#FEF3C7] px-3 py-1 rounded-full ml-2">
-                <Text className="text-[#F59E0B] text-xs font-medium">Pending Verification</Text>
-              </View>
-            )}
-          </View>
-
-          {vendorProfile?.business_city && (
-            <View className="flex-row items-center mt-2">
-              <Ionicons name="location-outline" size={16} color="#737373" />
-              <Text className="text-[#737373] text-sm ml-1">{vendorProfile.business_city}</Text>
-            </View>
-          )}
-        </View>
-
-        <View className="mx-4 mt-4">
-          <TouchableOpacity className="bg-white border border-[#E5E5E5] py-4 rounded-xl" onPress={() => router.push('/(vendor)/edit-profile')}>
-            <Text className="text-[#1A1A2E] text-center font-semibold">Edit Business Profile</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Stats */}
-        <View className="mx-4 mt-4 flex-row space-x-3">
-          <View className="flex-1 bg-white rounded-2xl p-4 items-center"
-            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
-            <Text className="text-[#737373] text-xs">Total Earnings</Text>
-            <Text className="text-[#4CAF50] text-xl font-bold mt-1">
-              Rs {vendorProfile?.total_earnings || 0}
-            </Text>
-          </View>
-          <View className="flex-1 bg-white rounded-2xl p-4 items-center"
-            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 }}>
-            <Text className="text-[#737373] text-xs">Rating</Text>
-            <View className="flex-row items-center mt-1">
-              <Ionicons name="star" size={16} color="#F59E0B" />
-              <Text className="text-xl font-bold text-[#1A1A2E] ml-1">
-                {vendorProfile?.rating || 0}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Switch to Player Button */}
-        <View className="mx-4 mt-6">
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Switch to player mode"
-            className="flex-row items-center justify-center bg-[#E8F5E9] py-4 rounded-xl border border-[#4CAF50]"
-            onPress={handleSwitchToPlayer}
-          >
-            <Ionicons name="person-outline" size={20} color="#4CAF50" />
-            <Text className="text-[#4CAF50] font-semibold ml-2">Switch to Player Mode</Text>
-          </TouchableOpacity>
-          <Text className="text-[#737373] text-xs text-center mt-2">
-            Switch back to player view to book grounds
-          </Text>
-        </View>
-
-        {/* Logout Button */}
-        <View className="mx-4 mt-6 mb-8">
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Sign out"
-            className="bg-red-500 py-4 rounded-full"
-            style={{ shadowColor: '#EF4444', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}
-            onPress={handleLogout}
-          >
-            <Text className="text-white text-center font-semibold">Logout</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
+  return <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
+    <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 38 }}>
+      <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 15 }} className="text-[#8E948B]">SETTINGS & CONTROL</Text>
+      <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[25px] text-[#F5F5F0] mt-1">Profile</Text>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit business profile" onPress={() => router.push('/(vendor)/edit-profile')} className="bg-[#1B1F19] border border-[#30372B] rounded-[18px] mt-3 px-5 py-5 flex-row items-center">
+        <View className="h-[60px] w-[60px] rounded-full bg-[#42B84F] items-center justify-center"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#102110] text-[25px]">{businessName.charAt(0).toUpperCase()}</Text></View>
+        <View className="flex-1 ml-4"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] text-[17px]" numberOfLines={1}>{businessName}</Text><Text className="text-[#92978F] text-[13px] mt-1" numberOfLines={1}>{vendorProfile?.business_city || 'Business profile'} · {phone}</Text></View><Ionicons name="chevron-forward" size={21} color="#9BA097" />
+      </TouchableOpacity>
+      <Section title="ACCOUNT"><SettingRow label="Payout account" onPress={() => unavailable('Payout account')} /><SettingRow label="Change phone number" onPress={() => unavailable('Change phone number')} last /></Section>
+      <Section title="PREFERENCES"><View className="min-h-[55px] px-4 flex-row items-center justify-between border-b border-[#30372B]"><Text className="text-[#E5E7E1] text-[15px]">Notification settings</Text><Switch accessibilityLabel="Toggle notification settings" value={notificationsEnabled} onValueChange={setNotificationsEnabled} trackColor={{ false: '#4A5047', true: '#42B84F' }} thumbColor="#F8FAF5" /></View><SettingRow label="Language" onPress={() => unavailable('Language')} last /></Section>
+      <Section title="SUPPORT"><SettingRow label="Help centre" onPress={() => appDialog.alert('Help centre', 'For booking, ground, or account help, contact TurfBookPK support.')} /><SettingRow label="Contact support" onPress={() => Linking.openURL('mailto:support@turfbookpk.com?subject=TurfBookPK%20vendor%20support').catch(() => appDialog.alert('Contact support', 'Email support@turfbookpk.com for help.'))} last /></Section>
+      <View className="mt-6 overflow-hidden rounded-xl border border-[#30372B] bg-[#1B1F19]"><SettingRow label="Switch to player mode" onPress={handleSwitchToPlayer} /><SettingRow label="Log out" onPress={handleLogout} /><SettingRow label="Delete account" destructive onPress={() => appDialog.alert('Delete account', 'Account deletion is not available in this MVP. Please contact support.')} last /></View>
+    </ScrollView>
+  </SafeAreaView>;
 }

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -443,6 +444,33 @@ export function BookingDetails({
         <Toast message={toast} tone="error" onHide={() => setToast(null)} />
       </SafeAreaView>
     );
+  }
+
+  if (vendorView) {
+    const bookingDate = new Date(`${booking.date}T12:00:00`).toLocaleDateString("en-PK", { weekday: "long", month: "short", day: "numeric" });
+    const slotTime = formatTimeRange12(booking.start_time, booking.end_time);
+    const paymentLabel = booking.payment_status === "paid" ? "Paid online" : booking.payment_status.replaceAll("_", " ");
+    const canComplete = booking.status === "confirmed" && hasEnded;
+    const isOpen = booking.status === "confirmed" && !hasEnded;
+    return <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
+      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+      <View className="px-6 pt-4 pb-4 flex-row items-center"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace("/(vendor)/bookings")} className="w-8 h-10 items-center justify-center -ml-2"><Ionicons name="chevron-back" size={29} color="#F5F5F0" /></TouchableOpacity><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0] text-[21px] ml-2">BOOKING DETAILS</Text></View>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 156 }} showsVerticalScrollIndicator={false}>
+        <View className="bg-[#1B1F19] border border-[#30372B] rounded-[18px] p-5">
+          <View className="flex-row items-start"><View className="flex-1"><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0] text-[17px]">{booking.player_name || "Player"}</Text><Text className="text-[#9CA198] text-sm mt-1">#{booking.booking_number} · {booking.ground_title}</Text></View>{booking.player_phone && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Call player" onPress={() => Linking.openURL(`tel:${booking.player_phone}`)} className="w-10 h-10 rounded-full bg-[#17301B] items-center justify-center"><Ionicons name="call-outline" size={21} color="#42B84F" /></TouchableOpacity>}</View>
+          <View className="border-t border-[#30372B] mt-4 pt-4"><View className="flex-row items-center"><Ionicons name="calendar-outline" size={18} color="#42B84F" /><Text className="text-[#E5E7E1] text-sm ml-3">{bookingDate} · {slotTime}</Text></View><View className="flex-row items-center mt-3"><Ionicons name="location-outline" size={18} color="#42B84F" /><Text className="text-[#E5E7E1] text-sm ml-3 flex-1" numberOfLines={1}>{booking.ground_title} · {booking.ground_address}</Text></View></View>
+          <View className="border-t border-[#30372B] mt-4 pt-4 flex-row items-center justify-between"><Text className="text-[#9CA198] text-sm">Payment method</Text><View className="rounded-full border border-[#42B84F] px-3 py-1"><Text className="text-[#57CC63] text-xs font-bold capitalize">{paymentLabel}</Text></View></View>
+        </View>
+        <View className="bg-[#1B1F19] border border-[#30372B] rounded-[18px] p-5 mt-5"><Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 16 }} className="text-[#9CA198]">PRICE BREAKDOWN</Text><View className="flex-row justify-between mt-5"><Text className="text-[#AEB2AA]">{formatDuration(booking.start_time, booking.end_time)} slot rate</Text><Text className="text-[#F5F5F0] font-bold">PKR {booking.total_amount.toLocaleString()}</Text></View><View className="flex-row justify-between mt-4"><Text className="text-[#AEB2AA]">Platform commission</Text><Text className="text-[#F26666]">- PKR {booking.platform_fee.toLocaleString()}</Text></View><View className="flex-row justify-between mt-4 pt-4 border-t border-[#30372B]"><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0]">Your payout</Text><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#42B84F] text-lg">PKR {booking.vendor_amount.toLocaleString()}</Text></View></View>
+        {booking.status === "cancelled" && <View className="bg-[#38201E] border border-[#69332C] rounded-[18px] p-5 mt-5"><Text className="text-[#FFD1CB] font-bold">Booking cancelled</Text><Text className="text-[#E9A49B] text-sm mt-2">Refund due: PKR {booking.refund_amount.toLocaleString()}</Text>{booking.cancellation_reason && <Text className="text-[#E9A49B] text-xs mt-2">{booking.cancellation_reason}</Text>}</View>}
+        {isOpen && <Text className="text-[#92978F] text-xs leading-5 text-center mt-5">Attendance can be marked once the booked slot has ended.</Text>}
+      </ScrollView>
+      {(isCancellable || canComplete) && <View className="absolute bottom-0 left-0 right-0 bg-[#10120F] border-t border-[#30372B] px-6 pt-5 pb-6">
+        {canComplete && <><TouchableOpacity accessibilityRole="button" accessibilityLabel="Mark player attendance complete" disabled={actionLoading} onPress={handleCompleted} className="bg-[#42B84F] rounded-full py-4 items-center">{actionLoading ? <ActivityIndicator color="#102110" /> : <Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#102110] text-base">Mark as checked in</Text>}</TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Mark player as no-show" disabled={actionLoading} onPress={handleNoShow} className="py-4 items-center"><Text className="text-[#F26666] font-bold">Mark as no-show</Text></TouchableOpacity></>}
+        {isCancellable && !canComplete && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel booking" disabled={actionLoading} onPress={handleCancel} className="py-3 items-center"><Text className="text-[#F26666] font-bold">Cancel booking</Text></TouchableOpacity>}
+      </View>}
+      <Toast message={toast} tone="error" onHide={() => setToast(null)} />
+    </SafeAreaView>;
   }
 
   return (

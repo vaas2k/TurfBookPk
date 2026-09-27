@@ -41,6 +41,8 @@ export function AppDialogHost() {
   const destructive = actions.some((action) => action.style === 'destructive');
   const sheetPan = PanResponder.create({
     onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onMoveShouldSetPanResponderCapture: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderTerminationRequest: () => false,
     onPanResponderMove: (_, gesture) => sheetTranslateY.setValue(Math.max(0, gesture.dy)),
     onPanResponderRelease: (_, gesture) => {
       if (gesture.dy > 110 || gesture.vy > 1.25) dismiss();
@@ -51,9 +53,9 @@ export function AppDialogHost() {
   return <Modal visible={Boolean(request)} transparent animationType="slide" onRequestClose={dismiss}>
     <View className="flex-1 justify-end bg-black/65">
       <Pressable className="absolute inset-0" onPress={dismiss} accessibilityLabel="Close dialog" />
-      <Animated.View style={{ transform: [{ translateY: sheetTranslateY }] }}>
+      <Animated.View {...sheetPan.panHandlers} style={{ transform: [{ translateY: sheetTranslateY }] }}>
       <SafeAreaView edges={['bottom']} accessibilityRole="alert" className="w-full rounded-t-[32px] border-t border-[#30372B] bg-[#1A1E17] px-6 pt-3" style={{ elevation: 14 }}>
-        <View {...sheetPan.panHandlers} className="h-8 items-center justify-center -mt-3"><View className="h-1.5 w-12 rounded-full bg-[#6B7167]" /></View>
+        <View className="h-8 items-center justify-center -mt-3"><View className="h-1.5 w-12 rounded-full bg-[#6B7167]" /></View>
         <View className={`mt-6 h-12 w-12 items-center justify-center rounded-full ${destructive ? 'bg-[#3A211E]' : 'bg-[#19331D]'}`}>
           <Ionicons name={destructive ? 'warning-outline' : 'information-circle-outline'} size={27} color={destructive ? '#FF5A55' : '#3DB54A'} />
         </View>
