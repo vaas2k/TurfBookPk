@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import {
   Image,
@@ -8,6 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  AppState,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -73,6 +75,8 @@ const emptyForm: FormState = {
   operating_close: "23:00",
 };
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DRAFT_KEY_PREFIX = "turfbookpk:ground-form-draft:";
+type GroundDraft = { form: FormState; step: number; savedAt: string };
 
 function parseCoordinates(
   value: string,
@@ -102,6 +106,63 @@ export default function AddGround() {
   const [toast, setToast] = useState<string | null>(null);
   const [step, setStep] = useState(1);
   const [completedGround, setCompletedGround] = useState<Ground | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const formRef = useRef(form);
+  const stepRef = useRef(step);
+  const draftRestoredRef = useRef(false);
+  const draftKey = `${DRAFT_KEY_PREFIX}${id || "new"}`;
+
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+
+  const persistDraft = useCallback(async () => {
+    if (!draftReady || completedGround) return;
+    const current = formRef.current;
+    const hasContent = Object.entries(current).some(([key, value]) => {
+      if (key === "cancellation_policy" || key === "operating_open" || key === "operating_close" || key === "peak_start_time" || key === "peak_end_time") return false;
+      return Array.isArray(value) ? value.length > 0 : Boolean(value);
+    });
+    if (!hasContent) return;
+    await AsyncStorage.setItem(draftKey, JSON.stringify({ form: current, step: Math.min(3, Math.max(1, stepRef.current)), savedAt: new Date().toISOString() } satisfies GroundDraft));
+  }, [completedGround, draftKey, draftReady]);
+
+  const clearDraft = useCallback(() => AsyncStorage.removeItem(draftKey), [draftKey]);
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(draftKey)
+      .then((raw) => {
+        if (!raw || !active) return;
+        const draft = JSON.parse(raw) as Partial<GroundDraft>;
+        if (!draft.form || typeof draft.form !== "object") return;
+        setForm({ ...emptyForm, ...draft.form });
+        setStep(Math.min(3, Math.max(1, Number(draft.step) || 1)));
+        draftRestoredRef.current = true;
+        setDraftRestored(true);
+        setToast("Your saved draft has been restored.");
+      })
+      .catch(() => undefined)
+      .finally(() => active && setDraftReady(true));
+    return () => { active = false; };
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    const timeout = setTimeout(() => { void persistDraft(); }, 350);
+    return () => clearTimeout(timeout);
+  }, [draftReady, form, persistDraft, step]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "inactive" || nextState === "background") void persistDraft();
+    });
+    return () => subscription.remove();
+  }, [persistDraft]);
 
   useEffect(() => {
     if (!id) return;
@@ -111,6 +172,7 @@ export default function AddGround() {
         if (!ground) return;
         setExisting(ground);
         const peak = ground.peak_windows[0];
+        if (draftRestoredRef.current) return;
         setForm({
           title: ground.title,
           description: ground.description || "",
@@ -141,7 +203,7 @@ export default function AddGround() {
       .catch(() =>
         setToast("Unable to load ground details. Please try again."),
       );
-  }, [id]);
+  }, [draftRestored, id]);
 
   const update = (key: keyof FormState, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -265,6 +327,7 @@ export default function AddGround() {
         const created = await createGround(data);
         setCompletedGround(created);
       }
+      await clearDraft();
       setStep(4);
     } catch (error: any) {
       setToast(error?.message || "Unable to save ground. Please try again.");
