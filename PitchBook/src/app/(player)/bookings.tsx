@@ -114,8 +114,9 @@ export default function BookingsScreen() {
     ? section.key === 'pending' || section.key === 'upcoming'
     : bookingTab === 'past' ? section.key === 'completed' : section.key === 'cancelled'), [bookingTab, sections]);
 
-  const renderBookingItem = ({ item }: { item: BookingProfile }) => (
-    <TouchableOpacity
+  const renderBookingItem = ({ item }: { item: BookingProfile }) => {
+    const paymentOpen = item.is_recurring_reservation && item.status === 'pending_payment' && !!item.payment_window_opens_at && !!item.reservation_expires_at && new Date(item.payment_window_opens_at).getTime() <= Date.now() && new Date(item.reservation_expires_at).getTime() > Date.now();
+    return <TouchableOpacity
       accessibilityRole="button"
       accessibilityLabel={`View booking ${item.booking_number} for ${item.ground_title}`}
       onPress={() => router.push({ pathname: '/(player)/booking/[id]', params: { id: item.id } })}
@@ -148,8 +149,9 @@ export default function BookingsScreen() {
           PKR {item.total_amount.toLocaleString()}
         </Text>
       </View>
+      {paymentOpen && <View className="bg-[#17301B] border border-[#42B84F] rounded-xl p-3 mt-3 flex-row items-center"><View className="flex-1"><Text className="text-[#57CC63] text-xs font-bold">PAYMENT WINDOW OPEN</Text><Text className="text-[#A8C9AC] text-xs mt-1">Pay now to keep this reserved slot.</Text></View><View className="bg-[#42B84F] rounded-lg px-3 py-2"><Text className="text-[#102110] text-xs font-bold">Pay now</Text></View></View>}
     </TouchableOpacity>
-  );
+  };
 
   const renderSectionHeader = ({ section }: { section: BookingSection }) => (
     <View className="flex-row items-center justify-between pt-5 pb-2 bg-[#10120F]">

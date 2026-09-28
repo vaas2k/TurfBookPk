@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Modal,
   ScrollView,
+  StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
@@ -31,7 +32,7 @@ import { Toast } from "@/components/ui/toast";
 import { goBackOrReplace } from "@/lib/navigation";
 
 const fieldClass =
-  "bg-white border border-[#E5E5E5] rounded-xl px-4 py-3 text-[#1A1A2E]";
+  "bg-[#1B1F19] border border-[#30372B] rounded-xl px-4 py-3 text-[#F5F5F0]";
 const pakistanDate = () =>
   new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -50,6 +51,7 @@ export default function GroundSlots() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [blackouts, setBlackouts] = useState<GroundBlackout[]>([]);
   const [date, setDate] = useState(pakistanDate());
+  const [calendarMonth, setCalendarMonth] = useState(pakistanDate().slice(0, 7));
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -114,15 +116,20 @@ export default function GroundSlots() {
       setToast(error?.message || "Unable to change this closure.");
     }
   };
-  const days = Array.from({ length: 31 }, (_, index) => {
-    const value = new Date(`${pakistanDate()}T00:00:00Z`);
-    value.setUTCDate(value.getUTCDate() + index);
-    return {
-      key: value.toISOString().slice(0, 10),
-      label: value.toLocaleDateString("en-PK", { weekday: "short" }),
-      number: value.getUTCDate(),
-    };
+  const monthStart = new Date(`${calendarMonth}-01T00:00:00Z`);
+  const daysInMonth = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0)).getUTCDate();
+  const days = Array.from({ length: monthStart.getUTCDay() + daysInMonth }, (_, index) => {
+    if (index < monthStart.getUTCDay()) return null;
+    const number = index - monthStart.getUTCDay() + 1;
+    const key = `${calendarMonth}-${String(number).padStart(2, "0")}`;
+    return { key, number };
   });
+  const moveCalendarMonth = (direction: number) => {
+    const next = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + direction, 1));
+    const nextMonth = next.toISOString().slice(0, 7);
+    setCalendarMonth(nextMonth);
+    setDate(`${nextMonth}-01`);
+  };
   const todaySlots = slots
     .filter((slot) => slot.date === date)
     .sort((a, b) => a.start_time.localeCompare(b.start_time));
@@ -131,27 +138,28 @@ export default function GroundSlots() {
     (slot) => !slot.is_booked && !slot.is_blocked,
   ).length;
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
+    <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
+      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
       <ScrollView
         className="flex-1 px-5"
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        <View className="flex-row items-center py-4">
+        <View className="flex-row items-center pt-5 pb-4">
           <TouchableOpacity
             accessibilityLabel="Go back"
             onPress={() => goBackOrReplace("/(vendor)/grounds")}
-            className="h-11 w-11 rounded-full bg-white border border-[#E5E5E5] items-center justify-center"
+            className="h-10 w-10 items-center justify-center -ml-2"
           >
-            <Ionicons name="arrow-back" size={20} color="#1A1A2E" />
+            <Ionicons name="chevron-back" size={28} color="#F5F5F0" />
           </TouchableOpacity>
           <View className="flex-1 ml-3">
             <Text
-              className="text-xl font-bold text-[#1A1A2E]"
+              style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[20px] text-[#F5F5F0]"
               numberOfLines={1}
             >
               {title || "Slot management"}
             </Text>
-            <Text className="text-[#737373] text-sm">
+            <Text className="text-[#92978F] text-sm">
               Choose a day, then take action.
             </Text>
           </View>
@@ -173,47 +181,50 @@ export default function GroundSlots() {
               params: { id, title },
             })
           }
-          className="bg-[#E8F5E9] rounded-2xl p-4 mb-5 flex-row items-center"
+          className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 mb-5 flex-row items-center"
         >
-          <View className="h-11 w-11 rounded-xl bg-[#4CAF50] items-center justify-center">
-            <Ionicons name="repeat" size={21} color="white" />
+          <View className="h-11 w-11 rounded-xl bg-[#42B84F] items-center justify-center">
+            <Ionicons name="repeat" size={21} color="#102110" />
           </View>
           <View className="flex-1 ml-3">
-            <Text className="font-bold text-[#1A1A2E]">
+            <Text className="font-bold text-[#F5F5F0]">
               Change regular booking times
             </Text>
-            <Text className="text-[#39723C] text-xs mt-1">
+            <Text className="text-[#9ACB9F] text-xs mt-1">
               Use this only to change your repeating daily schedule.
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#2E7D32" />
+          <Ionicons name="chevron-forward" size={20} color="#57CC63" />
         </TouchableOpacity>
-        <View className="bg-white border border-[#E5E5E5] rounded-2xl p-3 mb-4">
+        <View className="bg-[#1B1F19] border border-[#30372B] rounded-2xl p-3 mb-4">
           <Text className="text-[#1A1A2E] font-bold mb-3">Calendar — next 31 days</Text>
+          <View className="flex-row items-center justify-between mb-4"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => moveCalendarMonth(-1)} className="h-10 w-10 rounded-xl bg-[#282E25] items-center justify-center"><Ionicons name="chevron-back" size={20} color="#F5F5F0" /></TouchableOpacity><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0] text-base">{monthStart.toLocaleDateString('en-PK', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Next month" onPress={() => moveCalendarMonth(1)} className="h-10 w-10 rounded-xl bg-[#282E25] items-center justify-center"><Ionicons name="chevron-forward" size={20} color="#F5F5F0" /></TouchableOpacity></View>
+          <View className="flex-row mb-2">{['S','M','T','W','T','F','S'].map((label, index) => <Text key={`${label}-${index}`} className="w-[14.28%] text-center text-[#777D74] text-[11px] font-bold">{label}</Text>)}</View>
           <View className="flex-row flex-wrap">
-          {days.map((item) => {
+          {days.map((item, index) => {
+            if (!item) return <View key={`blank-${index}`} className="w-[14.28%] h-[68px]" />;
             const count = slots.filter((slot) => slot.date === item.key).length;
             const active = date === item.key;
             return (
               <TouchableOpacity
                 key={item.key}
                 onPress={() => setDate(item.key)}
-                className={`w-[14.28%] py-2 rounded-xl items-center ${active ? "bg-[#4CAF50]" : isBlackout && item.key === date ? "bg-[#FEE2E2]" : "bg-white"}`}
+                className={`w-[14.28%] h-[68px] justify-center rounded-xl items-center ${active ? "bg-[#42B84F]" : blackouts.some((blackout) => blackout.date === item.key) ? "bg-[#38201E] border border-[#69332C]" : "bg-[#252A22]"}`}
               >
                 <Text
                   className={
                     active
                       ? "text-white text-xs font-bold"
-                      : "text-[#737373] text-xs"
+                      : "text-[#92978F] text-xs"
                   }
                 >
-                  {item.key === pakistanDate() ? "Today" : item.label}
+                  {item.key === pakistanDate() ? "Today" : blackouts.some((blackout) => blackout.date === item.key) ? "Closed" : count ? `${count} slots` : ""}
                 </Text>
                 <Text
                   className={
                     active
                       ? "text-white text-lg font-bold mt-1"
-                      : "text-[#1A1A2E] text-lg font-bold mt-1"
+                      : "text-[#F5F5F0] text-lg font-bold mt-1"
                   }
                 >
                   {item.number}
@@ -222,7 +233,7 @@ export default function GroundSlots() {
                   className={
                     active
                       ? "text-white text-[10px]"
-                      : "text-[#737373] text-[10px]"
+                      : "text-[#92978F] text-[10px]"
                   }
                 >
                   {blackouts.some((blackout) => blackout.date === item.key) ? "Closed" : `${count} slots`}
@@ -232,136 +243,46 @@ export default function GroundSlots() {
           })}
           </View>
         </View>
-        <TouchableOpacity onPress={toggleBlackout} className={`rounded-2xl p-4 mb-5 flex-row items-center ${isBlackout ? "bg-[#E8F5E9]" : "bg-[#FEF2F2]"}`}>
-          <View className={`h-11 w-11 rounded-xl items-center justify-center ${isBlackout ? "bg-[#4CAF50]" : "bg-[#DC2626]"}`}><Ionicons name={isBlackout ? "lock-open-outline" : "lock-closed-outline"} size={21} color="white" /></View>
-          <View className="flex-1 ml-3"><Text className="text-[#1A1A2E] font-bold">{isBlackout ? `Reopen ${date}` : `Close ground on ${date}`}</Text><Text className="text-[#737373] text-xs mt-1">{isBlackout ? "Players can book this day again." : "Closes all unbooked slots for this whole day."}</Text></View>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Manage selected day slots" onPress={() => router.push({ pathname: "/(vendor)/ground-slot-day", params: { id, title, date } })} className="bg-[#42B84F] rounded-2xl p-4 mb-4 flex-row items-center justify-between"><View><Text className="text-[#102110] font-bold text-base">Manage this day</Text><Text className="text-[#17351A] text-xs mt-1">{todaySlots.length} slots for {date}</Text></View><Ionicons name="arrow-forward" size={22} color="#102110" /></TouchableOpacity>
+        <TouchableOpacity onPress={toggleBlackout} className={`rounded-2xl p-4 mb-5 flex-row items-center border ${isBlackout ? "bg-[#17301B] border-[#315536]" : "bg-[#38201E] border-[#69332C]"}`}>
+          <View className={`h-11 w-11 rounded-xl items-center justify-center ${isBlackout ? "bg-[#42B84F]" : "bg-[#DC2626]"}`}><Ionicons name={isBlackout ? "lock-open-outline" : "lock-closed-outline"} size={21} color="#F5F5F0" /></View>
+          <View className="flex-1 ml-3"><Text className="text-[#F5F5F0] font-bold">{isBlackout ? `Reopen ${date}` : `Close ground on ${date}`}</Text><Text className="text-[#B8BBB5] text-xs mt-1">{isBlackout ? "Players can book this day again." : "Closes all unbooked slots for this whole day."}</Text></View>
           <Ionicons name="chevron-forward" size={20} color={isBlackout ? "#2E7D32" : "#DC2626"} />
         </TouchableOpacity>
         <View className="flex-row mb-4">
-          <View className="flex-1 bg-white border border-[#E5E5E5] rounded-xl p-3 mr-2">
-            <Text className="text-[#737373] text-xs">Available</Text>
-            <Text className="text-[#2E7D32] text-xl font-bold mt-1">
+          <View className="flex-1 bg-[#1B1F19] border border-[#30372B] rounded-xl p-3 mr-2">
+            <Text className="text-[#92978F] text-xs">Available</Text>
+            <Text className="text-[#57CC63] text-xl font-bold mt-1">
               {available}
             </Text>
           </View>
-          <View className="flex-1 bg-white border border-[#E5E5E5] rounded-xl p-3 mr-2">
-            <Text className="text-[#737373] text-xs">Booked</Text>
+          <View className="flex-1 bg-[#1B1F19] border border-[#30372B] rounded-xl p-3 mr-2">
+            <Text className="text-[#92978F] text-xs">Booked</Text>
             <Text className="text-[#DC2626] text-xl font-bold mt-1">
               {todaySlots.filter((slot) => slot.is_booked).length}
             </Text>
           </View>
-          <View className="flex-1 bg-white border border-[#E5E5E5] rounded-xl p-3">
-            <Text className="text-[#737373] text-xs">Unavailable</Text>
+          <View className="flex-1 bg-[#1B1F19] border border-[#30372B] rounded-xl p-3">
+            <Text className="text-[#92978F] text-xs">Unavailable</Text>
             <Text className="text-[#C56A00] text-xl font-bold mt-1">
               {todaySlots.filter((slot) => slot.is_blocked).length}
             </Text>
           </View>
         </View>
-        <Text className="text-[#1A1A2E] text-lg font-bold mb-3">{date}</Text>
+        <Text className="text-[#F5F5F0] text-lg font-bold mb-3">{new Date(`${date}T12:00:00`).toLocaleDateString('en-PK', { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
         {loading ? (
           <ActivityIndicator className="mt-8" color="#4CAF50" />
         ) : todaySlots.length === 0 ? (
-          <View className="bg-white border border-[#E5E5E5] rounded-2xl p-7 items-center">
+          <View className="bg-[#1B1F19] border border-[#30372B] rounded-2xl p-7 items-center">
             <Ionicons name="calendar-outline" size={36} color="#9CA3AF" />
-            <Text className="text-[#1A1A2E] font-bold mt-3">
+            <Text className="text-[#F5F5F0] font-bold mt-3">
               No slots on this day
             </Text>
-            <Text className="text-[#737373] text-center mt-1">
+            <Text className="text-[#92978F] text-center mt-1">
               Change your regular booking times to add slots.
             </Text>
           </View>
-        ) : (
-          todaySlots.map((slot) => {
-            const status = slot.is_booked
-              ? "Booked by player"
-              : slot.is_club_reserved
-                ? "Reserved for your club"
-                : slot.is_blocked
-                  ? "Blocked"
-                  : "Available to players";
-            const color = slot.is_booked
-              ? "#DC2626"
-              : slot.is_club_reserved
-                ? "#7C3AED"
-                : slot.is_blocked
-                  ? "#C56A00"
-                  : "#2E7D32";
-            return (
-              <View
-                key={slot.id}
-                className="bg-white border border-[#E5E5E5] rounded-2xl p-4 mb-3"
-              >
-                <View className="flex-row justify-between items-start">
-                  <View>
-                    <Text className="text-[#1A1A2E] text-xl font-bold">
-                      {formatTimeRange12(slot.start_time, slot.end_time)}
-                    </Text>
-                    <Text className="text-[#737373] mt-1">
-                      PKR {slot.price}
-                    </Text>
-                  </View>
-                  <Text style={{ color }} className="font-bold text-sm">
-                    {status}
-                  </Text>
-                </View>
-                {!slot.is_booked && (
-                  <View className="flex-row flex-wrap mt-4">
-                    <TouchableOpacity
-                      onPress={() =>
-                        update(
-                          slot,
-                          {
-                            is_blocked: !slot.is_blocked,
-                            is_club_reserved: false,
-                          },
-                          slot.is_blocked
-                            ? "Slot is available again."
-                            : "Slot blocked.",
-                        )
-                      }
-                      className="rounded-xl bg-[#FFF7ED] px-4 py-3 mr-2 mb-2"
-                    >
-                      <Text className="text-[#A44C00] font-bold">
-                        {slot.is_blocked && !slot.is_club_reserved
-                          ? "Make available"
-                          : "Block"}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() =>
-                        update(
-                          slot,
-                          {
-                            is_club_reserved: !slot.is_club_reserved,
-                            reservation_note: !slot.is_club_reserved
-                              ? "Reserved by venue"
-                              : null,
-                          },
-                          slot.is_club_reserved
-                            ? "Club reservation released."
-                            : "Reserved for your club.",
-                        )
-                      }
-                      className="rounded-xl bg-[#F3E8FF] px-4 py-3 mr-2 mb-2"
-                    >
-                      <Text className="text-[#6B21A8] font-bold">
-                        {slot.is_club_reserved
-                          ? "Release club"
-                          : "Reserve club"}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setRemoving(slot)}
-                      className="rounded-xl bg-[#FEF2F2] px-4 py-3 mb-2"
-                    >
-                      <Text className="text-[#B91C1C] font-bold">Remove</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            );
-          })
-        )}
+        ) : <View className="bg-[#1B1F19] border border-[#30372B] rounded-2xl p-5 items-center"><Ionicons name="checkmark-circle-outline" size={30} color="#57CC63" /><Text className="text-[#F5F5F0] font-bold mt-2">Daily slots are ready</Text><Text className="text-[#92978F] text-sm text-center mt-1">Open day management to block, reserve for your club, or remove individual slots.</Text></View>}
       </ScrollView>
       <Modal
         visible={Boolean(removing)}

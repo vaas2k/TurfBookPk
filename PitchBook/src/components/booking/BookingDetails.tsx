@@ -37,6 +37,12 @@ export function BookingDetails({
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [clockNow, setClockNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -187,13 +193,13 @@ export function BookingDetails({
     new Date(`${booking.date}T${booking.end_time}+05:00`).getTime() <=
     Date.now();
   const paymentWindowOpen = booking.payment_window_opens_at
-    ? new Date(booking.payment_window_opens_at).getTime() <= Date.now()
+    ? new Date(booking.payment_window_opens_at).getTime() <= clockNow
     : false;
   const reservationActive =
     booking.is_recurring_reservation &&
     booking.status === "pending_payment" &&
     booking.reservation_expires_at &&
-    new Date(booking.reservation_expires_at).getTime() > Date.now();
+    new Date(booking.reservation_expires_at).getTime() > clockNow;
 
   if (!vendorView) {
     const isUpcoming =
@@ -304,6 +310,13 @@ export function BookingDetails({
                   slot starts.
                 </Text>
               )}
+            </View>
+          )}
+
+          {reservationActive && (
+            <View className={`border rounded-[22px] px-5 py-5 mt-5 ${paymentWindowOpen ? "bg-[#17301B] border-[#42B84F]" : "bg-[#20241D] border-[#383E32]"}`}>
+              <View className="flex-row items-center"><View className={`h-10 w-10 rounded-xl items-center justify-center ${paymentWindowOpen ? "bg-[#42B84F]" : "bg-[#30372B]"}`}><Ionicons name={paymentWindowOpen ? "wallet-outline" : "time-outline"} size={21} color={paymentWindowOpen ? "#102110" : "#D9DBD5"} /></View><View className="flex-1 ml-3"><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F8F7F0] text-[16px]">Future slot reserved for you</Text><Text className={paymentWindowOpen ? "text-[#A8C9AC] text-xs mt-1" : "text-[#AFAFA9] text-xs mt-1"}>{paymentWindowOpen ? "Your payment window is open. Pay now to keep this slot." : `Payment opens ${new Date(booking.payment_window_opens_at!).toLocaleString("en-PK", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.`}</Text></View></View>
+              {paymentWindowOpen && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Pay for reserved slot" disabled={actionLoading} onPress={handleRecurringPayment} className="bg-[#42B84F] rounded-full py-4 items-center mt-5">{actionLoading ? <ActivityIndicator color="#102110" /> : <Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#102110] text-base">Pay PKR {booking.total_amount.toLocaleString()} now</Text>}</TouchableOpacity>}
             </View>
           )}
 

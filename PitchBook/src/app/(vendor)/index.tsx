@@ -25,49 +25,32 @@ import { listVendorBookings } from "@/lib/api/bookings";
 import { BookingProfile } from "@/types/booking";
 import { Toast } from "@/components/ui/toast";
 
-// Mock data to match the image exactly for the top performing grounds
-const MOCK_GROUNDS_DATA = [
-  {
-    id: "1",
-    title: "Green Valley Arena",
-    subtitle: "Leader in bookings",
-    price: "PKR 72,400",
-    image: "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=200",
-  },
-  {
-    id: "2",
-    title: "Camp Nou Turf",
-    subtitle: "Leader in bookings",
-    price: "PKR 54,000",
-    image: "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=200",
-  },
-  {
-    id: "3",
-    title: "Apex Cricket Cage",
-    subtitle: "Leader in bookings",
-    price: "PKR 38,000",
-    image: "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=200",
-  },
-];
-
 function OwnerHomeView({
   businessName,
   unread,
   today,
   week,
   month,
+  revenue,
   attention,
   schedule,
   grounds,
+  bookings,
+  refreshing,
+  onRefresh,
 }: {
   businessName: string;
   unread: number;
   today: number;
   week: number;
   month: number;
+  revenue: { today: number; week: number; month: number };
   attention: BookingProfile[];
   schedule: BookingProfile[];
   grounds: Ground[];
+  bookings: BookingProfile[];
+  refreshing: boolean;
+  onRefresh: () => void;
 }) {
   const next = schedule[0];
 
@@ -75,6 +58,14 @@ function OwnerHomeView({
   const formatCurrency = (value: number) => {
     return `PKR ${value.toLocaleString()}`;
   };
+  const performance = grounds
+    .map((ground) => {
+      const groundBookings = bookings.filter((booking) => booking.ground_id === ground.id && booking.status === "confirmed");
+      const payout = groundBookings.reduce((total, booking) => total + booking.vendor_amount, 0);
+      return { ground, bookings: groundBookings.length, payout };
+    })
+    .sort((left, right) => right.payout - left.payout || right.bookings - left.bookings)
+    .slice(0, 3);
 
   return (
     <SafeAreaView className="flex-1 bg-[#0F110E]">
@@ -82,6 +73,7 @@ function OwnerHomeView({
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 104 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#52C45D" colors={["#52C45D"]} />}
       >
         {/* Header */}
         <View className="pt-4 flex-row justify-between items-start">
@@ -122,19 +114,19 @@ function OwnerHomeView({
             {
               value: today,
               label: "Today",
-              amount: "PKR 12,400",
+              amount: formatCurrency(revenue.today),
               color: "#3EAF4C",
             },
             {
               value: week,
               label: "This Week",
-              amount: "PKR 54,000",
+              amount: formatCurrency(revenue.week),
               color: "#3EAF4C",
             },
             {
               value: month,
               label: "This Month",
-              amount: "PKR 1,82,000",
+              amount: formatCurrency(revenue.month),
               color: "#6B7269", // Greyish for the third one as per image
             },
           ].map((item, index) => (
@@ -236,7 +228,7 @@ function OwnerHomeView({
           Top performing grounds
         </Text>
 
-        {MOCK_GROUNDS_DATA.map((ground, index) => (
+        {performance.length === 0 ? <View className="bg-[#1B1F19] border border-[#30372B] rounded-[16px] p-5 items-center"><Ionicons name="football-outline" size={26} color="#92978F" /><Text className="text-[#F5F5F0] font-bold mt-2">No grounds yet</Text><Text className="text-[#92978F] text-xs mt-1">Create a ground to see its booking performance.</Text></View> : performance.map(({ ground, bookings: groundBookings, payout }, index) => (
           <TouchableOpacity
             key={ground.id}
             onPress={() =>
@@ -253,7 +245,7 @@ function OwnerHomeView({
               </Text>
             </View>
             <Image
-              source={{ uri: ground.image }}
+              source={{ uri: ground.cover_image || ground.images[0] || "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=200" }}
               className="w-12 h-12 rounded-[10px] ml-3"
             />
             <View className="flex-1 ml-3 justify-center">
@@ -265,14 +257,14 @@ function OwnerHomeView({
                 {ground.title}
               </Text>
               <Text className="text-[#92978F] text-[11px] mt-0.5">
-                {ground.subtitle}
+                {groundBookings ? `${groundBookings} confirmed booking${groundBookings === 1 ? "" : "s"}` : "No confirmed bookings yet"}
               </Text>
             </View>
             <Text
               style={{ fontFamily: "SpaceGrotesk_700Bold" }}
               className="text-[#4FD05B] text-[13px]"
             >
-              {ground.price}
+              {formatCurrency(payout)}
             </Text>
             <Ionicons
               name="chevron-forward"
@@ -296,6 +288,8 @@ export default function VendorDashboard() {
   const [todayBookings, setTodayBookings] = useState(0);
   const [weekBookings, setWeekBookings] = useState(0);
   const [monthBookings, setMonthBookings] = useState(0);
+  const [bookingRevenue, setBookingRevenue] = useState({ today: 0, week: 0, month: 0 });
+  const [confirmedBookings, setConfirmedBookings] = useState<BookingProfile[]>([]);
   const [todaySchedule, setTodaySchedule] = useState<BookingProfile[]>([]);
   const [attentionBookings, setAttentionBookings] = useState<BookingProfile[]>(
     [],
@@ -331,18 +325,18 @@ export default function VendorDashboard() {
       const confirmed = bookings.filter(
         (booking) => booking.status === "confirmed",
       );
+      setConfirmedBookings(confirmed);
+      const inWeek = confirmed.filter((booking) => new Date(`${booking.date}T12:00:00+05:00`) >= startOfWeek);
+      const inMonth = confirmed.filter((booking) => new Date(`${booking.date}T12:00:00+05:00`) >= startOfMonth);
+      setBookingRevenue({
+        today: todayItems.reduce((total, booking) => total + booking.vendor_amount, 0),
+        week: inWeek.reduce((total, booking) => total + booking.vendor_amount, 0),
+        month: inMonth.reduce((total, booking) => total + booking.vendor_amount, 0),
+      });
       setWeekBookings(
-        confirmed.filter(
-          (booking) =>
-            new Date(`${booking.date}T12:00:00+05:00`) >= startOfWeek,
-        ).length,
+        inWeek.length,
       );
-      setMonthBookings(
-        confirmed.filter(
-          (booking) =>
-            new Date(`${booking.date}T12:00:00+05:00`) >= startOfMonth,
-        ).length,
-      );
+      setMonthBookings(inMonth.length);
       setTodaySchedule(todayItems);
       setAttentionBookings(
         bookings.filter(
@@ -819,9 +813,13 @@ export default function VendorDashboard() {
       today={todayBookings}
       week={weekBookings}
       month={monthBookings}
+      revenue={bookingRevenue}
       attention={attentionBookings}
       schedule={todaySchedule}
       grounds={grounds}
+      bookings={confirmedBookings}
+      refreshing={refreshing}
+      onRefresh={load}
     />
   );
 }

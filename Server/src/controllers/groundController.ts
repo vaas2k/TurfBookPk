@@ -3,7 +3,7 @@ import { and, arrayContains, asc, desc, eq, gt, ilike, inArray, lt, ne, or, sql 
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
-import { groundBlackoutDates, grounds, slots, slotScheduleTemplates, vendors } from '../database/schema.js';
+import { bookings, favoriteGrounds, groundBlackoutDates, grounds, recentlyViewedGrounds, slots, slotScheduleTemplates, vendors } from '../database/schema.js';
 import { env } from '../configs/env.js';
 import { CANCELLATION_POLICIES, cancellationPolicy } from '../services/cancellationPolicy.js';
 import { PeakWindow, effectiveSlotPrice } from '../services/peakPricing.js';
@@ -277,6 +277,8 @@ export class GroundController {
       pitchType: body.pitch_type?.trim() || null, pricePerHour: body.price_per_hour, peakPercentage: configuredPeakPercentage, peakWindows: configuredPeakWindows,
       operatingHours: body.operating_hours === undefined ? { open: '06:00', close: '23:00' } : operatingHours(body.operating_hours),
       rules: textArray(body.rules), cancellationPolicy: body.cancellation_policy === undefined ? 'standard' : validatedCancellationPolicy(body.cancellation_policy),
+      // Temporary MVP behavior: listings are auto-approved until the admin review workflow is introduced.
+      isVerified: true,
     }).returning())[0];
     if (!row) throw new AppError('ground_creation_failed', 'Ground could not be created', 500);
     response.status(201).json({ ground: toGround(row) });
@@ -320,8 +322,18 @@ export class GroundController {
   remove = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const current = await ownedGround(routeParam(request.params.id, 'Ground id'), request.auth.userId);
-    await db.update(grounds).set({ isActive: false, updatedAt: new Date() }).where(eq(grounds.id, current.id));
-    response.status(204).send();
+    const hasBookingHistory = await db.select({ id: bookings.id }).from(bookings).where(eq(bookings.groundId, current.id)).limit(1);
+    if (hasBookingHistory[0]) {
+      await db.update(grounds).set({ isActive: false, updatedAt: new Date() }).where(eq(grounds.id, current.id));
+      response.json({ deleted: false, archived: true, message: 'This ground has booking history, so it was archived to preserve those records.' });
+      return;
+    }
+    await db.transaction(async (tx) => {
+      await tx.delete(favoriteGrounds).where(eq(favoriteGrounds.groundId, current.id));
+      await tx.delete(recentlyViewedGrounds).where(eq(recentlyViewedGrounds.groundId, current.id));
+      await tx.delete(grounds).where(eq(grounds.id, current.id));
+    });
+    response.json({ deleted: true, archived: false });
   };
 
   listSlots = async (request: AuthenticatedRequest, response: Response): Promise<void> => {

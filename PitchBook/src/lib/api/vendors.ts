@@ -124,8 +124,8 @@ export async function updateGround(id: string, data: Partial<Ground>): Promise<G
   return result.ground;
 }
 
-export async function deleteGround(id: string): Promise<void> {
-  await apiRequest<void>(`/grounds/${id}`, { method: 'DELETE' });
+export async function deleteGround(id: string): Promise<{ deleted: boolean; archived: boolean; message?: string }> {
+  return apiRequest<{ deleted: boolean; archived: boolean; message?: string }>(`/grounds/${id}`, { method: 'DELETE' });
 }
 
 export async function listGroundSlots(id: string): Promise<Slot[]> {

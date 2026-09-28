@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   ScrollView,
+  StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
@@ -16,9 +17,10 @@ import * as ImagePicker from "expo-image-picker";
 import { deleteOwnedImageUrl, uploadImage } from "@/lib/api/media";
 import { appDialog } from "@/components/ui/app-dialog";
 import { goBackOrReplace } from "@/lib/navigation";
+import { Ionicons } from "@expo/vector-icons";
 
 const input =
-  "bg-white border border-[#E5E5E5] rounded-xl px-4 py-3 text-[#1A1A2E]";
+  "bg-[#1B1F19] border border-[#30372B] rounded-xl px-4 py-3 text-[#F5F5F0]";
 export default function EditVendorProfile() {
   const vendorProfile = useVendorStore((state) => state.vendorProfile);
   const [name, setName] = useState("");
@@ -76,25 +78,26 @@ export default function EditVendorProfile() {
   };
   const toggleActivation = () => { if (!vendorProfile || saving) return; const active = vendorProfile.is_active; appDialog.alert(active ? 'Pause business?' : 'Reactivate business?', active ? 'Players will no longer find or book your grounds. Existing bookings remain visible.' : 'Your active grounds will become visible and bookable again.', [{ text: 'Keep current setting', style: 'cancel' }, { text: active ? 'Pause business' : 'Reactivate', style: active ? 'destructive' : 'default', onPress: async () => { setSaving(true); try { const profile = await updateVendorProfile({ is_active: !active }); useVendorStore.setState({ vendorProfile: profile }); } catch (error: any) { setToast(error?.message || 'Unable to update business availability.'); } finally { setSaving(false); } } }]); };
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
+    <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
+      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
       <ScrollView
         className="px-6"
         contentContainerStyle={{ paddingBottom: 32 }}
       >
-        <View className="flex-row items-center py-4">
+        <View className="flex-row items-center pt-5 pb-4">
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Go back"
             onPress={() => goBackOrReplace("/(vendor)/profile")}
-            className="w-11 h-11 rounded-full bg-white border border-[#E5E5E5] items-center justify-center mr-3"
+            className="w-10 h-10 items-center justify-center -ml-2"
           >
             <Text className="text-[#1A1A2E] text-xl">‹</Text>
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-[#1A1A2E] flex-1">
-            Edit Business
+          <Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[20px] text-[#F5F5F0] flex-1 ml-2">
+            EDIT BUSINESS
           </Text>
         </View>
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose business cover image" disabled={saving} onPress={() => pickImage('vendor_cover')} className="mb-4">{cover ? <Image source={{ uri: cover }} className="h-36 w-full rounded-2xl" /> : <View className="h-28 rounded-2xl bg-[#E8F5E9] items-center justify-center"><Text className="text-[#2E7D32] font-bold">Add cover image</Text></View>}</TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose business logo" disabled={saving} onPress={() => pickImage('vendor_logo')} className="items-center mb-2">{logo ? <Image source={{ uri: logo }} className="h-24 w-24 rounded-full" /> : <View className="h-24 w-24 rounded-full bg-[#F5F5F5] items-center justify-center"><Text className="text-[#4B5563] font-bold">Add logo</Text></View>}<Text className="text-[#2E7D32] font-bold mt-2">Change logo</Text></TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose business cover image" disabled={saving} onPress={() => pickImage('vendor_cover')} className="mb-4">{cover ? <Image source={{ uri: cover }} className="h-36 w-full rounded-2xl" /> : <View className="h-28 rounded-2xl bg-[#1B251B] border border-dashed border-[#42B84F] items-center justify-center"><Ionicons name="image-outline" size={28} color="#57CC63" /><Text className="text-[#57CC63] font-bold mt-2">Add cover image</Text></View>}</TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose business logo" disabled={saving} onPress={() => pickImage('vendor_logo')} className="items-center mb-2">{logo ? <Image source={{ uri: logo }} className="h-24 w-24 rounded-full border-2 border-[#42B84F]" /> : <View className="h-24 w-24 rounded-full bg-[#252A22] border border-[#30372B] items-center justify-center"><Ionicons name="camera-outline" size={26} color="#AFAFA9" /></View>}<Text className="text-[#57CC63] font-bold mt-2">Change logo</Text></TouchableOpacity>
         {(
           [
             ["Business name", name, setName],
@@ -104,7 +107,7 @@ export default function EditVendorProfile() {
           ] as const
         ).map(([label, value, setter]) => (
           <View key={label} className="mt-4">
-            <Text className="text-[#1A1A2E] font-medium mb-2">{label}</Text>
+            <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 16 }} className="text-[#AFAFA9] mb-2">{label.toUpperCase()}</Text>
             <TextInput
               accessibilityLabel={label}
               value={value}
@@ -119,15 +122,15 @@ export default function EditVendorProfile() {
           accessibilityLabel="Save business changes"
           disabled={saving}
           onPress={save}
-          className={`rounded-xl py-4 items-center mt-6 ${saving ? "bg-[#9CA3AF]" : "bg-[#4CAF50]"}`}
+          className={`rounded-xl py-4 items-center mt-6 ${saving ? "bg-[#596055]" : "bg-[#42B84F]"}`}
         >
           {saving ? (
-            <ActivityIndicator color="white" />
+            <ActivityIndicator color="#102110" />
           ) : (
-            <Text className="text-white font-bold">Save Changes</Text>
+            <Text className="text-[#102110] font-bold">Save Changes</Text>
           )}
         </TouchableOpacity>
-        <View className="mt-6 rounded-xl border border-[#E5E5E5] bg-white p-4"><Text className="font-bold text-[#1A1A2E]">Business visibility</Text><Text className="text-[#737373] mt-1">{vendorProfile?.is_active ? 'Active: players can discover and book your active grounds.' : 'Paused: your grounds are hidden from players.'}</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel={vendorProfile?.is_active ? 'Pause business' : 'Reactivate business'} disabled={saving || !vendorProfile} onPress={toggleActivation} className="min-h-[48px] justify-center mt-2"><Text className={vendorProfile?.is_active ? 'text-[#B91C1C] font-bold' : 'text-[#2E7D32] font-bold'}>{vendorProfile?.is_active ? 'Pause business' : 'Reactivate business'}</Text></TouchableOpacity></View>
+        <View className="mt-6 rounded-xl border border-[#30372B] bg-[#1B1F19] p-4"><Text className="font-bold text-[#F5F5F0]">Business visibility</Text><Text className="text-[#AFAFA9] mt-1">{vendorProfile?.is_active ? 'Active: players can discover and book your active grounds.' : 'Paused: your grounds are hidden from players.'}</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel={vendorProfile?.is_active ? 'Pause business' : 'Reactivate business'} disabled={saving || !vendorProfile} onPress={toggleActivation} className="min-h-[48px] justify-center mt-2"><Text className={vendorProfile?.is_active ? 'text-[#F58A7C] font-bold' : 'text-[#57CC63] font-bold'}>{vendorProfile?.is_active ? 'Pause business' : 'Reactivate business'}</Text></TouchableOpacity></View>
       </ScrollView>
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
     </SafeAreaView>

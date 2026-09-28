@@ -3,6 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import {
   Image,
   ScrollView,
+  StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
@@ -27,7 +28,7 @@ import { deleteOwnedImageUrl, uploadImage } from "@/lib/api/media";
 const MOCK_GROUND_IMAGE =
   "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200";
 const fieldClass =
-  "bg-white border border-[#E5E5E5] rounded-xl px-4 py-3 text-[#1A1A2E]";
+  "bg-[#1B1F19] border border-[#30372B] rounded-xl px-4 py-3 text-[#F5F5F0]";
 type FormState = {
   title: string;
   description: string;
@@ -99,6 +100,8 @@ export default function AddGround() {
   const [newRule, setNewRule] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [step, setStep] = useState(1);
+  const [completedGround, setCompletedGround] = useState<Ground | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -257,15 +260,12 @@ export default function AddGround() {
     };
     try {
       if (existing) {
-        await updateGround(existing.id, data);
-        router.replace("/(vendor)/grounds");
+        setCompletedGround(await updateGround(existing.id, data));
       } else {
         const created = await createGround(data);
-        router.replace({
-          pathname: "/(vendor)/setup-schedule",
-          params: { id: created.id, title: created.title },
-        });
+        setCompletedGround(created);
       }
+      setStep(4);
     } catch (error: any) {
       setToast(error?.message || "Unable to save ground. Please try again.");
     } finally {
@@ -273,21 +273,30 @@ export default function AddGround() {
     }
   };
 
+  const continueStep = () => {
+    if (step === 1) {
+      if (!form.title.trim() || !form.location.trim() || !form.city.trim() || !form.address.trim() || !form.price_per_hour) return setToast("Add the ground name, location, address, and hourly price before continuing.");
+      if (!Number.isInteger(Number(form.price_per_hour)) || Number(form.price_per_hour) <= 0) return setToast("Price per hour must be a positive whole number.");
+      if (form.operating_open >= form.operating_close) return setToast("Closing time must be later than opening time.");
+    }
+    setStep((current) => Math.min(3, current + 1));
+  };
+
   const renderTags = (key: "amenities" | "rules") => (
     <View className="flex-row flex-wrap mt-2">
       {form[key].map((item) => (
         <View
           key={item}
-          className="flex-row items-center bg-[#E8F5E9] rounded-full px-3 py-2 mr-2 mb-2"
+          className="flex-row items-center bg-[#17301B] border border-[#42B84F] rounded-full px-3 py-2 mr-2 mb-2"
         >
-          <Text className="text-[#2E7D32] mr-2">{item}</Text>
+          <Text className="text-[#57CC63] mr-2">{item}</Text>
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={`Remove ${item}`}
             className="h-8 w-8 items-center justify-center"
             onPress={() => removeTag(key, item)}
           >
-            <Ionicons name="close-circle" size={16} color="#2E7D32" />
+          <Ionicons name="close-circle" size={16} color="#57CC63" />
           </TouchableOpacity>
         </View>
       ))}
@@ -306,45 +315,54 @@ export default function AddGround() {
         value={value}
         onChangeText={setValue}
         placeholder={placeholder}
-        placeholderTextColor="#A3A3A3"
+        placeholderTextColor="#777D74"
         onSubmitEditing={() => addTag(key, value, setValue)}
         returnKeyType="done"
       />
       <TouchableOpacity
         accessibilityRole="button"
         accessibilityLabel={`Add ${key === "amenities" ? "amenity" : "rule"}`}
-        className="bg-[#1A1A2E] rounded-xl h-12 w-12 ml-2 items-center justify-center"
+        className="bg-[#42B84F] rounded-xl h-12 w-12 ml-2 items-center justify-center"
         onPress={() => addTag(key, value, setValue)}
       >
-        <Ionicons name="add" size={22} color="white" />
+        <Ionicons name="add" size={22} color="#102110" />
       </TouchableOpacity>
     </View>
   );
 
+  if (step === 4 && completedGround) {
+    return <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
+      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+      <View className="flex-1 px-6 items-center justify-center"><View className="h-20 w-20 rounded-full bg-[#17301B] border border-[#42B84F] items-center justify-center"><Ionicons name="checkmark" size={42} color="#57CC63" /></View><Text style={{ fontFamily: "BigShouldersDisplay_800ExtraBold", fontSize: 29 }} className="text-[#F5F5F0] mt-7 text-center">GROUND SUBMITTED</Text><Text className="text-[#AFAFA9] text-center text-[15px] leading-6 mt-3">{completedGround.title} is ready for approval. Admin review will be added later; for this MVP your ground has been approved automatically.</Text><View className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 w-full mt-6"><Text className="text-[#57CC63] font-bold">Approved automatically</Text><Text className="text-[#A8C9AC] text-sm mt-1">Set your repeating booking times next so players can book the ground.</Text></View><TouchableOpacity accessibilityRole="button" onPress={() => router.replace({ pathname: "/(vendor)/setup-schedule", params: { id: completedGround.id, title: completedGround.title } })} className="w-full bg-[#42B84F] rounded-full py-4 items-center mt-6"><Text className="text-[#102110] font-bold">Set booking times</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => router.replace("/(vendor)/grounds")} className="py-4 mt-2"><Text className="text-[#D5D8D1] font-semibold">Back to My Grounds</Text></TouchableOpacity></View><Toast message={toast} tone="error" onHide={() => setToast(null)} /></SafeAreaView>;
+  }
+
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FA]">
+    <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
+      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
       <ScrollView
         className="flex-1 px-6"
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        <View className="flex-row items-center py-5">
+        <View className="flex-row items-center pt-5 pb-4">
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            className="h-11 w-11 rounded-full bg-white border border-[#E5E5E5] items-center justify-center"
+            className="h-10 w-10 items-center justify-center -ml-2"
             onPress={() => goBackOrReplace("/(vendor)/grounds")}
           >
-            <Ionicons name="arrow-back" size={20} color="#1A1A2E" />
+            <Ionicons name="chevron-back" size={28} color="#F5F5F0" />
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-[#1A1A2E] flex-1 text-center">
-            {existing ? "Edit Ground" : "Add Ground"}
+        <Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[21px] text-[#F5F5F0] flex-1 ml-2">
+            {existing ? "EDIT GROUND" : "ADD GROUND"}
           </Text>
-          <View className="w-11" />
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={step < 3 ? "Continue to next step" : "Save ground"} disabled={saving} onPress={step < 3 ? continueStep : save} className="min-h-[44px] px-2 items-center justify-center"><Text className="text-[#57CC63] font-bold">{saving ? "Saving" : step < 3 ? "Next" : "Save"}</Text></TouchableOpacity>
         </View>
-        <Text className="text-[#737373] mb-4">
+        <Text className="text-[#92978F] mb-5">
           Add the details players need to find and book this ground.
         </Text>
-        <View className="mb-4 rounded-2xl border border-[#E5E5E5] bg-white p-4"><Text className="text-[#1A1A2E] font-bold mb-1">Regular operating hours</Text><Text className="text-[#737373] text-xs mb-3">Slots must fit inside these hours. You can choose the regular booking times after creating the ground.</Text><View className="flex-row"><View className="flex-1 mr-2"><TimePicker label="Opens" value={form.operating_open} onChange={(value) => update('operating_open', value)} maximum="22:30" /></View><View className="flex-1"><TimePicker label="Closes" value={form.operating_close} onChange={(value) => update('operating_close', value)} minimum="00:30" /></View></View></View>
+        <View className="flex-row items-center mb-6"><Text className="text-[#57CC63] text-xs font-bold">STEP {step} OF 3</Text><View className="flex-1 h-1 bg-[#30372B] rounded-full mx-3 overflow-hidden"><View style={{ width: `${(step / 3) * 100}%` }} className="h-full bg-[#42B84F]" /></View><Text className="text-[#92978F] text-xs">{step === 1 ? 'Basics' : step === 2 ? 'Rules & policy' : 'Photos'}</Text></View>
+        {step === 1 && <>
+        <View className="mb-5 rounded-2xl border border-[#30372B] bg-[#1B1F19] p-4"><Text className="text-[#F5F5F0] font-bold mb-1">Regular operating hours</Text><Text className="text-[#92978F] text-xs mb-3">Slots must fit inside these hours. You can choose the regular booking times after creating the ground.</Text><View className="flex-row"><View className="flex-1 mr-2"><TimePicker dark label="Opens" value={form.operating_open} onChange={(value) => update('operating_open', value)} maximum="22:30" /></View><View className="flex-1"><TimePicker dark label="Closes" value={form.operating_close} onChange={(value) => update('operating_close', value)} minimum="00:30" /></View></View></View>
         {(
           [
             ["title", "Ground title *"],
@@ -358,13 +376,13 @@ export default function AddGround() {
           ] as [keyof FormState, string][]
         ).map(([key, label]) => (
           <View key={key} className="mb-3">
-            <Text className="text-[#1A1A2E] font-medium mb-1">{label}</Text>
+            <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 15 }} className="text-[#AFAFA9] mb-1">{label.toUpperCase()}</Text>
             <TextInput
               className={fieldClass}
               value={form[key] as string}
               onChangeText={(value) => update(key, value)}
               placeholder={label.replace(" *", "")}
-              placeholderTextColor="#A3A3A3"
+              placeholderTextColor="#777D74"
               keyboardType={
                 ["price_per_hour", "peak_percentage"].includes(key)
                   ? "numeric"
@@ -374,16 +392,20 @@ export default function AddGround() {
             />
           </View>
         ))}
-        <View className="mb-4 rounded-xl border border-[#E5E7EB] bg-white p-4">
-          <Text className="text-[#1A1A2E] font-semibold">Cancellation & refund policy</Text>
-          <Text className="text-[#737373] text-xs mt-1 mb-3">Players see this before booking. The selected policy is locked into each booking.</Text>
+        </>}
+        {step === 2 && <>
+        <View className="mb-5 rounded-xl border border-[#30372B] bg-[#1B1F19] p-4">
+          <Text className="text-[#F5F5F0] font-semibold">Cancellation & refund policy</Text>
+          <Text className="text-[#92978F] text-xs mt-1 mb-3">Players see this before booking. The selected policy is locked into each booking.</Text>
           <View className="flex-row">
-            {(['lenient', 'standard', 'strict'] as CancellationPolicy[]).map((policy) => <TouchableOpacity key={policy} accessibilityRole="radio" accessibilityState={{ selected: form.cancellation_policy === policy }} onPress={() => setForm((current) => ({ ...current, cancellation_policy: policy }))} className={`flex-1 rounded-xl border py-3 items-center ${form.cancellation_policy === policy ? 'bg-[#E8F5E9] border-[#4CAF50]' : 'border-[#E5E7EB] bg-[#FAFAFA]'}`}><Text className={form.cancellation_policy === policy ? 'text-[#2E7D32] font-bold text-sm' : 'text-[#4B5563] text-sm'}>{CANCELLATION_POLICY_LABELS[policy]}</Text></TouchableOpacity>)}
+            {(['lenient', 'standard', 'strict'] as CancellationPolicy[]).map((policy) => <TouchableOpacity key={policy} accessibilityRole="radio" accessibilityState={{ selected: form.cancellation_policy === policy }} onPress={() => setForm((current) => ({ ...current, cancellation_policy: policy }))} className={`flex-1 rounded-xl border py-3 items-center ${form.cancellation_policy === policy ? 'bg-[#17301B] border-[#42B84F]' : 'border-[#30372B] bg-[#252A22]'}`}><Text className={form.cancellation_policy === policy ? 'text-[#57CC63] font-bold text-sm' : 'text-[#B8BBB5] text-sm'}>{CANCELLATION_POLICY_LABELS[policy]}</Text></TouchableOpacity>)}
           </View>
-          <Text className="text-[#737373] text-xs mt-3">Lenient: up to 25% within 6h. Standard: no refund within 6h. Strict: 48h notice for a full refund.</Text>
+          <View className="mt-4 gap-2"><Text className="text-[#D9DBD5] text-xs leading-5"><Text className="text-[#57CC63] font-bold">Lenient:</Text> Best for players. Full refund 24 hours before; some money can still be returned closer to the match.</Text><Text className="text-[#D9DBD5] text-xs leading-5"><Text className="text-[#57CC63] font-bold">Standard:</Text> Balanced choice. Full refund 24 hours before; no refund in the final 6 hours.</Text><Text className="text-[#D9DBD5] text-xs leading-5"><Text className="text-[#57CC63] font-bold">Strict:</Text> Best when demand is high. Full refund needs 48 hours notice; no refund in the final 6 hours.</Text><Text className="text-[#92978F] text-xs mt-1">Every player gets a short grace period immediately after booking: 30 min (Lenient), 15 min (Standard), or 5 min (Strict).</Text></View>
         </View>
+        </>}
+        {step === 1 && <>
         <View className="mb-4">
-          <Text className="text-[#1A1A2E] font-medium mb-1">
+          <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 15 }} className="text-[#AFAFA9] mb-1">
             Map coordinates
           </Text>
           <TextInput
@@ -392,16 +414,16 @@ export default function AddGround() {
             value={form.coordinates}
             onChangeText={(value) => update("coordinates", value)}
             placeholder="33.641757, 72.996779"
-            placeholderTextColor="#A3A3A3"
+            placeholderTextColor="#777D74"
             autoCapitalize="none"
           />
-          <Text className="text-[#737373] text-xs mt-1">
+          <Text className="text-[#92978F] text-xs mt-1">
             Enter latitude and longitude together, separated by a comma.
           </Text>
         </View>
-        <View className="mb-4 rounded-xl border border-[#E5E7EB] bg-white p-4">
-          <Text className="text-[#1A1A2E] font-semibold">Peak pricing</Text>
-          <Text className="text-[#737373] text-xs mt-1">
+        <View className="mb-5 rounded-xl border border-[#30372B] bg-[#1B1F19] p-4">
+          <Text className="text-[#F5F5F0] font-semibold">Peak pricing</Text>
+          <Text className="text-[#92978F] text-xs mt-1">
             During these hours, the normal slot price increases by your selected
             percentage.
           </Text>
@@ -417,13 +439,13 @@ export default function AddGround() {
                       : [...current.peak_days, index],
                   }))
                 }
-                className={`mr-2 mb-2 rounded-full px-3 py-2 ${form.peak_days.includes(index) ? "bg-[#4CAF50]" : "bg-[#F5F5F5]"}`}
+                className={`mr-2 mb-2 rounded-full px-3 py-2 ${form.peak_days.includes(index) ? "bg-[#42B84F]" : "bg-[#282E25] border border-[#30372B]"}`}
               >
                 <Text
                   className={
                     form.peak_days.includes(index)
                       ? "text-white text-xs font-bold"
-                      : "text-[#4B5563] text-xs"
+                      : "text-[#B8BBB5] text-xs"
                   }
                 >
                   {label}
@@ -432,14 +454,16 @@ export default function AddGround() {
             ))}
           </View>
           <View className="flex-row mt-2">
-            <View className="flex-1 mr-2"><TimePicker label="Starts" value={form.peak_start_time} onChange={(value) => update("peak_start_time", value)} /></View>
-            <View className="flex-1"><TimePicker label="Ends" value={form.peak_end_time} onChange={(value) => update("peak_end_time", value)} /></View>
+            <View className="flex-1 mr-2"><TimePicker dark label="Starts" value={form.peak_start_time} onChange={(value) => update("peak_start_time", value)} /></View>
+            <View className="flex-1"><TimePicker dark label="Ends" value={form.peak_end_time} onChange={(value) => update("peak_end_time", value)} /></View>
           </View>
         </View>
-        <Text className="text-[#1A1A2E] font-medium mb-2">Cover image</Text>
+        </>}
+        {step === 3 && <>
+        <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 15 }} className="text-[#AFAFA9] mb-2">PHOTOS</Text>
         <TouchableOpacity
           onPress={pickCover}
-          className="bg-white border border-dashed border-[#4CAF50] rounded-xl overflow-hidden mb-4"
+          className="bg-[#1B1F19] border border-dashed border-[#42B84F] rounded-xl overflow-hidden mb-4"
         >
           {form.cover_image ? (
             <Image
@@ -449,14 +473,14 @@ export default function AddGround() {
             />
           ) : (
             <View className="h-28 items-center justify-center">
-              <Ionicons name="image-outline" size={30} color="#4CAF50" />
-              <Text className="text-[#4CAF50] mt-2">Choose cover image</Text>
+              <Ionicons name="image-outline" size={30} color="#57CC63" />
+              <Text className="text-[#57CC63] mt-2">Choose cover image</Text>
             </View>
           )}
         </TouchableOpacity>
         <View className="flex-row items-center justify-between mb-2">
-          <Text className="text-[#1A1A2E] font-medium">Ground images</Text>
-          <Text className="text-[#737373] text-xs">
+          <Text className="text-[#F5F5F0] font-medium">Ground images</Text>
+          <Text className="text-[#92978F] text-xs">
             {form.images.length} selected
           </Text>
         </View>
@@ -486,14 +510,16 @@ export default function AddGround() {
             accessibilityRole="button"
             accessibilityLabel="Add ground images"
             onPress={addImages}
-            className="w-28 h-24 rounded-xl bg-[#E8F5E9] items-center justify-center"
+            className="w-28 h-24 rounded-xl bg-[#1B251B] border border-dashed border-[#42B84F] items-center justify-center"
           >
-            <Ionicons name="add" size={28} color="#4CAF50" />
-            <Text className="text-[#4CAF50] text-xs mt-1">Add more</Text>
+            <Ionicons name="add" size={28} color="#57CC63" />
+            <Text className="text-[#57CC63] text-xs mt-1">Add more</Text>
           </TouchableOpacity>
         </ScrollView>
+        </>}
+        {step === 2 && <>
         <View className="mb-4">
-          <Text className="text-[#1A1A2E] font-medium mb-2">Amenities</Text>
+          <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 15 }} className="text-[#AFAFA9] mb-2">AMENITIES</Text>
           {tagInput(
             "amenities",
             newAmenity,
@@ -503,23 +529,26 @@ export default function AddGround() {
           {renderTags("amenities")}
         </View>
         <View className="mb-4">
-          <Text className="text-[#1A1A2E] font-medium mb-2">Rules</Text>
+          <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 15 }} className="text-[#AFAFA9] mb-2">RULES</Text>
           {tagInput("rules", newRule, setNewRule, "e.g. No smoking")}
           {renderTags("rules")}
         </View>
-        <TouchableOpacity
+        </>}
+        {step < 3 && <View className="flex-row mt-4"><TouchableOpacity accessibilityRole="button" onPress={() => setStep((current) => Math.max(1, current - 1))} disabled={step === 1} className={`min-h-[52px] px-5 rounded-xl items-center justify-center mr-3 ${step === 1 ? 'opacity-0' : 'border border-[#30372B]'}`}><Text className="text-[#D5D8D1] font-bold">Back</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={continueStep} className="flex-1 min-h-[52px] bg-[#42B84F] rounded-xl items-center justify-center"><Text className="text-[#102110] font-bold">Continue</Text></TouchableOpacity></View>}
+        {step === 3 && <TouchableOpacity accessibilityRole="button" onPress={() => setStep(2)} className="py-3 items-center mt-3"><Text className="text-[#D5D8D1] font-bold">Back to rules & policy</Text></TouchableOpacity>}
+        {step === 3 && <TouchableOpacity
           disabled={saving}
           onPress={save}
-          className="bg-[#4CAF50] rounded-xl py-4 items-center mt-3"
+          className="bg-[#42B84F] rounded-xl py-4 items-center mt-3"
         >
-          <Text className="text-white font-bold">
+          <Text className="text-[#102110] font-bold">
             {saving
               ? "Saving..."
               : existing
                 ? "Update Ground"
                 : "Create Ground"}
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
       </ScrollView>
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
     </SafeAreaView>

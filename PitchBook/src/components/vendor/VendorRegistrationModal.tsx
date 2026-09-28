@@ -123,33 +123,33 @@ export default function VendorRegistrationModal({
     >
       <View className="flex-1 bg-black/50">
         <KeyboardAvoidingView
-          className="flex-1 bg-[#F7F9F5]"
+          className="flex-1 bg-[#10120F]"
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           {/* Header */}
-          <View className="pt-12 pb-4 px-6 flex-row items-center justify-between border-b border-[#DFE6DC] bg-[#F7F9F5]">
+          <View className="pt-12 pb-4 px-6 flex-row items-center justify-between border-b border-[#30372B] bg-[#10120F]">
             <View>
               <Text
                 style={{
                   fontFamily: "BigShouldersDisplay_800ExtraBold",
                   fontSize: 26,
                 }}
-                className="text-[#172119]"
+                className="text-[#F5F5F0]"
               >
                 BECOME A VENDOR
               </Text>
-              <Text className="text-[#6B786C] text-xs mt-0.5">
+              <Text className="text-[#92978F] text-xs mt-0.5">
                 Step {step} of 2
               </Text>
             </View>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Close vendor registration"
-              className="h-11 w-11 rounded-xl bg-white border border-[#D9E2D7] items-center justify-center"
+              className="h-11 w-11 rounded-xl bg-[#1B1F19] border border-[#30372B] items-center justify-center"
               onPress={handleClose}
               disabled={isLoading}
             >
-              <Ionicons name="close" size={24} color="#737373" />
+              <Ionicons name="close" size={24} color="#D9DBD5" />
             </TouchableOpacity>
           </View>
 
@@ -160,12 +160,10 @@ export default function VendorRegistrationModal({
           >
             <View className="flex-row mb-5">
               <View className="h-1.5 flex-1 rounded-full mr-2 bg-[#3EAF4C]" />
-              <View
-                className={`h-1.5 flex-1 rounded-full ${step === 2 ? "bg-[#3EAF4C]" : "bg-[#D9E2D7]"}`}
-              />
+              <View className={`h-1.5 flex-1 rounded-full ${step === 2 ? "bg-[#42B84F]" : "bg-[#30372B]"}`} />
             </View>
-            <View className="bg-[#E5F3E6] border border-[#C5E2C8] rounded-2xl p-4 mb-6 flex-row">
-              <View className="h-11 w-11 rounded-xl bg-[#3EAF4C] items-center justify-center">
+            <View className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 mb-6 flex-row">
+              <View className="h-11 w-11 rounded-xl bg-[#42B84F] items-center justify-center">
                 <Ionicons
                   name={
                     step === 1
@@ -173,19 +171,19 @@ export default function VendorRegistrationModal({
                       : "shield-checkmark-outline"
                   }
                   size={23}
-                  color="white"
+                  color="#102110"
                 />
               </View>
               <View className="flex-1 ml-3">
                 <Text
                   style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                  className="text-[#1E4725] text-base"
+                  className="text-[#F5F5F0] text-base"
                 >
                   {step === 1
                     ? "Your business details"
                     : "Confirm and get started"}
                 </Text>
-                <Text className="text-[#527057] text-xs mt-1">
+                <Text className="text-[#A8C9AC] text-xs mt-1">
                   {step === 1
                     ? "Use the name and number your players know."
                     : "After this, we will help you add your first ground."}
@@ -197,17 +195,17 @@ export default function VendorRegistrationModal({
               <>
                 {/* Business Name */}
                 <View className="mb-4">
-                  <Text className="text-[#1A1A2E] font-medium mb-1.5">
+                  <Text className="text-[#D9DBD5] font-medium mb-1.5">
                     Business Name <Text className="text-red-500">*</Text>
                   </Text>
                   <TextInput
-                    className={`bg-[#F5F5F5] rounded-xl px-4 py-3.5 text-[#1A1A2E] text-base border ${
+                    className={`bg-[#1B1F19] rounded-xl px-4 py-3.5 text-[#F5F5F0] text-base border ${
                       errors.business_name
                         ? "border-red-500"
-                        : "border-[#E5E5E5]"
+                        : "border-[#30372B]"
                     }`}
                     placeholder="Enter your business name"
-                    placeholderTextColor="#A3A3A3"
+                    placeholderTextColor="#777D74"
                     value={formData.business_name}
                     onChangeText={(text) => {
                       setFormData({ ...formData, business_name: text });
@@ -226,24 +224,24 @@ export default function VendorRegistrationModal({
 
                 {/* Business Phone */}
                 <View className="mb-4">
-                  <Text className="text-[#1A1A2E] font-medium mb-1.5">
+                  <Text className="text-[#D9DBD5] font-medium mb-1.5">
                     Business Phone <Text className="text-red-500">*</Text>
                   </Text>
                   <View
-                    className={`flex-row items-center bg-[#F5F5F5] rounded-xl px-4 border ${
+                    className={`flex-row items-center bg-[#1B1F19] rounded-xl px-4 border ${
                       errors.business_phone
                         ? "border-red-500"
-                        : "border-[#E5E5E5]"
+                        : "border-[#30372B]"
                     }`}
                   >
-                    <Text className="text-[#1A1A2E] font-medium py-3.5">
+                    <Text className="text-[#F5F5F0] font-medium py-3.5">
                       +92
                     </Text>
-                    <View className="w-px h-6 bg-[#D4D4D4] mx-3" />
+                    <View className="w-px h-6 bg-[#30372B] mx-3" />
                     <TextInput
-                      className="flex-1 py-3.5 text-[#1A1A2E] text-base"
+                      className="flex-1 py-3.5 text-[#F5F5F0] text-base"
                       placeholder="331 5139044"
-                      placeholderTextColor="#A3A3A3"
+                      placeholderTextColor="#777D74"
                       value={formData.business_phone}
                       onChangeText={(text) => {
                         const formatted = formatPhoneNumber(text);
@@ -266,17 +264,17 @@ export default function VendorRegistrationModal({
 
                 {/* City */}
                 <View className="mb-4">
-                  <Text className="text-[#1A1A2E] font-medium mb-1.5">
+                  <Text className="text-[#D9DBD5] font-medium mb-1.5">
                     City <Text className="text-red-500">*</Text>
                   </Text>
                   <TextInput
-                    className={`bg-[#F5F5F5] rounded-xl px-4 py-3.5 text-[#1A1A2E] text-base border ${
+                    className={`bg-[#1B1F19] rounded-xl px-4 py-3.5 text-[#F5F5F0] text-base border ${
                       errors.business_city
                         ? "border-red-500"
-                        : "border-[#E5E5E5]"
+                        : "border-[#30372B]"
                     }`}
                     placeholder="Enter your city"
-                    placeholderTextColor="#A3A3A3"
+                    placeholderTextColor="#777D74"
                     value={formData.business_city}
                     onChangeText={(text) => {
                       setFormData({ ...formData, business_city: text });
@@ -298,13 +296,13 @@ export default function VendorRegistrationModal({
               <>
                 {/* Description */}
                 <View className="mb-4">
-                  <Text className="text-[#1A1A2E] font-medium mb-1.5">
+                  <Text className="text-[#D9DBD5] font-medium mb-1.5">
                     Business Description (Optional)
                   </Text>
                   <TextInput
-                    className="bg-[#F5F5F5] rounded-xl px-4 py-3.5 text-[#1A1A2E] text-base border border-[#E5E5E5]"
+                    className="bg-[#1B1F19] rounded-xl px-4 py-3.5 text-[#F5F5F0] text-base border border-[#30372B]"
                     placeholder="Tell us about your business..."
-                    placeholderTextColor="#A3A3A3"
+                    placeholderTextColor="#777D74"
                     value={formData.business_description}
                     onChangeText={(text) =>
                       setFormData({ ...formData, business_description: text })
@@ -321,8 +319,8 @@ export default function VendorRegistrationModal({
                   <TouchableOpacity
                     className={`w-5 h-5 rounded border ${
                       formData.agreeToTerms
-                        ? "bg-[#4CAF50] border-[#4CAF50]"
-                        : "border-[#D4D4D4]"
+                        ? "bg-[#42B84F] border-[#42B84F]"
+                        : "border-[#697064]"
                     } items-center justify-center mr-3 mt-0.5`}
                     onPress={() => {
                       setFormData({
@@ -336,13 +334,13 @@ export default function VendorRegistrationModal({
                     disabled={isLoading}
                   >
                     {formData.agreeToTerms && (
-                      <Ionicons name="checkmark" size={14} color="white" />
+                      <Ionicons name="checkmark" size={14} color="#102110" />
                     )}
                   </TouchableOpacity>
-                  <Text className="text-[#737373] text-sm flex-1">
+                  <Text className="text-[#B8BBB5] text-sm flex-1">
                     I agree to the{" "}
-                    <Text className="text-[#4CAF50]">Terms of Service</Text> and{" "}
-                    <Text className="text-[#4CAF50]">Privacy Policy</Text>
+                    <Text className="text-[#57CC63]">Terms of Service</Text> and{" "}
+                    <Text className="text-[#57CC63]">Privacy Policy</Text>
                   </Text>
                 </View>
                 {errors.agreeToTerms && (
@@ -356,12 +354,12 @@ export default function VendorRegistrationModal({
             {/* Register Button */}
             <TouchableOpacity
               className={`py-4 rounded-2xl mb-6 flex-row items-center justify-center ${
-                isLoading ? "bg-[#E5E5E5]" : "bg-[#4CAF50]"
+                isLoading ? "bg-[#596055]" : "bg-[#42B84F]"
               }`}
               style={
                 !isLoading
                   ? {
-                      shadowColor: "#4CAF50",
+                      shadowColor: "#42B84F",
                       shadowOffset: { width: 0, height: 4 },
                       shadowOpacity: 0.3,
                       shadowRadius: 8,
@@ -373,16 +371,16 @@ export default function VendorRegistrationModal({
               disabled={isLoading}
             >
               {isLoading ? (
-                <ActivityIndicator color="white" />
+                <ActivityIndicator color="#102110" />
               ) : (
                 <>
-                  <Text className="text-white text-center font-bold text-base">
+                  <Text className="text-[#102110] text-center font-bold text-base">
                     {step === 1 ? "Continue" : "Create Vendor Account"}
                   </Text>
                   <Ionicons
                     name="arrow-forward"
                     size={20}
-                    color="white"
+                    color="#102110"
                     style={{ marginLeft: 8 }}
                   />
                 </>
