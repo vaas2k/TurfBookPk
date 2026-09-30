@@ -1,0 +1,4 @@
+# Local service-account keys and other deployment credentials must never be committed.
+credentials/
+*.service-account.json
+*firebase-adminsdk*.json

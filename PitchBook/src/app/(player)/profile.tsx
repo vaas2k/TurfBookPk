@@ -5,7 +5,7 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Switch,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -18,12 +18,13 @@ import VendorRegistrationModal, {
   VendorFormData,
 } from "@/components/vendor/VendorRegistrationModal";
 import { playerThemes } from "@/theme/playerTheme";
+import { IconButton } from "@/components/ui/icon-button";
 
 export default function ProfileScreen() {
   const { profile, signOut, user, switchToVendor } = useAuthStore();
   const { isVendor, checkVendorStatus, registerVendor } = useVendorStore();
-  const { appearance, toggleAppearance } = useAppearanceStore();
-  const theme = playerThemes[appearance];
+  const { appearance } = useAppearanceStore();
+  const theme = playerThemes.dark;
   const [showVendorModal, setShowVendorModal] = useState(false);
   const [vendorLoading, setVendorLoading] = useState(false);
   const initials = (profile?.full_name || "User")
@@ -127,15 +128,7 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View className="px-5 pt-3 pb-4 flex-row items-center">
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            onPress={() => router.replace("/(player)")}
-            className="w-10 h-10 rounded-xl border items-center justify-center mr-3"
-            style={{ borderColor: theme.border }}
-          >
-            <Ionicons name="arrow-back" size={23} color={theme.text} />
-          </TouchableOpacity>
+          <View className="mr-3"><IconButton accessibilityLabel="Go back" icon="arrow-back" color={theme.text} onPress={() => router.replace("/(player)")} /></View>
           <Text
             style={{
               fontFamily: "BigShouldersDisplay_800ExtraBold",
@@ -147,17 +140,17 @@ export default function ProfileScreen() {
           </Text>
         </View>
         <View className="mx-5 border rounded-[22px] px-4 py-4 flex-row items-center" style={{ borderColor: theme.border, backgroundColor: theme.surfaceRaised }}>
-          <View className="w-[82px] h-[82px] rounded-full border-2 border-[#3DB54A] items-center justify-center">
-            <Text
+          <View className="w-[82px] h-[82px] rounded-full border-2 border-[#3DB54A] items-center justify-center overflow-hidden">
+            {profile?.avatar_url ? <Image source={{ uri: profile.avatar_url }} className="w-full h-full" resizeMode="cover" /> : <Text
               style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.text }}
               className="text-[#3DB54A] text-[23px]"
             >
               {initials}
-            </Text>
+            </Text>}
           </View>
           <View className="flex-1 ml-4">
             <Text
-              style={{ fontFamily: "SpaceGrotesk_700Bold" }}
+              style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.text }}
               className="text-[18px]"
               numberOfLines={1}
             >
@@ -210,7 +203,8 @@ export default function ProfileScreen() {
             {row("Notification Alerts", () =>
               router.push("/(player)/notifications"),
             )}
-            <View className="min-h-[64px] px-4 flex-row items-center border-b" style={{ borderBottomColor: theme.border }}>
+            {/* Theme switch is intentionally paused: TurfBookPK is dark-only for now. */}
+            {/* <View className="min-h-[64px] px-4 flex-row items-center border-b" style={{ borderBottomColor: theme.border }}>
               <View className="flex-1">
                 <Text className="text-[16px]" style={{ color: theme.text }}>Dark mode</Text>
                 <Text className="text-xs mt-0.5" style={{ color: theme.subtle }}>
@@ -220,11 +214,11 @@ export default function ProfileScreen() {
               <Switch
                 accessibilityLabel="Toggle dark mode"
                 value={appearance === "dark"}
-                onValueChange={toggleAppearance}
+                onValueChange={() => undefined}
                 trackColor={{ false: "#73796D", true: "#3DB54A" }}
                 thumbColor="#F8F7F0"
               />
-            </View>
+            </View> */}
             {row(
               "App Language",
               () =>

@@ -8,8 +8,9 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDuration, formatTimeRange12 } from "@/lib/time";
@@ -25,6 +26,8 @@ import {
   recordGroundView,
   removeFavoriteGround,
 } from "@/lib/api/engagement";
+import { useAppearanceStore } from "@/store/appearanceStore";
+import { playerThemes } from "@/theme/playerTheme";
 
 const fallbackImage =
   "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200";
@@ -59,6 +62,10 @@ function dateKey(date: Date) {
 }
 
 export default function GroundDetail() {
+  const appearance = useAppearanceStore((state) => state.appearance);
+  const theme = playerThemes[appearance];
+  const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [ground, setGround] = useState<Ground | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -194,33 +201,34 @@ export default function GroundDetail() {
 
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-[#10120F]">
-        <ActivityIndicator size="large" color="#3DB54A" />
+      <SafeAreaView className="flex-1 items-center justify-center" style={{ backgroundColor: theme.canvas }}>
+        <ActivityIndicator size="large" color={theme.green} />
       </SafeAreaView>
     );
   }
 
   if (!ground) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-[#10120F] px-6">
-        <Ionicons name="alert-circle-outline" size={54} color="#9CA3AF" />
+      <SafeAreaView className="flex-1 items-center justify-center px-6" style={{ backgroundColor: theme.canvas }}>
+        <Ionicons name="alert-circle-outline" size={54} color={theme.muted} />
         <Text
           style={{
             fontFamily: "BigShouldersDisplay_800ExtraBold",
             fontSize: 25,
+            color: theme.text,
           }}
-          className="text-[#F8F7F0] mt-4"
+          className="mt-4"
         >
           GROUND NOT FOUND
         </Text>
-        <Text className="text-[#AFAFA9] text-center mt-2 text-sm">
+        <Text style={{ color: theme.subtle }} className="text-center mt-2 text-sm">
           The requested football pitch could not be loaded or is currently
           deactivated.
         </Text>
         <TouchableOpacity
           accessibilityRole="button"
           onPress={() => goBackOrReplace("/(player)")}
-          className="mt-6 bg-[#3DB54A] rounded-full px-8 py-3.5"
+          className="mt-6 rounded-full px-8 py-3.5" style={{ backgroundColor: theme.green }}
         >
           <Text className="text-white font-bold">Go Back</Text>
         </TouchableOpacity>
@@ -230,16 +238,16 @@ export default function GroundDetail() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-[#10120F]">
+    <SafeAreaView edges={["left", "right"]} className="flex-1" style={{ backgroundColor: theme.canvas }}>
       {/* Top Header */}
-      <View className="absolute top-0 left-0 right-0 z-10 flex-row items-center px-5 py-3">
+      <View className="absolute left-0 right-0 z-10 flex-row items-center px-5 py-3" style={{ top: insets.top }}>
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel="Go back"
           onPress={() => goBackOrReplace("/(player)")}
-          className="w-11 h-11 rounded-full bg-[#11140F]/90 items-center justify-center"
+          className="w-11 h-11 rounded-full items-center justify-center" style={{ backgroundColor: appearance === 'dark' ? '#11140FE6' : '#FFFFFFE6' }}
         >
-          <Ionicons name="arrow-back" size={23} color="#F8F7F0" />
+          <Ionicons name="arrow-back" size={23} color={theme.text} />
         </TouchableOpacity>
         <View className="flex-1" />
         <TouchableOpacity
@@ -258,19 +266,19 @@ export default function GroundDetail() {
               setToast(error?.message || "Unable to update favorites.");
             }
           }}
-          className="w-11 h-11 rounded-full bg-[#11140F]/90 items-center justify-center"
+          className="w-11 h-11 rounded-full items-center justify-center" style={{ backgroundColor: appearance === 'dark' ? '#11140FE6' : '#FFFFFFE6' }}
         >
           <Ionicons
             name={isFavorite ? "heart" : "heart-outline"}
             size={24}
-            color={isFavorite ? "#FF5C57" : "#F8F7F0"}
+            color={isFavorite ? "#FF5C57" : theme.text}
           />
         </TouchableOpacity>
       </View>
 
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 110 }}
+        contentContainerStyle={{ paddingBottom: 92 + Math.max(insets.bottom, 12) }}
       >
         {/* Photo Gallery Carousel */}
         <ScrollView
@@ -282,7 +290,7 @@ export default function GroundDetail() {
             <Image
               key={`${image}-${index}`}
               source={{ uri: image }}
-              className="w-screen h-80"
+              style={{ width: screenWidth, height: 320 }}
               resizeMode="cover"
             />
           ))}
@@ -294,28 +302,29 @@ export default function GroundDetail() {
             style={{
               fontFamily: "BigShouldersDisplay_800ExtraBold",
               fontSize: 27,
-              letterSpacing: 0.2,
+              letterSpacing: 0.2, color: theme.text,
             }}
-            className="text-[#F8F7F0] uppercase"
+            className="uppercase"
+            numberOfLines={2}
           >
             {ground.title}
           </Text>
-          <Text className="text-[#AFAFA9] text-sm mt-1">
+          <Text style={{ color: theme.subtle }} className="text-sm mt-1" numberOfLines={2}>
             {ground.address}, {ground.city}
           </Text>
 
           <View className="flex-row items-center mt-3">
             <Ionicons name="star" size={17} color="#F59E0B" />
-            <Text className="font-bold text-[#F8F7F0] ml-1 text-sm">
+            <Text style={{ color: theme.text }} className="font-bold ml-1 text-sm">
               {ground.rating || "New"}
             </Text>
-            <Text className="text-[#AFAFA9] text-sm ml-2">
+            <Text style={{ color: theme.subtle }} className="text-sm ml-2">
               ({ground.total_reviews} reviews)
             </Text>
           </View>
           <Text
-            style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-            className="text-[#3DB54A] text-xl mt-2"
+            style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.green }}
+            className="text-xl mt-2"
           >
             From PKR {ground.price_per_hour.toLocaleString()}/hr
           </Text>
@@ -325,17 +334,17 @@ export default function GroundDetail() {
             </Text>
           )}
 
-          <View className="flex-row flex-wrap mt-5 pb-5 border-b border-[#293025]">
+          <View className="flex-row flex-wrap mt-5 pb-5 border-b" style={{ borderBottomColor: theme.border }}>
             {[ground.pitch_type, ...ground.amenities.slice(0, 2)]
               .filter(Boolean)
               .map((tag) => (
                 <View
                   key={tag}
-                  className="bg-[#19331D] rounded-xl px-3 py-2 mr-2 mb-2"
+                  className="rounded-xl px-3 py-2 mr-2 mb-2" style={{ backgroundColor: theme.businessSurface }}
                 >
                   <Text
-                    style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                    className="text-[#3DB54A] text-xs"
+                    style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.green }}
+                    className="text-xs"
                   >
                     {tag}
                   </Text>
@@ -346,22 +355,23 @@ export default function GroundDetail() {
           {!showSlotPicker && (
             <>
               <View className="mt-7">
-                <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-row items-start justify-between mb-3">
                   <Text
                     style={{
                       fontFamily: "BigShouldersDisplay_700Bold",
-                      fontSize: 21,
+                      fontSize: 21, color: theme.text,
                     }}
-                    className="text-[#D6D7D0] uppercase"
+                    className="uppercase flex-1 mr-3"
+                    numberOfLines={1}
                   >
                     Reviews
                   </Text>
-                  <Text className="text-[#3DB54A] text-sm font-bold">
+                  <Text style={{ color: theme.green }} className="text-sm font-bold shrink" numberOfLines={1}>
                     See all reviews ({ground.total_reviews})
                   </Text>
                 </View>
                 {reviews.length === 0 ? (
-                  <Text className="text-[#AFAFA9] text-sm">
+                  <Text style={{ color: theme.subtle }} className="text-sm">
                     No reviews yet. Be the first player to rate this ground
                     after a completed booking.
                   </Text>
@@ -369,21 +379,21 @@ export default function GroundDetail() {
                   reviews.slice(0, 2).map((review) => (
                     <View
                       key={review.id}
-                      className="bg-[#1B1F19] rounded-2xl p-4 mb-3 border border-[#242A20]"
+                      className="rounded-2xl p-4 mb-3 border" style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
                     >
                       <View className="flex-row justify-between">
-                        <Text className="text-[#F3F4EF] font-bold">
+                        <Text style={{ color: theme.text }} className="font-bold">
                           {review.player_name}
                         </Text>
                         <View className="flex-row items-center">
                           <Ionicons name="star" size={14} color="#F5A623" />
-                          <Text className="text-[#F3F4EF] font-bold ml-1">
+                          <Text style={{ color: theme.text }} className="font-bold ml-1">
                             {review.rating}.0
                           </Text>
                         </View>
                       </View>
                       {review.comment ? (
-                        <Text className="text-[#B5B8B0] text-sm mt-2">
+                      <Text style={{ color: theme.subtle }} className="text-sm mt-2">
                           {review.comment}
                         </Text>
                       ) : null}
@@ -401,11 +411,8 @@ export default function GroundDetail() {
               {ground.amenities.length > 0 && (
                 <View className="mt-7">
                   <Text
-                    style={{
-                      fontFamily: "BigShouldersDisplay_700Bold",
-                      fontSize: 21,
-                    }}
-                    className="text-[#D6D7D0] mb-3 uppercase"
+                    style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 21, color: theme.text }}
+                    className="mb-3 uppercase"
                   >
                     Amenities
                   </Text>
@@ -413,9 +420,9 @@ export default function GroundDetail() {
                     {ground.amenities.map((item) => (
                       <View
                         key={item}
-                        className="bg-[#20241B] rounded-lg px-3 py-2 mr-2 mb-2"
+                        className="rounded-lg px-3 py-2 mr-2 mb-2" style={{ backgroundColor: theme.surface }}
                       >
-                        <Text className="text-[#BFC1B9] text-xs font-medium">
+                        <Text style={{ color: theme.subtle }} className="text-xs font-medium">
                           {item}
                         </Text>
                       </View>
@@ -427,15 +434,12 @@ export default function GroundDetail() {
               {/* About description */}
               <View className="mt-6">
                 <Text
-                  style={{
-                    fontFamily: "BigShouldersDisplay_700Bold",
-                    fontSize: 21,
-                  }}
-                  className="text-[#D6D7D0] mb-2 uppercase"
+                    style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 21, color: theme.text }}
+                    className="mb-2 uppercase"
                 >
                   About this ground
                 </Text>
-                <Text className="text-[#AFAFA9] leading-5 text-sm">
+                <Text style={{ color: theme.subtle }} className="leading-5 text-sm">
                   {ground.description ||
                     "No description provided by the venue owner."}
                 </Text>
@@ -449,11 +453,9 @@ export default function GroundDetail() {
                     color="#59C462"
                   />
                   <Text
-                    style={{
-                      fontFamily: "BigShouldersDisplay_700Bold",
-                      fontSize: 19,
-                    }}
-                    className="text-[#D6D7D0] ml-2 uppercase"
+                    style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 19, color: theme.text }}
+                    className="ml-2 uppercase flex-1"
+                    numberOfLines={2}
                   >
                     Cancellation & refunds
                   </Text>
@@ -507,7 +509,7 @@ export default function GroundDetail() {
                         <Text className="text-[#F3F4EF] font-semibold">
                           {ground.address}
                         </Text>
-                        <Text className="text-[#AFAFA9] text-sm mt-1">
+                    <Text style={{ color: theme.subtle }} className="text-sm mt-1" numberOfLines={2}>
                           {ground.location}, {ground.city}
                         </Text>
                       </View>
@@ -730,13 +732,14 @@ export default function GroundDetail() {
                           accessibilityRole="button"
                           accessibilityLabel={`${formatTimeRange12(slot.start_time, slot.end_time)} ${statusLabel}`}
                           onPress={() => toggleSlot(slot)}
-                          className={`w-[48.5%] min-h-[154px] justify-between rounded-2xl p-3.5 mb-3 border ${
+                          className={`min-h-[154px] justify-between rounded-2xl p-3.5 mb-3 border ${
                             isSelected
                               ? "border-[#3DB54A] bg-[#3DB54A]"
                               : isAvailable
                                 ? "border-[#315536] bg-[#1B1F19]"
                                 : "border-transparent bg-[#1B1F19]"
                           }`}
+                          style={{ width: (screenWidth - 52) / 2 }}
                         >
                           <View>
                             <Text
@@ -805,7 +808,10 @@ export default function GroundDetail() {
       </ScrollView>
 
       {/* Sticky Bottom Action Bar */}
-      <View className="absolute bottom-0 left-0 right-0 bg-[#171B15] border-t border-[#293025] px-5 py-4">
+      <View
+        className="absolute bottom-0 left-0 right-0 bg-[#171B15] border-t border-[#293025] px-5 pt-4"
+        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      >
         <TouchableOpacity
           disabled={showSlotPicker && selectedSlots.length === 0}
           accessibilityRole="button"

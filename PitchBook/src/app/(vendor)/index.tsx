@@ -77,7 +77,7 @@ function OwnerHomeView({
       >
         {/* Header */}
         <View className="pt-4 flex-row justify-between items-start">
-          <View>
+          <View className="flex-1 mr-3">
             <Text
               style={{ fontFamily: "SpaceGrotesk_700Bold" }}
               className="text-[#52C45D] text-[11px] tracking-widest"
@@ -88,6 +88,7 @@ function OwnerHomeView({
             <Text
               style={{ fontFamily: "SpaceGrotesk_700Bold" }}
               className="text-[#F5F5F0] text-[26px] mt-1"
+              numberOfLines={2}
             >
               Good afternoon, {businessName}
             </Text>
@@ -95,7 +96,7 @@ function OwnerHomeView({
           </View>
           <TouchableOpacity
             onPress={() => router.push("/(vendor)/notifications")}
-            className="h-11 w-11 rounded-full bg-[#1B1F19] border border-[#30372B] items-center justify-center"
+            className="h-11 w-11 flex-shrink-0 rounded-full bg-[#1B1F19] border border-[#30372B] items-center justify-center"
           >
             <Ionicons name="notifications-outline" size={22} color="#F5F5F0" />
             {unread > 0 && (

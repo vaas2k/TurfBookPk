@@ -20,6 +20,8 @@ import { router } from "expo-router";
 import { Ground, searchPublicGrounds, Slot } from "@/lib/api/vendors";
 import { Toast } from "@/components/ui/toast";
 import * as Location from "expo-location";
+import { useAppearanceStore } from "@/store/appearanceStore";
+import { playerThemes } from "@/theme/playerTheme";
 
 type Sort = "recommended" | "price_low" | "price_high" | "rating";
 const MAX_PRICE = 20_000;
@@ -56,6 +58,8 @@ function queryMatches(ground: Ground, query: string) {
 }
 
 export default function SearchScreen() {
+  const appearance = useAppearanceStore((state) => state.appearance);
+  const theme = playerThemes[appearance];
   const [grounds, setGrounds] = useState<Ground[]>([]);
   const [slotsByGround, setSlotsByGround] = useState<Record<string, Slot[]>>(
     {},
@@ -285,15 +289,15 @@ export default function SearchScreen() {
   });
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" translucent={false} />
-      <View className="bg-[#10120F] px-5 pt-4 pb-4">
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1" style={{ backgroundColor: theme.canvas }}>
+      <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.canvas} translucent={false} />
+      <View className="px-5 pt-4 pb-4" style={{ backgroundColor: theme.canvas }}>
         <View className="flex-row items-center justify-between">
           <View>
-            <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 26 }} className="text-[#F8F7F0]">
+            <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 26, color: theme.text }}>
               FIND A GROUND
             </Text>
-            <Text className="text-sm text-[#AFAFA9] mt-1">
+            <Text style={{ color: theme.subtle }} className="text-sm mt-1">
               Search by venue, city, area, or amenity.
             </Text>
           </View>
@@ -302,25 +306,27 @@ export default function SearchScreen() {
             accessibilityLabel="Use my location"
             onPress={findMyLocation}
             disabled={locating}
-            className="h-11 w-11 rounded-full bg-[#1B2019] border border-[#315536] items-center justify-center"
+            className="h-11 w-11 rounded-full border items-center justify-center"
+            style={{ backgroundColor: theme.businessSurface, borderColor: theme.businessBorder }}
           >
             <Ionicons
               name={locating ? "hourglass-outline" : "locate-outline"}
               size={21}
-              color="#3DB54A"
+              color={theme.green}
             />
           </TouchableOpacity>
         </View>
         <View className="flex-row items-center mt-4">
-          <View className="flex-1 flex-row items-center bg-[#181C16] border border-[#30372B] rounded-xl px-3 min-h-[50px]">
-            <Ionicons name="search-outline" size={20} color="#AFAFA9" />
+          <View className="flex-1 flex-row items-center border rounded-xl px-3 min-h-[50px]" style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}>
+            <Ionicons name="search-outline" size={20} color={theme.subtle} />
             <TextInput
               accessibilityLabel="Search grounds by city or location"
               value={query}
               onChangeText={setQuery}
               placeholder="City, area, venue..."
-              placeholderTextColor="#8C9188"
-              className="flex-1 ml-2 text-[#F8F7F0]"
+              placeholderTextColor={theme.muted}
+              className="flex-1 ml-2"
+              style={{ color: theme.text }}
               returnKeyType="search"
             />
             {!!query && (
@@ -330,7 +336,7 @@ export default function SearchScreen() {
                 onPress={() => setQuery("")}
                 className="h-11 w-10 items-center justify-center"
               >
-                <Ionicons name="close-circle" size={19} color="#AFAFA9" />
+                <Ionicons name="close-circle" size={19} color={theme.subtle} />
               </TouchableOpacity>
             )}
           </View>
@@ -339,8 +345,9 @@ export default function SearchScreen() {
             accessibilityLabel="Open filters"
             onPress={() => setShowFilters((value) => !value)}
             className={`ml-3 h-[50px] w-[50px] rounded-xl items-center justify-center ${showFilters || activeFilters ? "bg-[#3DB54A]" : "bg-[#181C16] border border-[#30372B]"}`}
+            style={showFilters || activeFilters ? { backgroundColor: theme.green } : { backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
           >
-            <Ionicons name="options-outline" size={22} color="white" />
+            <Ionicons name="options-outline" size={22} color={showFilters || activeFilters ? '#FFFFFF' : theme.text} />
             {activeFilters > 0 && (
               <View className="absolute -right-1 -top-1 bg-[#DC2626] h-5 min-w-5 rounded-full items-center justify-center">
                 <Text className="text-white text-[10px] font-bold">
@@ -355,13 +362,13 @@ export default function SearchScreen() {
         <Modal transparent animationType="slide" visible={showFilters} onRequestClose={closeFilters}>
           <View className="flex-1 justify-end bg-black/70">
             <Pressable className="absolute inset-0" onPress={closeFilters} accessibilityLabel="Close filters" />
-            <Animated.View {...filterSheetPan.panHandlers} style={{ transform: [{ translateY: filterSheetTranslateY }] }} className="max-h-[82%] rounded-t-[30px] border-t border-[#30372B] bg-[#181C16] pt-3">
-              <View className="h-8 items-center justify-center -mt-3 mb-1"><View className="h-1.5 w-12 rounded-full bg-[#6B7167]" /></View>
+            <Animated.View {...filterSheetPan.panHandlers} style={{ transform: [{ translateY: filterSheetTranslateY }], backgroundColor: theme.surfaceRaised, borderTopColor: theme.border }} className="max-h-[82%] rounded-t-[30px] border-t pt-3">
+              <View className="h-8 items-center justify-center -mt-3 mb-1"><View className="h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.muted }} /></View>
         <ScrollView className="px-5" contentContainerStyle={{ paddingBottom: 18 }} showsVerticalScrollIndicator={false}>
           <View className="flex-row justify-between items-center">
-            <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 23 }} className="text-[#F8F7F0]">FILTERS</Text>
+            <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 23, color: theme.text }}>FILTERS</Text>
             <TouchableOpacity onPress={clear} className="px-2 py-2">
-              <Text className="text-[#3DB54A] font-bold">Clear all</Text>
+              <Text style={{ color: theme.green }} className="font-bold">Clear all</Text>
             </TouchableOpacity>
           </View>
           <Text className="text-xs font-semibold text-[#BFC1B9] mt-4 mb-2">
@@ -505,8 +512,8 @@ export default function SearchScreen() {
             ))}
           </View>
         </ScrollView>
-        <View className="border-t border-[#30372B] px-5 py-4">
-          <TouchableOpacity accessibilityRole="button" onPress={closeFilters} className="rounded-full bg-[#3DB54A] py-4 items-center"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-white text-base">Show {results.length} ground{results.length === 1 ? '' : 's'}</Text></TouchableOpacity>
+        <View className="border-t px-5 py-4" style={{ borderTopColor: theme.border }}>
+          <TouchableOpacity accessibilityRole="button" onPress={closeFilters} className="rounded-full py-4 items-center" style={{ backgroundColor: theme.green }}><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-white text-base">Show {results.length} ground{results.length === 1 ? '' : 's'}</Text></TouchableOpacity>
         </View>
             </Animated.View>
           </View>
@@ -519,34 +526,34 @@ export default function SearchScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => load(true)}
-            tintColor="#4CAF50"
+            tintColor={theme.green}
           />
         }
       >
-        <Text className="text-[#AFAFA9] text-sm mb-3">
+        <Text style={{ color: theme.subtle }} className="text-sm mb-3">
           {loading
             ? "Finding grounds..."
             : `${results.length} available ${results.length === 1 ? "ground" : "grounds"} on ${selectedDate}`}
         </Text>
         {loading ? (
-          <ActivityIndicator className="mt-10" color="#3DB54A" />
+          <ActivityIndicator className="mt-10" color={theme.green} />
         ) : loadError ? (
           <View className="bg-white border border-[#FECACA] rounded-2xl p-8 items-center mt-3"><Ionicons name="cloud-offline-outline" size={40} color="#DC2626" /><Text className="text-[#1A1A2E] font-bold text-lg mt-3">Couldn’t load grounds</Text><Text className="text-[#737373] text-center text-sm mt-2">Check your connection and try again.</Text><TouchableOpacity onPress={() => load()} className="mt-5 bg-[#1A1A2E] rounded-xl px-5 py-3"><Text className="text-white font-bold">Try again</Text></TouchableOpacity></View>
         ) : results.length === 0 ? (
-          <View className="bg-white border border-[#E5E5E5] rounded-2xl p-8 items-center mt-3">
-            <Ionicons name="search-outline" size={40} color="#9CA3AF" />
-            <Text className="text-[#1A1A2E] font-bold text-lg mt-3">
+          <View className="border rounded-2xl p-8 items-center mt-3" style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}>
+            <Ionicons name="search-outline" size={40} color={theme.muted} />
+            <Text style={{ color: theme.text }} className="font-bold text-lg mt-3">
               No matching availability
             </Text>
-            <Text className="text-[#737373] text-center text-sm mt-2">
+            <Text style={{ color: theme.subtle }} className="text-center text-sm mt-2">
               Try another date, remove a filter, or search a different city or
               area.
             </Text>
             <TouchableOpacity
               onPress={clear}
-              className="mt-5 bg-[#E8F5E9] rounded-xl px-5 py-3"
+              className="mt-5 rounded-xl px-5 py-3" style={{ backgroundColor: theme.businessSurface }}
             >
-              <Text className="text-[#2E7D32] font-bold">Clear filters</Text>
+              <Text style={{ color: theme.green }} className="font-bold">Clear filters</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -556,7 +563,8 @@ export default function SearchScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Open ${ground.title}`}
               onPress={() => router.push(`/(player)/ground/${ground.id}`)}
-              className="bg-[#181C16] border border-[#293B29] rounded-2xl overflow-hidden mb-4"
+              className="border rounded-2xl overflow-hidden mb-4"
+              style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
             >
               <Image
                 source={{
@@ -572,7 +580,7 @@ export default function SearchScreen() {
                 <View className="flex-row justify-between">
                   <View className="flex-1 mr-3">
                     <Text
-                      style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-[17px]"
+                      style={{ fontFamily: 'SpaceGrotesk_700Bold', color: theme.text }} className="text-[17px]"
                       numberOfLines={1}
                     >
                       {ground.title}
@@ -584,7 +592,7 @@ export default function SearchScreen() {
                         color="#E27A3F"
                       />
                       <Text
-                        className="text-[#AFAFA9] text-sm ml-1"
+                        style={{ color: theme.subtle }} className="text-sm ml-1"
                         numberOfLines={1}
                       >
                         {ground.location}, {ground.city}
@@ -594,21 +602,21 @@ export default function SearchScreen() {
                   <View className="items-end">
                     <View className="flex-row items-center">
                       <Ionicons name="star" size={14} color="#F59E0B" />
-                      <Text className="text-[#F8F7F0] text-sm font-bold ml-1">
+                      <Text style={{ color: theme.text }} className="text-sm font-bold ml-1">
                         {ground.rating.toFixed(1)}
                       </Text>
                     </View>
-                    <Text className="text-[#AFAFA9] text-xs mt-1">
+                    <Text style={{ color: theme.subtle }} className="text-xs mt-1">
                       {ground.total_reviews} reviews
                     </Text>
                   </View>
                 </View>
-                <View className="flex-row justify-between items-end mt-4 pt-3 border-t border-[#30372B]">
+                <View className="flex-row justify-between items-end mt-4 pt-3 border-t" style={{ borderTopColor: theme.border }}>
                   <View>
-                    <Text className="text-[#3DB54A] font-bold">
+                    <Text style={{ color: theme.green }} className="font-bold">
                       From PKR {lowestPrice!.toLocaleString()}
                     </Text>
-                    <Text className="text-[#AFAFA9] text-xs mt-1">
+                    <Text style={{ color: theme.subtle }} className="text-xs mt-1">
                       {availableSlots.length} slots available ·{" "}
                       {ground.pitch_type || "Turf"}
                     </Text>
@@ -619,8 +627,8 @@ export default function SearchScreen() {
                         </Text>
                       )}
                   </View>
-                  <View className="border border-[#3DB54A] rounded-full px-4 py-2">
-                    <Text className="text-[#61C86A] text-xs font-bold">
+                  <View className="border rounded-full px-4 py-2" style={{ borderColor: theme.green }}>
+                    <Text style={{ color: theme.green }} className="text-xs font-bold">
                       View slots
                     </Text>
                   </View>

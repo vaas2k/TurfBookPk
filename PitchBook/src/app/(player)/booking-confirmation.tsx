@@ -5,8 +5,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { formatTimeRange12 } from '@/lib/time';
 import * as Calendar from 'expo-calendar';
 import { appDialog } from '@/components/ui/app-dialog';
+import { useAppearanceStore } from '@/store/appearanceStore';
+import { playerThemes } from '@/theme/playerTheme';
 
 export default function BookingConfirmation() {
+  const appearance = useAppearanceStore((state) => state.appearance);
+  const theme = playerThemes[appearance];
   const params = useLocalSearchParams<{
     bookingId?: string;
     ground?: string;
@@ -22,21 +26,21 @@ export default function BookingConfirmation() {
 
   if (!hasValidBooking) {
     return (
-      <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F] justify-center items-center px-6">
-        <StatusBar barStyle="light-content" backgroundColor="#10120F" />
-        <View className="w-20 h-20 rounded-full bg-[#20251D] items-center justify-center mb-4">
-          <Ionicons name="alert-circle-outline" size={48} color="#9CA3AF" />
+      <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 justify-center items-center px-6" style={{ backgroundColor: theme.canvas }}>
+        <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.canvas} />
+        <View className="w-20 h-20 rounded-full items-center justify-center mb-4" style={{ backgroundColor: theme.surface }}>
+          <Ionicons name="alert-circle-outline" size={48} color={theme.muted} />
         </View>
-        <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 30 }} className="text-[#F8F7F0] text-center">
+        <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 30, color: theme.text }} className="text-center">
           No Booking Details Found
         </Text>
-        <Text className="text-[#AFAFA9] text-center mt-2 text-sm leading-5">
+        <Text style={{ color: theme.subtle }} className="text-center mt-2 text-sm leading-5">
           We could not find an active confirmed booking for this session. You can check all your active and past reservations in your bookings tab.
         </Text>
         <TouchableOpacity
           accessibilityRole="button"
           onPress={() => router.replace('/(player)/bookings')}
-          className="mt-6 bg-[#3DB54A] rounded-full px-8 py-3.5"
+          className="mt-6 rounded-full px-8 py-3.5" style={{ backgroundColor: theme.green }}
         >
           <Text className="text-white font-bold">Go to My Bookings</Text>
         </TouchableOpacity>
@@ -98,8 +102,8 @@ export default function BookingConfirmation() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1" style={{ backgroundColor: theme.canvas }}>
+      <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.canvas} />
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {/* Success Header */}
@@ -110,8 +114,8 @@ export default function BookingConfirmation() {
           >
             <Ionicons name="checkmark-circle" size={58} color="#3DB54A" />
           </View>
-          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 30, letterSpacing: 0.3 }} className="text-[#F8F7F0]">YOU'RE BOOKED!</Text>
-          <Text className="text-[#AFAFA9] text-center mt-3 text-[15px]">
+          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 30, letterSpacing: 0.3, color: theme.text }}>YOU'RE BOOKED!</Text>
+          <Text style={{ color: theme.subtle }} className="text-center mt-3 text-[15px]">
             A confirmation SMS is on its way to your squad.
           </Text>
         </View>

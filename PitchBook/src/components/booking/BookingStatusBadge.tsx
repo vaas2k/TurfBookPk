@@ -66,9 +66,9 @@ export function BookingStatusBadge({ status, paymentStatus }: BookingStatusBadge
   }
 
   return (
-    <View className={`flex-row items-center px-2.5 py-1 rounded-full border bg-transparent ${borderClass} self-start`}>
+    <View className={`flex-row items-center px-2.5 py-1 rounded-full border bg-transparent ${borderClass} self-start max-w-[45%]`}>
       <Ionicons name={iconName} size={13} color={iconColor} />
-      <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className={`text-xs ml-1 ${textClass}`}>
+      <Text numberOfLines={1} style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className={`text-xs ml-1 ${textClass} flex-shrink`}>
         {label}
       </Text>
     </View>

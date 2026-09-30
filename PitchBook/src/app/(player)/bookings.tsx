@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { formatTimeRange12 } from '@/lib/time';
@@ -16,6 +16,8 @@ import { BookingProfile, getPlayerBookings } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { goBackOrReplace } from '@/lib/navigation';
+import { useAppearanceStore } from '@/store/appearanceStore';
+import { playerThemes } from '@/theme/playerTheme';
 
 interface BookingSection {
   title: string;
@@ -24,6 +26,9 @@ interface BookingSection {
 }
 
 export default function BookingsScreen() {
+  const appearance = useAppearanceStore((state) => state.appearance);
+  const theme = playerThemes[appearance];
+  const insets = useSafeAreaInsets();
   const [bookings, setBookings] = useState<BookingProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -120,8 +125,9 @@ export default function BookingsScreen() {
       accessibilityRole="button"
       accessibilityLabel={`View booking ${item.booking_number} for ${item.ground_title}`}
       onPress={() => router.push({ pathname: '/(player)/booking/[id]', params: { id: item.id } })}
-      className="bg-[#181C16] rounded-[22px] p-4 mb-4 border border-[#254527]"
+      className="rounded-[22px] p-4 mb-4 border"
       style={{
+        backgroundColor: theme.surfaceRaised, borderColor: theme.border,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.03,
@@ -131,21 +137,21 @@ export default function BookingsScreen() {
     >
       <View className="flex-row justify-between items-start">
         <View className="flex-1 mr-3">
-            <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-lg" numberOfLines={1}>
+            <Text style={{ fontFamily: 'SpaceGrotesk_700Bold', color: theme.text }} className="text-lg" numberOfLines={1}>
             {item.ground_title}
           </Text>
-          <Text className="text-[#AFAFA9] text-sm mt-1">
+          <Text style={{ color: theme.subtle }} className="text-sm mt-1" numberOfLines={1}>
             {item.date} · {formatTimeRange12(item.start_time, item.end_time)}
           </Text>
         </View>
         <BookingStatusBadge status={item.status} paymentStatus={item.payment_status} />
       </View>
 
-      <View className="flex-row justify-between items-center mt-3 pt-3 border-t border-[#30382B]">
-        <Text className="text-[#888D84] text-xs font-mono">
+      <View className="flex-row justify-between items-center mt-3 pt-3 border-t" style={{ borderTopColor: theme.border }}>
+        <Text style={{ color: theme.muted, flexShrink: 1 }} className="text-xs font-mono mr-3" numberOfLines={1}>
           #{item.booking_number}
         </Text>
-        <Text className="text-[#3DB54A] font-bold text-base">
+        <Text style={{ color: theme.green }} className="font-bold text-base">
           PKR {item.total_amount.toLocaleString()}
         </Text>
       </View>
@@ -154,12 +160,12 @@ export default function BookingsScreen() {
   };
 
   const renderSectionHeader = ({ section }: { section: BookingSection }) => (
-    <View className="flex-row items-center justify-between pt-5 pb-2 bg-[#10120F]">
-      <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 19 }} className="uppercase tracking-wider text-[#D6D7D0]">
+    <View className="flex-row items-center justify-between pt-5 pb-2" style={{ backgroundColor: theme.canvas }}>
+      <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 19, color: theme.text }} className="uppercase tracking-wider">
         {section.title}
       </Text>
-      <View className="bg-[#22281E] rounded-full px-2 py-0.5">
-        <Text className="text-xs font-bold text-[#BFC1B9]">
+      <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: theme.surface }}>
+        <Text style={{ color: theme.subtle }} className="text-xs font-bold">
           {section.data.length}
         </Text>
       </View>
@@ -167,20 +173,20 @@ export default function BookingsScreen() {
   );
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" translucent={false} />
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1" style={{ backgroundColor: theme.canvas }}>
+      <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.canvas} translucent={false} />
       {/* Top Header */}
-      <View className="bg-[#10120F] px-5 pt-5 pb-3">
+      <View className="px-5 pt-5 pb-3" style={{ backgroundColor: theme.canvas }}>
         <View>
-          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 27, letterSpacing: 0.35 }} className="text-[#F8F7F0]">MY BOOKINGS</Text>
-          <Text className="text-[#AFAFA9] text-xs mt-0.5">
+          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 27, letterSpacing: 0.35, color: theme.text }}>MY BOOKINGS</Text>
+          <Text style={{ color: theme.subtle }} className="text-xs mt-0.5">
             {total} {total === 1 ? 'total reservation' : 'total reservations'}
           </Text>
         </View>
-        <View className="mt-6 bg-[#1B1F19] rounded-full p-1 flex-row">
-          <TouchableOpacity accessibilityRole="tab" accessibilityState={{ selected: bookingTab === 'upcoming' }} onPress={() => setBookingTab('upcoming')} className={`flex-1 items-center py-3 rounded-full ${bookingTab === 'upcoming' ? 'bg-[#3DB54A]' : ''}`}><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className={bookingTab === 'upcoming' ? 'text-white text-sm' : 'text-[#AFAFA9] text-sm'}>Upcoming</Text></TouchableOpacity>
-          <TouchableOpacity accessibilityRole="tab" accessibilityState={{ selected: bookingTab === 'past' }} onPress={() => setBookingTab('past')} className={`flex-1 items-center py-3 rounded-full ${bookingTab === 'past' ? 'bg-[#3DB54A]' : ''}`}><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className={bookingTab === 'past' ? 'text-white text-sm' : 'text-[#AFAFA9] text-sm'}>Past</Text></TouchableOpacity>
-          <TouchableOpacity accessibilityRole="tab" accessibilityState={{ selected: bookingTab === 'cancelled' }} onPress={() => setBookingTab('cancelled')} className={`flex-1 items-center py-3 rounded-full ${bookingTab === 'cancelled' ? 'bg-[#3DB54A]' : ''}`}><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className={bookingTab === 'cancelled' ? 'text-white text-sm' : 'text-[#AFAFA9] text-sm'}>Cancelled</Text></TouchableOpacity>
+        <View className="mt-6 rounded-full p-1 flex-row" style={{ backgroundColor: theme.surface }}>
+          <TouchableOpacity accessibilityRole="tab" accessibilityState={{ selected: bookingTab === 'upcoming' }} onPress={() => setBookingTab('upcoming')} className="flex-1 items-center py-3 rounded-full" style={bookingTab === 'upcoming' ? { backgroundColor: theme.green } : undefined}><Text adjustsFontSizeToFit numberOfLines={1} style={{ fontFamily: 'SpaceGrotesk_700Bold', color: bookingTab === 'upcoming' ? '#FFFFFF' : theme.subtle }} className="text-sm">Upcoming</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="tab" accessibilityState={{ selected: bookingTab === 'past' }} onPress={() => setBookingTab('past')} className="flex-1 items-center py-3 rounded-full" style={bookingTab === 'past' ? { backgroundColor: theme.green } : undefined}><Text adjustsFontSizeToFit numberOfLines={1} style={{ fontFamily: 'SpaceGrotesk_700Bold', color: bookingTab === 'past' ? '#FFFFFF' : theme.subtle }} className="text-sm">Past</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="tab" accessibilityState={{ selected: bookingTab === 'cancelled' }} onPress={() => setBookingTab('cancelled')} className="flex-1 items-center py-3 rounded-full" style={bookingTab === 'cancelled' ? { backgroundColor: theme.green } : undefined}><Text adjustsFontSizeToFit numberOfLines={1} style={{ fontFamily: 'SpaceGrotesk_700Bold', color: bookingTab === 'cancelled' ? '#FFFFFF' : theme.subtle }} className="text-sm">Cancelled</Text></TouchableOpacity>
         </View>
       </View>
 
@@ -222,14 +228,14 @@ export default function BookingsScreen() {
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
           ListFooterComponent={loadingMore ? <ActivityIndicator className="py-4" color="#4CAF50" /> : null}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32, backgroundColor: '#10120F' }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: Math.max(insets.bottom, 32), backgroundColor: theme.canvas }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => load(true)}
-              tintColor="#3DB54A"
-              colors={['#3DB54A']}
+              tintColor={theme.green}
+              colors={[theme.green]}
             />
           }
         />

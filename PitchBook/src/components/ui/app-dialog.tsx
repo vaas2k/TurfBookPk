@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Modal, PanResponder, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAppearanceStore } from '@/store/appearanceStore';
+import { playerThemes } from '@/theme/playerTheme';
 
 export type AppDialogAction = {
   text: string;
@@ -21,6 +23,8 @@ export const appDialog = {
 };
 
 export function AppDialogHost() {
+  const appearance = useAppearanceStore((state) => state.appearance);
+  const theme = playerThemes[appearance];
   const [request, setRequest] = useState<DialogRequest | null>(null);
   const [busy, setBusy] = useState(false);
   const sheetTranslateY = useRef(new Animated.Value(0)).current;
@@ -54,18 +58,18 @@ export function AppDialogHost() {
     <View className="flex-1 justify-end bg-black/65">
       <Pressable className="absolute inset-0" onPress={dismiss} accessibilityLabel="Close dialog" />
       <Animated.View {...sheetPan.panHandlers} style={{ transform: [{ translateY: sheetTranslateY }] }}>
-      <SafeAreaView edges={['bottom']} accessibilityRole="alert" className="w-full rounded-t-[32px] border-t border-[#30372B] bg-[#1A1E17] px-6 pt-3" style={{ elevation: 14 }}>
-        <View className="h-8 items-center justify-center -mt-3"><View className="h-1.5 w-12 rounded-full bg-[#6B7167]" /></View>
-        <View className={`mt-6 h-12 w-12 items-center justify-center rounded-full ${destructive ? 'bg-[#3A211E]' : 'bg-[#19331D]'}`}>
+      <SafeAreaView edges={['bottom']} accessibilityRole="alert" className="w-full rounded-t-[32px] border-t px-6 pt-3" style={{ elevation: 14, backgroundColor: theme.surfaceRaised, borderTopColor: theme.border }}>
+        <View className="h-8 items-center justify-center -mt-3"><View className="h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.muted }} /></View>
+        <View className="mt-6 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: destructive ? (appearance === 'dark' ? '#3A211E' : '#FCE9E7') : theme.businessSurface }}>
           <Ionicons name={destructive ? 'warning-outline' : 'information-circle-outline'} size={27} color={destructive ? '#FF5A55' : '#3DB54A'} />
         </View>
-        <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="mt-4 text-xl text-[#F8F7F0]">{request?.title}</Text>
-        {!!request?.message && <Text className="mt-2 text-[15px] leading-6 text-[#BFC1B9]">{request.message}</Text>}
+        <Text style={{ fontFamily: 'SpaceGrotesk_700Bold', color: theme.text }} className="mt-4 text-xl">{request?.title}</Text>
+        {!!request?.message && <Text style={{ color: theme.subtle }} className="mt-2 text-[15px] leading-6">{request.message}</Text>}
         <View className="mt-6 gap-3">
           {actions.map((action) => {
             const isCancel = action.style === 'cancel';
             const isDestructive = action.style === 'destructive';
-            return <Pressable key={action.text} accessibilityRole="button" accessibilityLabel={action.text} disabled={busy} onPress={() => select(action)} className={`min-h-[52px] items-center justify-center rounded-full px-4 ${isCancel ? 'border border-[#3A4034] bg-[#1A1E17]' : isDestructive ? 'bg-[#F24848]' : 'bg-[#3DB54A]'} ${busy ? 'opacity-60' : 'active:opacity-80'}`}>
+            return <Pressable key={action.text} accessibilityRole="button" accessibilityLabel={action.text} disabled={busy} onPress={() => select(action)} className={`min-h-[52px] items-center justify-center rounded-full px-4 ${isCancel ? 'border border-[#3A4034] bg-[#1A1E17]' : isDestructive ? 'bg-[#F24848]' : 'bg-[#3DB54A]'} ${busy ? 'opacity-60' : 'active:opacity-80'}`} style={isCancel ? { backgroundColor: theme.surface, borderColor: theme.border } : isDestructive ? undefined : { backgroundColor: theme.green }}>
               <Text className={`font-bold ${isCancel ? 'text-[#374151]' : 'text-white'}`}>{busy ? 'Please wait…' : action.text}</Text>
             </Pressable>;
           })}

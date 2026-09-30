@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-export type AppAppearance = 'dark' | 'light';
+export type AppAppearance = 'dark';
 
 interface AppearanceState {
   appearance: AppAppearance;
@@ -14,12 +14,17 @@ export const useAppearanceStore = create<AppearanceState>()(
   persist(
     (set) => ({
       appearance: 'dark',
-      setAppearance: (appearance) => set({ appearance }),
-      toggleAppearance: () => set((state) => ({ appearance: state.appearance === 'dark' ? 'light' : 'dark' })),
+      setAppearance: () => set({ appearance: 'dark' }),
+      toggleAppearance: () => set({ appearance: 'dark' }),
     }),
     {
       name: 'appearance-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as Partial<AppearanceState>),
+        appearance: 'dark',
+      }),
     },
   ),
 );

@@ -26,6 +26,7 @@ import { CloudinaryStorageProvider } from './services/cloudinaryStorageProvider.
 import { createMediaRouter } from './router/mediaRoutes.js';
 import { EngagementController } from './controllers/engagementController.js';
 import { createEngagementRouter } from './router/engagementRoutes.js';
+import { processExpoPushReceipts } from './services/expoPushService.js';
 
 const app = express();
 
@@ -102,3 +103,8 @@ const bookingMaintenanceTimer = setInterval(() => {
   bookingMaintenance.completeEndedBookings().catch((error) => console.error('Booking maintenance failed', error));
 }, 60_000);
 bookingMaintenanceTimer.unref();
+
+const pushReceiptTimer = setInterval(() => {
+  processExpoPushReceipts().catch((error) => console.error('Push receipt processing failed', error));
+}, 5 * 60_000);
+pushReceiptTimer.unref();

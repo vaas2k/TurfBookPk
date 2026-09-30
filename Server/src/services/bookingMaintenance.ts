@@ -2,6 +2,7 @@ import { and, eq, isNull, lte, sql as expression } from 'drizzle-orm';
 import { db } from '../database/client.js';
 import { bookings, ledgerEntries, notifications, slots, vendors } from '../database/schema.js';
 import { bookingStart } from './cancellationPolicy.js';
+import { sendExpoPush } from './expoPushService.js';
 
 export class BookingMaintenanceService {
   async processRecurringReservations(now = new Date()): Promise<{ opened: number; released: number }> {
@@ -16,7 +17,10 @@ export class BookingMaintenanceService {
           await tx.insert(notifications).values({ userId: booking.playerId, type: 'booking', title: 'Reserved slot released', message: `Your payment window closed, so the ${booking.date} slot is now available to other players.`, data: { bookingId: booking.id } });
           return true;
         });
-        if (changed) released += 1;
+        if (changed) {
+          released += 1;
+          void sendExpoPush({ userIds: [booking.playerId], title: 'Reserved slot released', body: `Your ${booking.date} reserved slot was released because its payment window closed.`, data: { bookingId: booking.id } });
+        }
       } else if (booking.paymentWindowOpensAt && booking.paymentWindowOpensAt <= now && !booking.paymentWindowNotifiedAt) {
         const changed = await db.transaction(async (tx) => {
           const marked = await tx.update(bookings).set({ paymentWindowNotifiedAt: now, updatedAt: now }).where(and(eq(bookings.id, booking.id), isNull(bookings.paymentWindowNotifiedAt), eq(bookings.status, 'pending_payment'))).returning();
@@ -24,7 +28,10 @@ export class BookingMaintenanceService {
           await tx.insert(notifications).values({ userId: booking.playerId, type: 'booking', title: 'Pay for your reserved slot', message: `Your payment window is open for the ${booking.date} slot. Pay now before it is released.`, data: { bookingId: booking.id } });
           return true;
         });
-        if (changed) opened += 1;
+        if (changed) {
+          opened += 1;
+          void sendExpoPush({ userIds: [booking.playerId], title: 'Pay for your reserved slot', body: `Your payment window is now open for the ${booking.date} slot. Pay before it is released.`, data: { bookingId: booking.id } });
+        }
       }
     }
     return { opened, released };

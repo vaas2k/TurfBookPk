@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { Linking } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDuration, formatTimeRange12 } from "@/lib/time";
@@ -25,6 +25,8 @@ import { Toast } from "@/components/ui/toast";
 import { BookingStatusBadge } from "@/components/booking/BookingStatusBadge";
 import { appDialog } from "@/components/ui/app-dialog";
 import { goBackOrReplace } from "@/lib/navigation";
+import { useAppearanceStore } from "@/store/appearanceStore";
+import { playerThemes } from "@/theme/playerTheme";
 
 export function BookingDetails({
   id,
@@ -33,6 +35,9 @@ export function BookingDetails({
   id: string;
   vendorView: boolean;
 }) {
+  const appearance = useAppearanceStore((state) => state.appearance);
+  const theme = playerThemes[appearance];
+  const insets = useSafeAreaInsets();
   const [booking, setBooking] = useState<BookingProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -228,11 +233,12 @@ export function BookingDetails({
     return (
       <SafeAreaView
         edges={["top", "left", "right"]}
-        className="flex-1 bg-[#10120F]"
+        className="flex-1"
+        style={{ backgroundColor: theme.canvas }}
       >
         <StatusBar
-          barStyle="light-content"
-          backgroundColor="#10120F"
+          barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'}
+          backgroundColor={theme.canvas}
           translucent={false}
         />
         <View className="px-6 pt-4 pb-5 flex-row items-center">
@@ -242,58 +248,58 @@ export function BookingDetails({
             onPress={() => goBackOrReplace("/(player)/bookings")}
             className="w-11 h-11 items-center justify-center -ml-2"
           >
-            <Ionicons name="arrow-back" size={31} color="#F8F7F0" />
+            <Ionicons name="arrow-back" size={31} color={theme.text} />
           </TouchableOpacity>
           <Text
             style={{
               fontFamily: "BigShouldersDisplay_800ExtraBold",
               fontSize: 26,
-              letterSpacing: 0.25,
+              letterSpacing: 0.25, color: theme.text,
             }}
-            className="text-[#F8F7F0] ml-3"
+            className="ml-3"
           >
             BOOKING DETAILS
           </Text>
         </View>
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 120 }}
+          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 96 + Math.max(insets.bottom, 16) }}
           showsVerticalScrollIndicator={false}
         >
-          <View className="bg-[#181C16] border border-[#30382B] rounded-[26px] p-4 flex-row items-center">
-            <View className="w-[96px] h-[96px] rounded-[18px] bg-[#24492A] items-center justify-center overflow-hidden">
+          <View className="border rounded-[26px] p-4 flex-row items-center" style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}>
+            <View className="w-[96px] h-[96px] rounded-[18px] items-center justify-center overflow-hidden" style={{ backgroundColor: theme.businessSurface }}>
               <Ionicons name="football" size={43} color="#B6E1B9" />
             </View>
             <View className="flex-1 ml-4">
               <Text
-                style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                className="text-[#F8F7F0] text-[18px]"
+                style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.text }}
+                className="text-[18px]"
                 numberOfLines={2}
               >
                 {booking.ground_title}
               </Text>
-              <Text className="text-[#3DB54A] text-[15px] mt-1">
+              <Text style={{ color: theme.green }} className="text-[15px] mt-1">
                 Pitch booking
               </Text>
-              <Text className="text-[#858A81] text-sm mt-2">
+              <Text style={{ color: theme.muted }} className="text-sm mt-2">
                 Ref: #{booking.booking_number}
               </Text>
             </View>
           </View>
-          <View className="bg-[#252A21] rounded-[24px] px-5 py-5 mt-5 flex-row items-center">
-            <Ionicons name="calendar" size={26} color="#3DB54A" />
+          <View className="rounded-[24px] px-5 py-5 mt-5 flex-row items-center" style={{ backgroundColor: theme.surface }}>
+            <Ionicons name="calendar" size={26} color={theme.green} />
             <Text
-              style={{ fontFamily: "SpaceGrotesk_500Medium" }}
-              className="text-[#F3F4EF] text-[16px] ml-4 flex-1"
+              style={{ fontFamily: "SpaceGrotesk_500Medium", color: theme.text }}
+              className="text-[16px] ml-4 flex-1"
             >
               {bookingDate} • {slotTime} (
               {formatDuration(booking.start_time, booking.end_time)})
             </Text>
           </View>
           {isUpcoming && (
-            <View className="bg-[#1A2119] border border-[#315536] rounded-[22px] px-5 py-4 mt-5">
+            <View className="border rounded-[22px] px-5 py-4 mt-5" style={{ backgroundColor: theme.businessSurface, borderColor: theme.businessBorder }}>
               <Text
-                style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                className="text-[#F3F4EF] text-sm"
+                style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.text }}
+                className="text-sm"
               >
                 {booking.cancellation_policy[0]!.toUpperCase() +
                   booking.cancellation_policy.slice(1)}{" "}
@@ -370,40 +376,39 @@ export function BookingDetails({
             </View>
           )}
 
-          <View className="bg-[#20241D] rounded-[25px] p-5 mt-5">
+          <View className="rounded-[25px] p-5 mt-5" style={{ backgroundColor: theme.surface }}>
             <Text
               style={{
                 fontFamily: "BigShouldersDisplay_700Bold",
-                fontSize: 19,
+                fontSize: 19, color: theme.subtle,
               }}
-              className="text-[#BFC1B9]"
             >
               PAYMENT BREAKDOWN
             </Text>
             <View className="flex-row justify-between mt-5">
-              <Text className="text-[#BFC1B9] text-base">
+              <Text style={{ color: theme.subtle }} className="text-base">
                 Pitch Booking Fee
               </Text>
-              <Text className="text-[#F8F7F0] text-base">
+              <Text style={{ color: theme.text }} className="text-base">
                 Rs {booking.total_amount.toLocaleString()}
               </Text>
             </View>
             <View className="flex-row justify-between mt-4">
-              <Text className="text-[#BFC1B9] text-base">Platform Fee</Text>
-              <Text className="text-[#F8F7F0] text-base">
+              <Text style={{ color: theme.subtle }} className="text-base">Platform Fee</Text>
+              <Text style={{ color: theme.text }} className="text-base">
                 Rs {booking.platform_fee.toLocaleString()}
               </Text>
             </View>
-            <View className="flex-row justify-between mt-5 pt-5 border-t border-[#383E32]">
+            <View className="flex-row justify-between mt-5 pt-5 border-t" style={{ borderTopColor: theme.border }}>
               <Text
-                style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                className="text-[#F8F7F0] text-lg"
+                style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.text }}
+                className="text-lg"
               >
                 Total {booking.payment_status === "paid" ? "Paid" : "Amount"}
               </Text>
               <Text
-                style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                className="text-[#3DB54A] text-lg"
+                style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.green }}
+                className="text-lg"
               >
                 Rs{" "}
                 {(booking.total_amount + booking.platform_fee).toLocaleString()}
@@ -412,7 +417,7 @@ export function BookingDetails({
           </View>
         </ScrollView>
         {isUpcoming && isCancellable && (
-          <View className="absolute bottom-0 left-0 right-0 bg-[#10120F] px-6 py-5">
+          <View className="absolute bottom-0 left-0 right-0 px-6 pt-5" style={{ backgroundColor: theme.canvas, paddingBottom: Math.max(insets.bottom, 16) }}>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Cancel booking"
@@ -430,7 +435,7 @@ export function BookingDetails({
           </View>
         )}
         {isCompleted && (
-          <View className="absolute bottom-0 left-0 right-0 bg-[#10120F] px-6 py-5">
+          <View className="absolute bottom-0 left-0 right-0 px-6 pt-5" style={{ backgroundColor: theme.canvas, paddingBottom: Math.max(insets.bottom, 16) }}>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Rate this ground"
@@ -443,7 +448,7 @@ export function BookingDetails({
                   },
                 })
               }
-              className="bg-[#3DB54A] rounded-full py-4 items-center"
+              className="rounded-full py-4 items-center" style={{ backgroundColor: theme.green }}
             >
               <Text
                 style={{ fontFamily: "SpaceGrotesk_700Bold" }}
@@ -468,7 +473,7 @@ export function BookingDetails({
     return <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
       <StatusBar barStyle="light-content" backgroundColor="#10120F" />
       <View className="px-6 pt-4 pb-4 flex-row items-center"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace("/(vendor)/bookings")} className="w-8 h-10 items-center justify-center -ml-2"><Ionicons name="chevron-back" size={29} color="#F5F5F0" /></TouchableOpacity><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0] text-[21px] ml-2">BOOKING DETAILS</Text></View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 156 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 116 + Math.max(insets.bottom, 16) }} showsVerticalScrollIndicator={false}>
         <View className="bg-[#1B1F19] border border-[#30372B] rounded-[18px] p-5">
           <View className="flex-row items-start"><View className="flex-1"><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0] text-[17px]">{booking.player_name || "Player"}</Text><Text className="text-[#9CA198] text-sm mt-1">#{booking.booking_number} · {booking.ground_title}</Text></View>{booking.player_phone && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Call player" onPress={() => Linking.openURL(`tel:${booking.player_phone}`)} className="w-10 h-10 rounded-full bg-[#17301B] items-center justify-center"><Ionicons name="call-outline" size={21} color="#42B84F" /></TouchableOpacity>}</View>
           <View className="border-t border-[#30372B] mt-4 pt-4"><View className="flex-row items-center"><Ionicons name="calendar-outline" size={18} color="#42B84F" /><Text className="text-[#E5E7E1] text-sm ml-3">{bookingDate} · {slotTime}</Text></View><View className="flex-row items-center mt-3"><Ionicons name="location-outline" size={18} color="#42B84F" /><Text className="text-[#E5E7E1] text-sm ml-3 flex-1" numberOfLines={1}>{booking.ground_title} · {booking.ground_address}</Text></View></View>
@@ -478,7 +483,7 @@ export function BookingDetails({
         {booking.status === "cancelled" && <View className="bg-[#38201E] border border-[#69332C] rounded-[18px] p-5 mt-5"><Text className="text-[#FFD1CB] font-bold">Booking cancelled</Text><Text className="text-[#E9A49B] text-sm mt-2">Refund due: PKR {booking.refund_amount.toLocaleString()}</Text>{booking.cancellation_reason && <Text className="text-[#E9A49B] text-xs mt-2">{booking.cancellation_reason}</Text>}</View>}
         {isOpen && <Text className="text-[#92978F] text-xs leading-5 text-center mt-5">Attendance can be marked once the booked slot has ended.</Text>}
       </ScrollView>
-      {(isCancellable || canComplete) && <View className="absolute bottom-0 left-0 right-0 bg-[#10120F] border-t border-[#30372B] px-6 pt-5 pb-6">
+      {(isCancellable || canComplete) && <View className="absolute bottom-0 left-0 right-0 bg-[#10120F] border-t border-[#30372B] px-6 pt-5" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
         {canComplete && <><TouchableOpacity accessibilityRole="button" accessibilityLabel="Mark player attendance complete" disabled={actionLoading} onPress={handleCompleted} className="bg-[#42B84F] rounded-full py-4 items-center">{actionLoading ? <ActivityIndicator color="#102110" /> : <Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#102110] text-base">Mark as checked in</Text>}</TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Mark player as no-show" disabled={actionLoading} onPress={handleNoShow} className="py-4 items-center"><Text className="text-[#F26666] font-bold">Mark as no-show</Text></TouchableOpacity></>}
         {isCancellable && !canComplete && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel booking" disabled={actionLoading} onPress={handleCancel} className="py-3 items-center"><Text className="text-[#F26666] font-bold">Cancel booking</Text></TouchableOpacity>}
       </View>}

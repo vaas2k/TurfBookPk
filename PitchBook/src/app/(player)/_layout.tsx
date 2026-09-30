@@ -2,11 +2,15 @@ import { Stack, usePathname, router } from 'expo-router';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppearanceStore } from '@/store/appearanceStore';
+import { playerThemes } from '@/theme/playerTheme';
 
 // Custom Tab Bar Component
 function BottomTabBar() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const appearance = useAppearanceStore((state) => state.appearance);
+  const theme = playerThemes[appearance];
   const bottomPadding = Math.max(insets.bottom, 8);
 
   // Define which paths should show the tab bar
@@ -76,8 +80,10 @@ function BottomTabBar() {
 
   return (
     <View 
-      className="bg-[#1A1C16] border-t border-[#2A3025] flex-row items-center justify-around px-5 pt-2"
+      className="border-t flex-row items-center justify-around px-5 pt-2"
       style={{ 
+        backgroundColor: theme.surfaceRaised,
+        borderTopColor: theme.border,
         paddingBottom: bottomPadding,
         minHeight: 64 + bottomPadding,
         shadowColor: '#0F172A',
@@ -99,14 +105,14 @@ function BottomTabBar() {
             onPress={() => handlePress(tab.route)}
             activeOpacity={0.7}
           >
-            <Ionicons 
-              name={active ? tab.icon : `${tab.icon}-outline` as any} 
+            <Ionicons
+              name={active ? tab.icon : `${tab.icon}-outline` as any}
               size={26} 
-              color={active ? '#3EAF4C' : '#A1A39D'} 
+              color={active ? theme.green : theme.subtle}
             />
-            <Text 
-              style={{ fontFamily: 'SpaceGrotesk_500Medium' }} className={`text-[11px] mt-1 ${
-                active ? 'text-[#3EAF4C] font-medium' : 'text-[#A1A39D]'
+            <Text
+              style={{ fontFamily: 'SpaceGrotesk_500Medium', color: active ? theme.green : theme.subtle }} className={`text-[11px] mt-1 ${
+                active ? 'font-medium' : ''
               }`}
             >
               {tab.name}
@@ -119,12 +125,14 @@ function BottomTabBar() {
 }
 
 export default function PlayerLayout() {
+  const appearance = useAppearanceStore((state) => state.appearance);
+  const theme = playerThemes[appearance];
   return (
-    <View className="flex-1 bg-[#12130F]">
+    <View className="flex-1" style={{ backgroundColor: theme.canvas }}>
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: '#12130F' },
+          contentStyle: { backgroundColor: theme.canvas },
         }}
       >
         <Stack.Screen name="index" />
@@ -148,7 +156,6 @@ export default function PlayerLayout() {
         <Stack.Screen name="help-support" />
         <Stack.Screen name="reviews" />
         <Stack.Screen name="reviews-write" />
-        <Stack.Screen name="profile-edit" />
       </Stack>
       <BottomTabBar />
     </View>

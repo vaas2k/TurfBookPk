@@ -1561,3 +1561,15 @@
 - Added persisted favorites and recently viewed grounds, including player ground-detail heart controls and a saved-grounds screen API route.
 - Applied `0019_reviews_and_ground_engagement.sql` locally.
 - Verified server and mobile TypeScript checks pass.
+
+## 2026-09-30 - Push notification delivery hardening
+
+- Added safe app-owned-build push registration and booking tap navigation. Expo Go is explicitly bypassed so Android SDK 53+ remote-push APIs cannot crash the app.
+- Added Expo push delivery for multi-slot confirmation, vendor new-booking alerts, recurring-payment confirmation/window open/window expiry, cancellations, and existing no-show events.
+- Added `push_receipts` migration `0014_push_receipts.sql`; Expo ticket IDs are persisted and polled every five minutes. Tokens are removed on immediate or receipt-confirmed `DeviceNotRegistered` responses.
+- Verified `Server/npm run typecheck` and `PitchBook/npx tsc --noEmit` pass.
+
+### Remaining push rollout
+
+- Apply migration `0014_push_receipts.sql` to each environment.
+- Create/install an Android development build (or release build for launch-from-notification testing), configure FCM credentials in EAS, then test permission, token registration, foreground/background delivery, tap routing, and token invalidation.

@@ -23,6 +23,22 @@ This journal is intentionally separate from `TASK_JOURNAL.md`. It records visual
 
 ## Next design task
 
+## 2026-09-30 - Device validation responsive fixes
+
+- Player ground detail now uses measured gallery/slot-grid widths and wrapping/shrinking copy for long names, review controls, location, and policy content.
+- Player bookings now constrains long status chips and booking IDs; tabs scale their label instead of overflowing.
+- Vendor dashboard greeting is constrained to the available header width and the notification action is fixed-size, so it stays on-screen.
+- Mobile TypeScript and targeted ESLint validation pass with no errors.
+
+## 2026-09-29 - Player light-theme completion pass
+
+- Applied the persisted player appearance preference to the active player navigation, Home, Search, ground detail, bookings, booking detail/confirmation, notifications, profile editing, saved/recent ground library, reviews, support, wallet, and shared dialog surfaces.
+- Kept the dark Figma baseline unchanged and used the existing light token set for canvas, cards, borders, text, and semantic green states.
+- Kept legacy provider-specific mock payment screens out of this pass because they are not active production flows.
+- Validation: `npx tsc --noEmit` and `git diff --check` passed.
+
+## Next design task
+
 ## 2026-09-27 - Vendor dark operational UI pass
 
 - Redesigned the vendor tab shell and the operational overview, My Grounds, booking history, earnings, notifications, booking detail, reviews, and profile around the supplied vendor Figma exports.

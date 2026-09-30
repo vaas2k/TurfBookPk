@@ -251,6 +251,14 @@ export const pushTokens = pgTable('push_tokens', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const pushReceipts = pgTable('push_receipts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  token: text('token').notNull().references(() => pushTokens.token, { onDelete: 'cascade' }),
+  ticketId: text('ticket_id').notNull().unique(),
+  checkedAt: timestamp('checked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const reviews = pgTable('reviews', {
   id: uuid('id').defaultRandom().primaryKey(),
   bookingId: uuid('booking_id').notNull().unique().references(() => bookings.id, { onDelete: 'cascade' }),

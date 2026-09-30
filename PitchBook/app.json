@@ -23,6 +23,7 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundColor": "#4CAF50"
       },
+      "googleServicesFile": "./google-services.json",
       "package": "com.turfbookpk.app",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
@@ -64,7 +65,8 @@
         "expo-notifications",
         {
           "icon": "./assets/images/android-icon-monochrome.png",
-          "color": "#4CAF50"
+          "color": "#4CAF50",
+          "defaultChannel": "bookings"
         }
       ],
       "expo-web-browser",

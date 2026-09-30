@@ -1,4 +1,3 @@
-import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
@@ -19,9 +18,9 @@ export async function setNotificationPreferences(value: NotificationPreferences)
 
 export async function registerForPushNotifications(): Promise<string | null> {
   try {
-    // Expo Go removed Android remote-push support in SDK 53. Do not invoke its token API.
-    // if (isExpoGoRuntime) return null;
-    if (!Device.isDevice) return null;
+    // Expo Go removed Android remote-push support in SDK 53. Never call the
+    // remote token API there: it throws before a token can be returned.
+    if (isExpoGoRuntime) return null;
     const current = await Notifications.getPermissionsAsync();
     const status = current.status === 'granted' ? current.status : (await Notifications.requestPermissionsAsync()).status;
     if (status !== 'granted') return null;
@@ -33,6 +32,21 @@ export async function registerForPushNotifications(): Promise<string | null> {
     console.info('Remote push registration is unavailable in this runtime.', error);
     return null;
   }
+}
+
+export function listenForNotificationResponses(onBookingOpen: (bookingId: string) => void): () => void {
+  // Remote response listeners are only installed in an app-owned native build.
+  // This keeps Expo Go usable while local/in-app notifications remain available.
+  if (isExpoGoRuntime) return () => undefined;
+  const open = (response: Notifications.NotificationResponse) => {
+    const bookingId = response.notification.request.content.data?.bookingId;
+    if (typeof bookingId === 'string' && bookingId) onBookingOpen(bookingId);
+  };
+  const subscription = Notifications.addNotificationResponseReceivedListener(open);
+  void Notifications.getLastNotificationResponseAsync().then((response) => {
+    if (response) open(response);
+  }).catch(() => undefined);
+  return () => subscription.remove();
 }
 
 export async function scheduleBookingReminders(booking: BookingProfile): Promise<void> {

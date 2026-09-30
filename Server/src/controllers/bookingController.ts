@@ -110,6 +110,18 @@ export class BookingController {
       await tx.insert(notifications).values({ userId: request.auth!.userId, type: 'booking', title: recurringReservation ? 'Today\'s recurring slots confirmed' : 'Bookings confirmed', message: recurringReservation ? `${ordered.filter((item) => item.booking.date !== payNowDate).length} future slots are reserved. Payment opens two hours before each slot.` : `${items.length} slots were confirmed.`, data: { bookingId: first.booking.id, orderId: id } });
       return { idempotent: false, order: { ...order, status: 'confirmed', paymentStatus: 'paid' } };
     });
+    if (!result.idempotent) {
+      const confirmed = await db.select({ booking: bookings, ground: grounds, vendor: vendors, player: users })
+        .from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).innerJoin(vendors, eq(bookings.vendorId, vendors.id))
+        .leftJoin(users, eq(bookings.playerId, users.id)).where(eq(bookings.orderId, result.order.id));
+      const first = confirmed[0];
+      if (first) {
+        void sendExpoPush({ userIds: [request.auth.userId], title: 'Bookings confirmed', body: `${confirmed.length} slot${confirmed.length === 1 ? '' : 's'} at ${first.ground.title} confirmed.`, data: { bookingId: first.booking.id } });
+        for (const vendorUserId of [...new Set(confirmed.map((item) => item.vendor.userId))]) {
+          void sendExpoPush({ userIds: [vendorUserId], title: 'New booking', body: `${first.player?.fullName || 'A player'} booked ${confirmed.length} slot${confirmed.length === 1 ? '' : 's'} at ${first.ground.title}.`, data: { bookingId: first.booking.id } });
+        }
+      }
+    }
     response.json({ order: { id: result.order.id, order_number: result.order.orderNumber, status: result.order.status, payment_status: result.order.paymentStatus }, idempotent: result.idempotent });
   };
   createOrder = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -290,6 +302,11 @@ export class BookingController {
       await tx.insert(notifications).values([{ userId: item.vendor.userId, type: 'booking', title: 'Recurring slot paid', message: `${item.player?.fullName || 'A player'} paid for a reserved slot at ${item.ground.title}.`, data: { bookingId: id } }, { userId: request.auth!.userId, type: 'booking', title: 'Reserved slot confirmed', message: `Your reserved slot at ${item.ground.title} is confirmed.`, data: { bookingId: id } }]);
     });
     const booking = await fetchBooking(id);
+    if (booking) {
+      void sendExpoPush({ userIds: [request.auth.userId], title: 'Reserved slot confirmed', body: `Your reserved slot at ${booking.ground.title} is confirmed.`, data: { bookingId: id } });
+      const vendor = (await db.select({ userId: vendors.userId }).from(vendors).where(eq(vendors.id, booking.booking.vendorId)).limit(1))[0];
+      if (vendor) void sendExpoPush({ userIds: [vendor.userId], title: 'Recurring slot paid', body: `A player paid for a reserved slot at ${booking.ground.title}.`, data: { bookingId: id } });
+    }
     response.json({ booking: booking ? mapBooking(booking) : null });
   };
   vendorList = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -398,6 +415,11 @@ export class BookingController {
       return { idempotent: false, bookingId: id };
     });
     const booking = await fetchBooking(result.bookingId);
+    if (!result.idempotent && booking) {
+      const vendor = (await db.select({ userId: vendors.userId }).from(vendors).where(eq(vendors.id, booking.booking.vendorId)).limit(1))[0];
+      const recipient = booking.booking.playerId === request.auth.userId ? vendor?.userId : booking.booking.playerId;
+      if (recipient) void sendExpoPush({ userIds: [recipient], title: 'Booking cancelled', body: `A booking at ${booking.ground.title} was cancelled.`, data: { bookingId: booking.booking.id } });
+    }
     response.json({ booking: booking ? mapBooking(booking) : null, idempotent: result.idempotent });
   };
 }

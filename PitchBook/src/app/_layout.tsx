@@ -13,6 +13,10 @@ import { getApiConfigurationError } from '@/lib/api/client';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { useAppearanceStore } from '@/store/appearanceStore';
 import { colorScheme } from 'nativewind';
+import { useRouter } from 'expo-router';
+import { Platform } from 'react-native';
+import { listenForNotificationResponses, registerForPushNotifications } from '@/lib/notifications';
+import { registerPushToken } from '@/lib/api/notifications';
 
 //@ts-ignore
 import '../global.css';
@@ -26,6 +30,9 @@ TextWithDefaults.defaultProps = {
 export default function RootLayout() {
   const configurationError = getApiConfigurationError();
   const { checkAuth } = useAuthStore();
+  const currentUser = useAuthStore((state) => state.user);
+  const currentRole = useAuthStore((state) => state.role);
+  const router = useRouter();
   const { checkVendorStatus } = useVendorStore();
   const [isReady, setIsReady] = useState(false);
   const appearance = useAppearanceStore((state) => state.appearance);
@@ -66,6 +73,18 @@ export default function RootLayout() {
     };
     init();
   }, [checkAuth, checkVendorStatus, configurationError]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    let active = true;
+    void registerForPushNotifications().then(async (token) => {
+      if (active && token) await registerPushToken(token, Platform.OS);
+    }).catch(() => undefined);
+    return listenForNotificationResponses((bookingId) => {
+      const group = currentRole === 'vendor' ? 'vendor' : 'player';
+      router.push(`/(${group})/booking/${bookingId}` as never);
+    });
+  }, [currentRole, currentUser, router]);
 
   if (configurationError) {
     return (

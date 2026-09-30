@@ -27,6 +27,8 @@ import { listRecentlyViewedGrounds } from "@/lib/api/engagement";
 import { getNotifications } from "@/lib/api/notifications";
 import { appDialog } from "@/components/ui/app-dialog";
 import * as Location from "expo-location";
+import { useAppearanceStore } from "@/store/appearanceStore";
+import { playerThemes } from "@/theme/playerTheme";
 
 const { width } = Dimensions.get("window");
 
@@ -74,6 +76,8 @@ function toPlayerGround(ground: Ground, distance: number | null = null) {
 }
 
 export default function PlayerHome() {
+  const appearance = useAppearanceStore((state) => state.appearance);
+  const theme = playerThemes[appearance];
   const { profile, user, switchToVendor } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState("All");
@@ -210,7 +214,8 @@ export default function PlayerHome() {
         })
       }
       activeOpacity={0.86}
-      className="bg-[#1A1C16] border border-[#293B29] rounded-[16px] overflow-hidden flex-row mb-3"
+      className="border rounded-[16px] overflow-hidden flex-row mb-3"
+      style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
     >
       <Image
         source={{ uri: ground.image }}
@@ -220,8 +225,7 @@ export default function PlayerHome() {
       <View className="flex-1 px-3 py-3 justify-between">
         <View>
           <Text
-            style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-            className="text-[#F8F7F0] text-[15px]"
+            style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.text }} className="text-[15px]"
             numberOfLines={1}
           >
             {ground.name}
@@ -229,7 +233,7 @@ export default function PlayerHome() {
           <View className="flex-row items-center mt-1">
             <Ionicons name="location-outline" size={13} color="#E27A3F" />
             <Text
-              className="text-[#AFAFA9] text-[11px] ml-1 flex-1"
+              style={{ color: theme.subtle }} className="text-[11px] ml-1 flex-1"
               numberOfLines={1}
             >
               {ground.location}
@@ -239,12 +243,11 @@ export default function PlayerHome() {
         <View className="flex-row items-end justify-between">
           <View>
             <Text
-              style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-              className="text-[#53B65B] text-sm"
+              style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.green }} className="text-sm"
             >
               PKR {ground.price}/hr
             </Text>
-            <Text className="text-[#AFAFA9] text-[10px] mt-0.5">
+            <Text style={{ color: theme.subtle }} className="text-[10px] mt-0.5">
               {ground.distance || `${ground.slotsAvailable} slots today`}
             </Text>
           </View>
@@ -255,8 +258,8 @@ export default function PlayerHome() {
   );
 
   const redesignedHome = (
-    <SafeAreaView className="flex-1 bg-[#12130F]">
-      <StatusBar barStyle="light-content" backgroundColor="#12130F" />
+    <SafeAreaView className="flex-1" style={{ backgroundColor: theme.canvas }}>
+      <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.canvas} />
       <ScrollView
         className="flex-1"
         refreshControl={
@@ -272,19 +275,19 @@ export default function PlayerHome() {
           <View className="flex-row items-center">
             <Ionicons name="location-outline" size={20} color="#E27A3F" />
             <Text
-              style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-              className="text-[#F8F7F0] ml-1"
+              style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.text }} className="ml-1"
               numberOfLines={1}
             >
               {homeCity}
             </Text>
-            <Ionicons name="chevron-down" size={16} color="#F8F7F0" />
+            <Ionicons name="chevron-down" size={16} color={theme.text} />
           </View>
           <TouchableOpacity
-            className="bg-[#1A1C16] w-11 h-11 rounded-full items-center justify-center border border-[#3A4032]"
+            className="w-11 h-11 rounded-full items-center justify-center border"
+            style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
             onPress={() => router.push("/(player)/notifications")}
           >
-            <Ionicons name="notifications-outline" size={21} color="#F8F7F0" />
+            <Ionicons name="notifications-outline" size={21} color={theme.text} />
             {unreadNotifications > 0 && (
               <View className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#DC2626] items-center justify-center">
                 <Text className="text-white text-[9px] font-bold">
@@ -343,9 +346,8 @@ export default function PlayerHome() {
             <Text
               style={{
                 fontFamily: "BigShouldersDisplay_800ExtraBold",
-                fontSize: 24,
+                fontSize: 24, color: theme.text,
               }}
-              className="text-[#F8F7F0]"
             >
               NEAR YOU
             </Text>
@@ -353,8 +355,7 @@ export default function PlayerHome() {
               onPress={() => router.push("/(player)/nearby-grounds")}
             >
               <Text
-                style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                className="text-[#61BD67] text-xs"
+                style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.green }} className="text-xs"
               >
                 SEE ALL
               </Text>
@@ -362,7 +363,7 @@ export default function PlayerHome() {
           </View>
           {todayGrounds.slice(0, 3).map(compactNearbyCard)}
           {todayGrounds.length === 0 && !refreshing && (
-            <Text className="text-[#B8B9B2] text-sm text-center py-6">
+            <Text style={{ color: theme.subtle }} className="text-sm text-center py-6">
               No grounds have slots available today.
             </Text>
           )}
@@ -372,9 +373,8 @@ export default function PlayerHome() {
             <Text
               style={{
                 fontFamily: "BigShouldersDisplay_800ExtraBold",
-                fontSize: 24,
+                fontSize: 24, color: theme.text,
               }}
-              className="text-[#F8F7F0]"
             >
               RECENTLY VIEWED
             </Text>
@@ -382,8 +382,7 @@ export default function PlayerHome() {
               onPress={() => router.push("/(player)/recently-viewed")}
             >
               <Text
-                style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                className="text-[#61BD67] text-xs"
+                style={{ fontFamily: "SpaceGrotesk_700Bold", color: theme.green }} className="text-xs"
               >
                 SEE ALL
               </Text>

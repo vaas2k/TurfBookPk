@@ -15,11 +15,15 @@ import { Toast } from "@/components/ui/toast";
 import * as ImagePicker from "expo-image-picker";
 import { deleteOwnedImageUrl, uploadImage } from "@/lib/api/media";
 import { goBackOrReplace } from "@/lib/navigation";
+import { useAppearanceStore } from "@/store/appearanceStore";
+import { playerThemes } from "@/theme/playerTheme";
 
 const input =
   "bg-[#181C16] border border-[#30372B] rounded-xl px-4 py-3 text-[#F8F7F0]";
 
 export default function EditPlayerProfile() {
+  const appearance = useAppearanceStore((state) => state.appearance);
+  const theme = playerThemes[appearance];
   const profile = useAuthStore((state) => state.profile);
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
@@ -54,7 +58,7 @@ export default function EditPlayerProfile() {
     }
   };
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1" style={{ backgroundColor: theme.canvas }}>
       <ScrollView
         className="px-6"
         contentContainerStyle={{ paddingBottom: 32 }}
@@ -64,35 +68,38 @@ export default function EditPlayerProfile() {
             accessibilityRole="button"
             accessibilityLabel="Go back"
             onPress={() => goBackOrReplace("/(player)/profile")}
-            className="w-10 h-10 rounded-xl bg-[#181C16] border border-[#30372B] items-center justify-center mr-3"
+            className="w-10 h-10 rounded-xl border items-center justify-center mr-3" style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
           >
             <Text className="text-[#1A1A2E] text-xl">‹</Text>
           </TouchableOpacity>
-          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 26 }} className="text-[#F8F7F0] flex-1">
+          <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 26, color: theme.text }} className="flex-1">
             Edit Profile
           </Text>
         </View>
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose profile photo" disabled={saving} onPress={pickAvatar} className="items-center mb-5">{avatar ? <Image source={{ uri: avatar }} className="h-20 w-20 rounded-full border-2 border-[#3DB54A]" /> : <View className="h-20 w-20 rounded-full border-2 border-[#3DB54A] items-center justify-center"><Text className="text-[#3DB54A] text-xl font-bold">{name.slice(0, 1).toUpperCase() || 'P'}</Text></View>}<Text className="text-[#3DB54A] font-bold text-sm mt-2">Change photo</Text></TouchableOpacity>
-        <Text className="text-[#BFC1B9] font-medium text-sm mb-2">Full name</Text>
+        <Text style={{ color: theme.subtle }} className="font-medium text-sm mb-2">Full name</Text>
         <TextInput
           accessibilityLabel="Full name"
           value={name}
           onChangeText={setName}
           className={input}
+          style={{ color: theme.text, backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
         />
-        <Text className="text-[#BFC1B9] font-medium text-sm mt-4 mb-2">City</Text>
+        <Text style={{ color: theme.subtle }} className="font-medium text-sm mt-4 mb-2">City</Text>
         <TextInput
           accessibilityLabel="City"
           value={city}
           onChangeText={setCity}
           className={input}
+          style={{ color: theme.text, backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
         />
-        <Text className="text-[#BFC1B9] font-medium text-sm mt-4 mb-2">Bio</Text>
+        <Text style={{ color: theme.subtle }} className="font-medium text-sm mt-4 mb-2">Bio</Text>
         <TextInput
           accessibilityLabel="Bio"
           value={bio}
           onChangeText={setBio}
           className={input}
+          style={{ color: theme.text, backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
           multiline
         />
         <TouchableOpacity
@@ -100,7 +107,7 @@ export default function EditPlayerProfile() {
           accessibilityLabel="Save profile changes"
           disabled={saving}
           onPress={save}
-          className={`rounded-full py-4 items-center mt-6 ${saving ? "bg-[#596057]" : "bg-[#3DB54A]"}`}
+          className="rounded-full py-4 items-center mt-6" style={{ backgroundColor: saving ? theme.muted : theme.green }}
         >
           {saving ? (
             <ActivityIndicator color="white" />
