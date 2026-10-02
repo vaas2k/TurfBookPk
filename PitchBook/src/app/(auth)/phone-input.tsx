@@ -13,12 +13,11 @@ import { appDialog } from '@/components/ui/app-dialog';
 export default function PhoneInputScreen() {
   const [phone, setPhone] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const { sendOTP, signInWithGoogle, error, clearError } = useAuthStore();
+  const { sendOTP, error, clearError } = useAuthStore();
 
   useEffect(() => {
     if (error) clearError();
-  }, [phone]);
+  }, [phone, error, clearError]);
 
   const formatPhone = (text: string) => {
     const cleaned = text.replace(/\D/g, '');
@@ -56,29 +55,6 @@ export default function PhoneInputScreen() {
         pathname: '/(auth)/otp-verification',
         params: { phone: cleanPhone }
       });
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    setIsGoogleLoading(true);
-    
-    const { error } = await signInWithGoogle();
-    
-    setIsGoogleLoading(false);
-
-    if (error && error.code !== 'redirect') {
-      appDialog.alert('Error', error.message);
-    } else {
-      if (Platform.OS !== 'web') {
-        const { isAuthenticated, isNewUser } = useAuthStore.getState();
-        if (isAuthenticated) {
-          if (isNewUser) {
-            router.replace('/(auth)/profile-setup');
-          } else {
-            router.replace('/(player)');
-          }
-        }
-      }
     }
   };
 
@@ -142,27 +118,8 @@ export default function PhoneInputScreen() {
               )}
             </TouchableOpacity>
 
-            <View style={styles.orDivider}>
-              <View style={styles.line} />
-              <Text style={styles.orText}>OR</Text>
-              <View style={styles.line} />
-            </View>
-
-            <TouchableOpacity
-              style={styles.googleButton}
-              onPress={handleGoogleSignIn}
-              disabled={isGoogleLoading}
-              activeOpacity={0.8}
-            >
-              {isGoogleLoading ? (
-                <ActivityIndicator color="#FAFAFA" />
-              ) : (
-                <>
-                  <Ionicons name="logo-google" size={20} color="#FAFAFA" />
-                  <Text style={styles.googleButtonText}>Continue with Google</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            {/* Google/Apple login deliberately deferred: TurfBookPK uses verified
+                phone OTP as its only account sign-in method for the MVP. */}
           </View>
           
         </View>
@@ -194,10 +151,4 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: '#3EAF4C', height: 56, borderRadius: 999, alignItems: 'center', justifyContent: 'center', marginTop: 24 },
   primaryButtonText: { color: '#FFFFFF', fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold' },
   
-  orDivider: { flexDirection: 'row', alignItems: 'center', marginVertical: 32 },
-  line: { flex: 1, height: 1, backgroundColor: 'rgba(255, 255, 255, 0.1)' },
-  orText: { color: '#A1A39D', paddingHorizontal: 16, fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 1 },
-  
-  googleButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 56, borderRadius: 999, backgroundColor: '#1A1C16', borderWidth: 1, borderColor: '#34382E' },
-  googleButtonText: { color: '#F5F5F0', fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', marginLeft: 12 },
 });

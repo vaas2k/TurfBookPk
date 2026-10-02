@@ -39,7 +39,7 @@ export class DrizzleAuthRepository implements AuthRepository {
     if (changes.preferred_foot !== undefined) values.preferredFoot = changes.preferred_foot;
     if (changes.preferred_position !== undefined) values.preferredPosition = changes.preferred_position;
     if (changes.skill_level !== undefined) values.skillLevel = changes.skill_level;
-    if (changes.role !== undefined) values.role = changes.role;
+    // Role changes are privileged and only happen through vendor activation or admin tooling.
     if (changes.avatar_url !== undefined) values.avatarUrl = changes.avatar_url;
     if (changes.is_verified !== undefined) values.isVerified = changes.is_verified;
     if (changes.is_setup_complete !== undefined) values.isSetupComplete = changes.is_setup_complete;

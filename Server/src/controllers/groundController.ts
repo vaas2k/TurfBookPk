@@ -149,7 +149,7 @@ async function materializeSchedule(ground: typeof grounds.$inferSelect): Promise
 }
 
 export function toGround(row: typeof grounds.$inferSelect) {
-  return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_percentage: row.peakPercentage, peak_windows: row.peakWindows.map((window) => ({ days: window.days, start_time: window.startTime, end_time: window.endTime })), is_active: row.isActive, is_verified: row.isVerified, rating: row.rating, total_reviews: row.totalReviews, operating_hours: row.operatingHours, scheduling_policy: { max_slot_duration_minutes: env.maxSlotDurationMinutes, max_advance_booking_days: env.maxAdvanceBookingDays }, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+  return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_percentage: row.peakPercentage, peak_windows: row.peakWindows.map((window) => ({ days: window.days, start_time: window.startTime, end_time: window.endTime })), is_active: row.isActive, is_verified: row.isVerified, verification_status: row.verificationStatus, verification_reason: row.verificationReason, rating: row.rating, total_reviews: row.totalReviews, operating_hours: row.operatingHours, scheduling_policy: { max_slot_duration_minutes: env.maxSlotDurationMinutes, max_advance_booking_days: env.maxAdvanceBookingDays }, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
 function toSlot(row: typeof slots.$inferSelect, ground?: typeof grounds.$inferSelect) {
@@ -270,15 +270,18 @@ export class GroundController {
     validatePeakConfig(configuredPeakPercentage, configuredPeakWindows);
     const latitude = coordinate(body.latitude, 'Latitude', -90, 90);
     const longitude = coordinate(body.longitude, 'Longitude', -180, 180);
+    const ownerVendorId = await vendorIdForUser(request.auth.userId);
+    const vendor = (await db.select({ verificationStatus: vendors.verificationStatus, isActive: vendors.isActive }).from(vendors).where(eq(vendors.id, ownerVendorId)).limit(1))[0];
+    if (!vendor?.isActive || vendor.verificationStatus !== 'approved') throw new AppError('vendor_verification_required', 'Your vendor verification must be approved before adding grounds', 403);
     const row = (await db.insert(grounds).values({
-      vendorId: await vendorIdForUser(request.auth.userId), title, description: body.description?.trim() || null,
+      vendorId: ownerVendorId, title, description: body.description?.trim() || null,
       location, city, address, latitude, longitude,
       amenities: textArray(body.amenities), images: textArray(body.images), coverImage: typeof body.cover_image === 'string' ? body.cover_image.trim() || null : null,
       pitchType: body.pitch_type?.trim() || null, pricePerHour: body.price_per_hour, peakPercentage: configuredPeakPercentage, peakWindows: configuredPeakWindows,
       operatingHours: body.operating_hours === undefined ? { open: '06:00', close: '23:00' } : operatingHours(body.operating_hours),
       rules: textArray(body.rules), cancellationPolicy: body.cancellation_policy === undefined ? 'standard' : validatedCancellationPolicy(body.cancellation_policy),
       // Temporary MVP behavior: listings are auto-approved until the admin review workflow is introduced.
-      isVerified: true,
+      isVerified: true, verificationStatus: 'approved', verificationReason: null,
     }).returning())[0];
     if (!row) throw new AppError('ground_creation_failed', 'Ground could not be created', 500);
     response.status(201).json({ ground: toGround(row) });

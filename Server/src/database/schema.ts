@@ -36,6 +36,7 @@ export const users = pgTable('users', {
   role: text('role').notNull().default('player'),
   avatarUrl: text('avatar_url'),
   isVerified: boolean('is_verified').notNull().default(false),
+  isSuspended: boolean('is_suspended').notNull().default(false),
   isSetupComplete: boolean('is_setup_complete').notNull().default(false),
   noShowStrikes: integer('no_show_strikes').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -72,6 +73,8 @@ export const vendors = pgTable('vendors', {
   businessLogo: text('business_logo'),
   businessCoverImage: text('business_cover_image'),
   isVerified: boolean('is_verified').notNull().default(false),
+  verificationStatus: text('verification_status').notNull().default('pending'),
+  verificationReason: text('verification_reason'),
   isActive: boolean('is_active').notNull().default(true),
   totalEarnings: integer('total_earnings').notNull().default(0),
   pendingEarnings: integer('pending_earnings').notNull().default(0),
@@ -101,6 +104,8 @@ export const grounds = pgTable('grounds', {
   peakWindows: jsonb('peak_windows').$type<{ days: number[]; startTime: string; endTime: string }[]>().notNull().default([]),
   isActive: boolean('is_active').notNull().default(true),
   isVerified: boolean('is_verified').notNull().default(false),
+  verificationStatus: text('verification_status').notNull().default('pending'),
+  verificationReason: text('verification_reason'),
   rating: numeric('rating', { precision: 3, scale: 2, mode: 'number' }).notNull().default(0),
   totalReviews: integer('total_reviews').notNull().default(0),
   operatingHours: jsonb('operating_hours').$type<{ open: string; close: string }>().notNull().default({ open: '06:00', close: '23:00' }),
@@ -164,6 +169,42 @@ export const bookings = pgTable('bookings', {
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const vendorVerifications = pgTable('vendor_verifications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  vendorId: uuid('vendor_id').notNull().unique().references(() => vendors.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('draft'),
+  identityStatus: text('identity_status').notNull().default('draft'),
+  identityReason: text('identity_reason'),
+  cnicHash: text('cnic_hash').unique(),
+  cnicLastFour: text('cnic_last_four'),
+  businessStatus: text('business_status').notNull().default('draft'),
+  businessReason: text('business_reason'),
+  businessType: text('business_type'),
+  businessNumberHash: text('business_number_hash'),
+  businessNumberLastFour: text('business_number_last_four'),
+  registrantRelationship: text('registrant_relationship').notNull().default('owner_director'),
+  payoutStatus: text('payout_status').notNull().default('draft'),
+  payoutReason: text('payout_reason'),
+  payoutBankName: text('payout_bank_name'),
+  payoutAccountTitle: text('payout_account_title'),
+  payoutAccountCiphertext: text('payout_account_ciphertext'),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const vendorVerificationDocuments = pgTable('vendor_verification_documents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  verificationId: uuid('verification_id').notNull().references(() => vendorVerifications.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(),
+  storageKey: text('storage_key').notNull().unique(),
+  contentType: text('content_type').notNull(),
+  originalFilename: text('original_filename'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const slotScheduleTemplates = pgTable('slot_schedule_templates', {
@@ -278,6 +319,21 @@ export const reviewReports = pgTable('review_reports', {
   reviewId: uuid('review_id').notNull().references(() => reviews.id, { onDelete: 'cascade' }),
   reporterId: uuid('reporter_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   reason: text('reason').notNull(),
+  status: text('status').notNull().default('open'),
+  resolutionReason: text('resolution_reason'),
+  resolvedBy: uuid('resolved_by').references(() => users.id),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const adminAuditLogs = pgTable('admin_audit_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  action: text('action').notNull(),
+  targetType: text('target_type').notNull(),
+  targetId: uuid('target_id').notNull(),
+  reason: text('reason'),
+  metadata: jsonb('metadata'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

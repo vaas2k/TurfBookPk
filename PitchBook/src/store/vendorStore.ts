@@ -12,6 +12,8 @@ export interface VendorProfile {
   business_logo: string | null;
   business_cover_image: string | null;
   is_verified: boolean;
+  verification_status?: 'draft' | 'under_review' | 'approved' | 'rejected' | 'suspended';
+  verification_reason?: string | null;
   is_active: boolean;
   total_earnings: number;
   pending_earnings: number;

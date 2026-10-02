@@ -49,4 +49,6 @@ export const env = {
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || '',
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || '',
+  sensitiveDataHmacSecret: requiredSecret('SENSITIVE_DATA_HMAC_SECRET', 'development-sensitive-data-hmac-secret-change-me'),
+  payoutEncryptionKey: requiredSecret('PAYOUT_ENCRYPTION_KEY', 'development-payout-encryption-key-change-me'),
 };

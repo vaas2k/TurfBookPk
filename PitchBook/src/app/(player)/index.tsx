@@ -15,9 +15,9 @@ import { router } from "expo-router";
 import { useState, useCallback, useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
-import VendorRegistrationModal from "@/components/vendor/VendorRegistrationModal";
+import VendorVerificationModal from "@/components/vendor/VendorVerificationModal";
 import { useVendorStore } from "@/store/vendorStore";
-import { VendorFormData } from "@/components/vendor/VendorRegistrationModal";
+import { VendorBaseData } from "@/components/vendor/VendorVerificationModal";
 import {
   Ground,
   listPublicGrounds,
@@ -124,21 +124,21 @@ export default function PlayerHome() {
     new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const loadHome = useCallback(async () => {
     setRefreshing(true);
+    let position: { latitude: number; longitude: number } | null = null;
     try {
-      const permission = await Location.getForegroundPermissionsAsync();
-      const result = permission.granted
-        ? permission
-        : await Location.requestForegroundPermissionsAsync();
-      let position: { latitude: number; longitude: number } | null = null;
-      if (result.granted) {
-        const current = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        position = {
-          latitude: current.coords.latitude,
-          longitude: current.coords.longitude,
-        };
-        try {
+      try {
+        const permission = await Location.getForegroundPermissionsAsync();
+        const result = permission.granted
+          ? permission
+          : await Location.requestForegroundPermissionsAsync();
+        if (result.granted) {
+          const current = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          position = {
+            latitude: current.coords.latitude,
+            longitude: current.coords.longitude,
+          };
           const place = (await Location.reverseGeocodeAsync(current.coords))[0];
           setHomeCity(
             place?.city ||
@@ -148,22 +148,25 @@ export default function PlayerHome() {
               profile?.city ||
               "Your area",
           );
-        } catch {
+        } else {
           setHomeCity(profile?.city || "Your area");
         }
-      } else setHomeCity(profile?.city || "Your area");
-      const [discovery, notifications, viewed] = await Promise.all([
-        searchPublicGrounds({
-          availability_date: today(),
-          page: 1,
-          limit: 30,
-          sort: "recommended",
-        }),
-        getNotifications(),
-        listRecentlyViewedGrounds(),
+      } catch {
+        // Discovery remains useful when GPS is off or unavailable (including emulators).
+        setHomeCity(profile?.city || "Your area");
+      }
+      const discovery = await searchPublicGrounds({
+        availability_date: today(),
+        page: 1,
+        limit: 30,
+        sort: "recommended",
+      });
+      const [notifications, viewed] = await Promise.all([
+        getNotifications().catch(() => null),
+        listRecentlyViewedGrounds().catch(() => null),
       ]);
-      setUnreadNotifications(notifications.unread_count);
-      setRecentGrounds(viewed);
+      if (notifications) setUnreadNotifications(notifications.unread_count);
+      if (viewed) setRecentGrounds(viewed);
       const current = discovery.grounds
         .map((ground) => {
           const availableToday = (
@@ -578,20 +581,13 @@ export default function PlayerHome() {
     }
   };
 
-  const handleVendorRegister = async (formData: VendorFormData) => {
+  const handleVendorRegister = async (formData: VendorBaseData) => {
     setIsVendorLoading(true);
     const { error } = await registerVendor(formData);
     setIsVendorLoading(false);
 
     if (error) {
       appDialog.alert("Registration Failed", error);
-    } else {
-      setShowVendorModal(false);
-      appDialog.alert(
-        "Registration Successful!",
-        "Your vendor account has been created. You can now manage your grounds.",
-        [{ text: "Continue", onPress: () => router.replace("/(vendor)") }],
-      );
     }
   };
 
@@ -1098,11 +1094,10 @@ export default function PlayerHome() {
 
         {/* ─── NOTIFICATIONS MODAL ─── */}
         {/* ─── VENDOR REGISTRATION MODAL (Full Screen) ─── */}
-        <VendorRegistrationModal
+        <VendorVerificationModal
           visible={showVendorModal}
           onClose={() => setShowVendorModal(false)}
-          onRegister={handleVendorRegister}
-          isLoading={isVendorLoading}
+          onCreateVendor={handleVendorRegister}
         />
       </SafeAreaView>
     );

@@ -1,5 +1,18 @@
 # TurfBookPK Task Journal
 
+## 2026-10-01 - Admin API foundation
+
+- Reverted the unresponsive experimental draggable player-search filter behavior; no other UI changes were rolled back.
+- Added protected `/api/admin` endpoints, database-backed administrator authorization, audit logs, vendor/ground review decisions, review-report resolution, and user suspension.
+- Added migration `0020_admin_foundation`; it backfills current vendors and grounds as approved to preserve existing player discovery.
+- Applied and tested the migration locally. Public visibility gating remains disabled until an initial admin is seeded and operational acceptance testing is complete. New vendor/ground records retain the current automatic approval behavior during this staged rollout.
+- Added `Admin_Panel_TurfbookPK`, a minimal Next.js internal web console with OTP login, dashboard counts, verification queues, review moderation, logout, and direct use of the protected admin API. Production build passed.
+- Added live desktop Ground Listings and Users & Owners screens based on the supplied references: searchable records, listing detail drawer, approval/rejection, audited listing suspension/restoration, and audited user suspension/restoration.
+- Hardened the Next.js admin panel: access tokens are now HttpOnly, `SameSite=Strict` cookies; the browser talks only to same-origin Next routes; the server-side proxy adds same-origin validation and no-store responses; dashboard routes require a session cookie and return standard security headers.
+- Added a read-only admin Transactions screen and protected API endpoint built from payment-attempt and booking records. It deliberately has no payout/refund mutation while gateway webhooks remain unimplemented.
+- Completed the remaining data-backed internal-admin views: refund records, payout-ledger visibility, and operations analytics (GMV, refunds, booking volume, commission configuration, and bookings by city). These are read-only by design until the payment provider is integrated; no screen claims to release funds, pay vendors, or execute refunds.
+- Next: seed an administrator through a controlled deployment procedure, set the production panel URL in server CORS, then enable approval gating after acceptance testing.
+
 ## 2026-09-12 - Final verification and release preparation
 
 ### Accomplished
@@ -1573,3 +1586,42 @@
 
 - Apply migration `0014_push_receipts.sql` to each environment.
 - Create/install an Android development build (or release build for launch-from-notification testing), configure FCM credentials in EAS, then test permission, token registration, foreground/background delivery, tap routing, and token invalidation.
+
+## 2026-10-01 - Vendor ground form: pitch and amenities
+
+- Replaced the free-text pitch-type field with clear selectable pitch-size options (5 through 11-a-side), while keeping an Other option for uncommon formats.
+- Added a vendor-friendly amenity chooser with common ground facilities, visible selected state, a maximum of 12 amenities, and an Add another amenity field for facilities not listed.
+- Confirmed the live scheduling flow already uses touch-based time selection and a month calendar; the remaining raw date/time editor is legacy code that is intentionally unreachable.
+
+### Queued follow-up
+
+- Add Google Sign-In and Sign in with Apple with verified backend token handling.
+- Complete iOS push configuration and real-device validation after APNs/EAS credentials are available.
+
+## 2026-10-01 - OTP-only MVP authentication
+
+- Removed the inactive Google sign-in control from the authentication screen. TurfBookPK now presents phone OTP as the sole account sign-in method.
+- Kept Google Sign-In and Sign in with Apple in the future-additions checklist; neither is required for an iOS release while the app exclusively uses its own phone-OTP account system.
+
+## 2026-10-01 - Documentation and static review
+
+- Updated root/mobile agent guides and the mobile README to match the OTP-only MVP, Cloudinary media flow, vendor scheduling, push rollout, and deferred admin/payment/iOS work.
+- Server type-check passed. In this sandbox, `npm test` cannot spawn Node test child processes (`EPERM`) and `npm run build` cannot write to a locked `Server/dist/`; these are environment/process blockers, not TypeScript failures.
+- Static-review follow-up includes removing stale Supabase Expo config, stopping production database connection logs, and progressively replacing legacy `any` types/UI code.
+- Re-ran tests with the required host permission: all 21 backend tests pass. Mobile lint has 0 errors and 41 warnings, including an unreachable legacy vendor-ground layout, duplicate imports, unused values, and a few hook dependency warnings. Mobile TypeScript and visual/device checks remain the next validation layer.
+- Emulator validation confirmed the OTP-only entry screen loads and no longer exposes Google sign-in. Metro reported a missing Expo deep-link scheme; added `turfbookpk` to app config. It requires the next Android/iOS native build before production deep links use it.
+- Manual Android-emulator smoke test passed for phone entry, OTP request, fixed-code verification, and transition into profile setup. The first OTP request correctly surfaced a connection error while the local API was stopped; after starting the API, the same flow succeeded. Safe-area layout and the visible resend countdown were also confirmed.
+- Player home previously abandoned its full discovery request when Android location services were unavailable. Location is now an optional enhancement: the home feed loads with no distance/city refinement when GPS fails, including on emulators or devices with location turned off.
+- Made notification and recently-viewed loading non-blocking for Player Home, so an expired/auth-failed optional request cannot hide public nearby grounds.
+- Android-emulator player pass confirmed public search, ground detail, date selection, 1.5-hour slot duration labels, peak-price presentation, visible selected-slot state, player profile, and the vendor-registration entry screen. The actual vendor dashboard/ground editor still needs a pre-existing vendor test account; no fake venue was created during this pass.
+
+## 2026-10-02 - Vendor verification workflow
+
+- Added the vendor verification schema and migration `0021_vendor_verification.sql`: status-driven identity, business, and payout records plus document metadata.
+- Vendor sign-in remains phone OTP only. The multi-step mobile flow collects business details, CNIC, business proof, authorization proof where needed, and payout details without collecting a password.
+- CNIC and business numbers are stored only as keyed fingerprints plus their final four characters; payout account values use AES-256-GCM encryption. Raw sensitive identifiers are never returned through the vendor or admin APIs.
+- Added Cloudinary authenticated/private uploads for verification documents (JPEG, PNG, WebP, or PDF) and time-limited, admin-only document download URLs.
+- The flow resumes from the first incomplete/revision-requested step after the modal closes or the app restarts. Document controls now use the native file picker and support PDFs as well as images.
+- Added protected vendor APIs to save each step and submit for review, and protected admin APIs/UI for identity, business, and payout approval, rejection, or requested changes with audit records.
+- Ground creation now requires a verified/approved vendor. Separate ground authority verification is the next implementation chunk.
+- Tightened document-key validation so a submitted document must belong to the authenticated vendor and its declared purpose; activated OTP request/verify rate limits that had been declared but not attached to the routes.

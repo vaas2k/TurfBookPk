@@ -173,7 +173,7 @@ export default function ProfileSetupScreen() {
                 )}
               </View>
 
-              {/* Phone Number - Only show for Google users who don't have phone */}
+              {/* Kept for incomplete legacy profiles; new users authenticate by phone OTP. */}
               {!profile?.phone && (
                 <View>
                   <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] mb-1.5">Phone Number (Optional)</Text>

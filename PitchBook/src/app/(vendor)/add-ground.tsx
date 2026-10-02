@@ -75,6 +75,26 @@ const emptyForm: FormState = {
   operating_close: "23:00",
 };
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const pitchOptions = ["5-a-side", "6-a-side", "7-a-side", "8-a-side", "9-a-side", "11-a-side"];
+const amenityOptions = [
+  "Floodlights",
+  "Parking",
+  "Changing rooms",
+  "Washrooms",
+  "Drinking water",
+  "Seating",
+  "Spectator area",
+  "Cafeteria",
+  "First aid",
+  "Prayer area",
+  "Wi-Fi",
+  "Football rental",
+  "Shower",
+  "Locker room",
+  "Security",
+  "Scoreboard",
+];
+const MAX_AMENITIES = 12;
 const DRAFT_KEY_PREFIX = "turfbookpk:ground-form-draft:";
 type GroundDraft = { form: FormState; step: number; savedAt: string };
 
@@ -102,6 +122,7 @@ export default function AddGround() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [newAmenity, setNewAmenity] = useState("");
   const [newRule, setNewRule] = useState("");
+  const [showCustomPitch, setShowCustomPitch] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [step, setStep] = useState(1);
@@ -214,8 +235,24 @@ export default function AddGround() {
   ) => {
     const clean = value.trim();
     if (!clean || form[key].includes(clean)) return;
+    if (key === "amenities" && form.amenities.length >= MAX_AMENITIES) {
+      setToast(`Choose up to ${MAX_AMENITIES} amenities.`);
+      return;
+    }
     setForm((current) => ({ ...current, [key]: [...current[key], clean] }));
     clear("");
+  };
+  const toggleAmenity = (amenity: string) => {
+    if (!form.amenities.includes(amenity) && form.amenities.length >= MAX_AMENITIES) {
+      setToast(`Choose up to ${MAX_AMENITIES} amenities.`);
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      amenities: current.amenities.includes(amenity)
+        ? current.amenities.filter((item) => item !== amenity)
+        : [...current.amenities, amenity],
+    }));
   };
   const removeTag = (key: "amenities" | "rules", value: string) =>
     setForm((current) => ({
@@ -435,7 +472,6 @@ export default function AddGround() {
             ["address", "Full address *"],
             ["price_per_hour", "Price per hour *"],
             ["peak_percentage", "Peak increase (%)"],
-            ["pitch_type", "Pitch type"],
           ] as [keyof FormState, string][]
         ).map(([key, label]) => (
           <View key={key} className="mb-3">
@@ -455,6 +491,18 @@ export default function AddGround() {
             />
           </View>
         ))}
+        <View className="mb-5 rounded-2xl border border-[#30372B] bg-[#1B1F19] p-4">
+          <Text className="text-[#F5F5F0] font-bold mb-1">Pitch size</Text>
+          <Text className="text-[#92978F] text-xs mb-3">Pick the format players will book. This helps them find the right ground.</Text>
+          <View className="flex-row flex-wrap">
+            {pitchOptions.map((pitch) => {
+              const selected = form.pitch_type === pitch;
+              return <TouchableOpacity key={pitch} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={`${pitch} pitch`} onPress={() => { setShowCustomPitch(false); update("pitch_type", pitch); }} className={`min-h-[44px] rounded-xl px-3 py-2.5 mr-2 mb-2 border ${selected ? "bg-[#17301B] border-[#42B84F]" : "bg-[#252A22] border-[#30372B]"}`}><Text className={selected ? "text-[#57CC63] font-bold text-sm" : "text-[#D9DBD5] font-semibold text-sm"}>{pitch}</Text></TouchableOpacity>;
+            })}
+            <TouchableOpacity accessibilityRole="radio" accessibilityState={{ selected: showCustomPitch || Boolean(form.pitch_type && !pitchOptions.includes(form.pitch_type)) }} accessibilityLabel="Other pitch size" onPress={() => { setShowCustomPitch(true); if (pitchOptions.includes(form.pitch_type)) update("pitch_type", ""); }} className={`min-h-[44px] rounded-xl px-3 py-2.5 mr-2 mb-2 border ${showCustomPitch || Boolean(form.pitch_type && !pitchOptions.includes(form.pitch_type)) ? "bg-[#17301B] border-[#42B84F]" : "bg-[#252A22] border-[#30372B]"}`}><Text className={showCustomPitch || Boolean(form.pitch_type && !pitchOptions.includes(form.pitch_type)) ? "text-[#57CC63] font-bold text-sm" : "text-[#D9DBD5] font-semibold text-sm"}>Other</Text></TouchableOpacity>
+          </View>
+          {(showCustomPitch || Boolean(form.pitch_type && !pitchOptions.includes(form.pitch_type))) && <TextInput className={`${fieldClass} mt-1`} value={pitchOptions.includes(form.pitch_type) ? "" : form.pitch_type} onChangeText={(value) => update("pitch_type", value)} placeholder="e.g. Futsal court" placeholderTextColor="#777D74" />}
+        </View>
         </>}
         {step === 2 && <>
         <View className="mb-5 rounded-xl border border-[#30372B] bg-[#1B1F19] p-4">
@@ -583,13 +631,21 @@ export default function AddGround() {
         {step === 2 && <>
         <View className="mb-4">
           <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 15 }} className="text-[#AFAFA9] mb-2">AMENITIES</Text>
+          <Text className="text-[#92978F] text-xs mb-3">Tap what is already available. You can choose up to {MAX_AMENITIES} and add something else below.</Text>
+          <View className="flex-row flex-wrap mb-2">
+            {amenityOptions.map((amenity) => {
+              const selected = form.amenities.includes(amenity);
+              return <TouchableOpacity key={amenity} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={amenity} onPress={() => toggleAmenity(amenity)} className={`min-h-[44px] flex-row items-center rounded-xl px-3 py-2 mr-2 mb-2 border ${selected ? "bg-[#17301B] border-[#42B84F]" : "bg-[#252A22] border-[#30372B]"}`}><Ionicons name={selected ? "checkmark-circle" : "add-circle-outline"} size={16} color={selected ? "#57CC63" : "#92978F"} /><Text className={`ml-1.5 text-xs ${selected ? "text-[#57CC63] font-bold" : "text-[#D9DBD5]"}`}>{amenity}</Text></TouchableOpacity>;
+            })}
+          </View>
+          <Text className="text-[#D9DBD5] text-xs font-semibold mb-2">Add another amenity</Text>
           {tagInput(
             "amenities",
             newAmenity,
             setNewAmenity,
-            "e.g. Parking, floodlights",
+            "e.g. Equipment rental",
           )}
-          {renderTags("amenities")}
+          {form.amenities.some((amenity) => !amenityOptions.includes(amenity)) && renderTags("amenities")}
         </View>
         <View className="mb-4">
           <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 15 }} className="text-[#AFAFA9] mb-2">RULES</Text>

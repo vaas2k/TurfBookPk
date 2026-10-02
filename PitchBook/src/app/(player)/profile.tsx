@@ -14,9 +14,7 @@ import { useAuthStore } from "@/store/authStore";
 import { appDialog } from "@/components/ui/app-dialog";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { useVendorStore } from "@/store/vendorStore";
-import VendorRegistrationModal, {
-  VendorFormData,
-} from "@/components/vendor/VendorRegistrationModal";
+import VendorVerificationModal, { VendorBaseData } from "@/components/vendor/VendorVerificationModal";
 import { playerThemes } from "@/theme/playerTheme";
 import { IconButton } from "@/components/ui/icon-button";
 
@@ -73,15 +71,11 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleVendorRegister = async (data: VendorFormData) => {
+  const handleVendorRegister = async (data: VendorBaseData) => {
     setVendorLoading(true);
     const { error } = await registerVendor(data);
     setVendorLoading(false);
     if (error) appDialog.alert("Registration failed", error);
-    else {
-      setShowVendorModal(false);
-      router.replace("/(vendor)");
-    }
   };
 
   const row = (
@@ -290,11 +284,10 @@ export default function ProfileScreen() {
           </View>
         </View>
       </ScrollView>
-      <VendorRegistrationModal
+      <VendorVerificationModal
         visible={showVendorModal}
         onClose={() => setShowVendorModal(false)}
-        onRegister={handleVendorRegister}
-        isLoading={vendorLoading}
+        onCreateVendor={handleVendorRegister}
       />
     </SafeAreaView>
   );

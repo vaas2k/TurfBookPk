@@ -2,12 +2,13 @@
 
 ## Project Overview
 
-TurfBookPK is a React Native/Expo football-ground booking application with a separate Express API and PostgreSQL database.
+TurfBookPK is a React Native/Expo football-ground booking application with an Express API, PostgreSQL database, and a small internal Next.js admin panel.
 
-The repository contains two applications:
+The repository contains three applications:
 
 - `PitchBook/`: Expo Router mobile application.
 - `Server/`: Express API using Drizzle ORM and PostgreSQL.
+- `Admin_Panel_TurfbookPK/`: internal Next.js operations console.
 
 ## Development Commands
 
@@ -38,6 +39,17 @@ cd Server
 npm install
 npm run dev
 ```
+
+### Admin panel
+
+```bash
+cd Admin_Panel_TurfbookPK
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+Set `NEXT_PUBLIC_API_URL` to the server's `/api` URL. The panel is intentionally internal: it uses OTP authentication and the server verifies that the authenticated user has the `admin` role before any admin API action.
 
 Backend validation and database commands:
 
@@ -85,7 +97,7 @@ Never commit either `.env` file.
 - API transport: Axios in `PitchBook/src/lib/api/client.ts`.
 - Auth tokens: access token in memory; refresh token in SecureStore when available, otherwise AsyncStorage.
 - Styling: NativeWind/Tailwind classes.
-- Image selection: Expo ImagePicker. R2/cloud storage upload is not implemented yet.
+- Image selection: Expo ImagePicker plus a provider-neutral signed-upload API. Cloudinary is the active adapter; R2/S3 can replace it without changing screens.
 
 Important mobile API modules:
 
@@ -108,7 +120,11 @@ Current API groups:
 - `/api/auth`: OTP authentication, refresh, logout, profile read/update.
 - `/api/vendors`: vendor registration and vendor profile.
 - `/api/grounds`: public ground reads and vendor ground/slot management.
-- `/api/bookings`: mocked-payment booking creation, player/vendor lists, cancellation, notifications.
+- `/api/bookings`: atomic bookings/orders, holds, recurring-payment windows, mock-payment confirmation, cancellation/refunds, no-shows, and player/vendor lists.
+- `/api/notifications`: in-app notifications, read state, Expo push-token registration, and paginated history.
+- `/api/reviews`: completed-booking reviews, reports, and vendor moderation.
+- `/api/media`: authenticated signed-upload targets and owner-scoped media deletion.
+- `/api/engagement`: favorites and recently viewed grounds.
 - `/api/health`: health check.
 
 ## Current Implemented Workflow
@@ -122,10 +138,11 @@ Current API groups:
 7. Players can select a slot and confirm a mocked booking.
 8. Booking creation atomically claims the slot to prevent double booking.
 9. Player and vendor booking lists are loaded from PostgreSQL.
-10. Cancellation releases the slot and marks the booking refunded.
-11. Booking notifications are stored for both player and vendor.
-12. Players can view persisted notifications and add a booking to their calendar.
-13. Vendors can configure peak day/time windows and a percentage uplift; eligible slots display and book at the calculated increased price.
+10. Cancellation uses the policy snapshot locked at booking and releases slots safely.
+11. Booking notifications are stored for both player and vendor, with remote Expo delivery in native builds.
+12. Players can view persisted notifications, add bookings to their calendar, save favorites, and revisit recent grounds.
+13. Vendors can configure peak day/time windows, a percentage uplift, selectable pitch sizes/amenities, recurring schedules, and blackout dates.
+14. Future recurring slots remain reserved until their payment window opens; a separate mock payment then confirms them.
 
 ## Database Tables
 
@@ -135,10 +152,15 @@ The active backend schema currently includes:
 - `otp_challenges`
 - `refresh_sessions`
 - `vendors`
+- `vendor_verifications` and `vendor_verification_documents`
 - `grounds`
 - `slots`
 - `bookings`
 - `notifications`
+- `payments`
+- `earnings_ledger`
+- `push_tokens` and `push_receipts`
+- `reviews`, `review_reports`, `favorites`, and `recently_viewed_grounds`
 
 Drizzle migrations are stored in `Server/drizzle/`. Run migrations against the configured database before starting API testing.
 
@@ -160,9 +182,16 @@ Drizzle migrations are stored in `Server/drizzle/`. Run migrations against the c
 - Real SMS delivery is not implemented; development OTP is fixed/configured.
 - Payment gateway integration is not implemented; booking confirmation is mocked.
 - Image storage uses a provider-neutral signed-upload API with a Cloudinary adapter. Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` on the server; R2/S3 can replace the adapter later without changing feature screens.
-- Reviews, map rendering, wallet/earnings, and advanced admin verification are not implemented.
-- Notifications are persisted and displayed in-app, but push notifications and scheduled local reminders are not fully implemented.
-- The mobile project still has pre-existing TypeScript issues in OTP refs, Expo StatusBar props, web CSS module typing, and global CSS typing.
+- Real SMS delivery, payment-gateway webhooks/refunds/payouts, separate ground authority verification, and map rendering remain deferred.
+- Android Expo push delivery is implemented and manually tested in a development build. iOS APNs/EAS setup and real-device verification remain.
+- Phone OTP is the sole active account sign-in method. Google Sign-In and Sign in with Apple are optional future work.
+- The custom Express/PostgreSQL backend is authoritative; stale Supabase config remains to be removed from Expo config.
+
+## Documentation and continuity
+
+- Functional backlog and outcomes: `agent-continuity/CURRENT_CHECKLIST.md` and `agent-continuity/TASK_JOURNAL.md`.
+- UI-only backlog and outcomes: `agent-continuity/UI_CHECKLIST.md` and `agent-continuity/UI_TASK_JOURNAL.md`.
+- Do not mix functional work with the UI journal. Update the relevant journal after meaningful changes.
 
 ## Testing Checklist
 

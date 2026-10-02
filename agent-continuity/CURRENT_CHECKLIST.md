@@ -58,6 +58,17 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Add vendor earnings ledger, commission calculation, and balance updates.
 - [x] Build the vendor earnings screen using real ledger data.
 - [ ] Integrate a real SMS provider for OTP delivery.
+
+## P1 - Admin panel foundation
+
+- [x] Define admin roles, authorization middleware, audit logging, and a separate admin authentication/route boundary.
+- [x] Build an admin dashboard API for pending vendor/ground verification, user/vendor status, reported reviews, and operational counts.
+- [x] Add admin approval/rejection API for vendors and grounds, preserving reason/history.
+- [x] Add admin review-report moderation and account suspension actions with audit records.
+- [x] Build vendor identity, business, and payout verification: private document upload, encrypted/fingerprinted identifiers, vendor self-service multi-step submission/resume, and per-area admin decisions with audit logs.
+- [ ] Build separate per-ground authority verification and mandatory booking/public-visibility gating after vendor verification operational acceptance.
+- [ ] Seed the first admin account, apply migration `0020_admin_foundation`, then enable mandatory approval/public visibility gating after operational acceptance testing.
+- [x] Build the dedicated admin client/panel UI using the protected admin API. (OTP-admin login, live listings/user management, review moderation, transactions, refunds, payout-ledger visibility, and operations analytics are complete. Gateway settlement actions are deliberately deferred.)
 - [x] Implement cloud image upload/storage and stop persisting local device URIs. (Provider-neutral signed-upload contract with Cloudinary adapter; credentials still need environment configuration.)
 - [x] Add image validation, ownership, replacement, and deletion behavior. (JPEG/PNG/WebP, 8 MB limit, owner-scoped keys, replacement cleanup.)
 - [x] Implement player profile editing and avatar upload.
@@ -89,7 +100,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Redesign the vendor earnings screen around clear business balances: available-to-withdraw, pending/processing, paid out, and refunds/adjustments; replace raw ledger labels and booking IDs with plain-language explanations, dates, booking/ground context, status badges, filters, and a transaction-detail view.
 - [x] Add editable operating-hours controls to vendor ground creation/editing and display them on public ground detail.
 - [ ] Define and expose peak-price UI only after the business provides peak-hour rules; do not display a price users cannot understand.
-- [ ] Replace raw date/time text fields with platform-accessible date/time pickers and validate them inline.
+- [x] Replace live raw date/time entry with touch-based time selection and a month calendar for vendor scheduling; the remaining raw editor is unreachable legacy code.
 - [x] Build a vendor slot calendar/grid with date navigation and clear availability/closure states. A 31-day calendar is used instead of a weekly-only view so vendors can schedule planned closures.
 - [ ] Add search, sort, filter, and empty/error/retry states to player ground discovery.
 - [x] Add a player-friendly booking cancellation preview that shows fee/refund before confirmation.
@@ -127,7 +138,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Remove hardcoded payment amounts, account details, references, and timers from production UI paths.
 - [x] Group player bookings into upcoming, completed, cancelled, and payment-pending sections.
 - [x] Group vendor bookings by date/status and provide actionable booking details.
-- [ ] Replace raw date/time text fields with accessible date/time pickers.
+- [x] Use accessible touch-based time selection and a calendar in live vendor scheduling.
 - [x] Build a vendor slot calendar/grid with date navigation and planned blackout-date controls.
 - [x] Show unavailable slot reasons: booked, blocked, held, or expired.
 - [x] Remove the user-facing checkout hold countdown and create the booking only when Confirm is pressed.
@@ -139,6 +150,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Remove corrupted UI characters and remaining debug logs containing phone/OTP data.
 - [ ] Break large one-line JSX screens into reusable, testable components.
 - [x] Break large one-line JSX screens into reusable, testable components.
+- [ ] Remove unreachable legacy vendor-ground/slot layouts and resolve remaining lint warnings before the admin UI expands the codebase.
 - [ ] Add accessibility labels, scalable text, contrast checks, and adequate touch targets.
 
 ## P2 - Marketplace functionality
@@ -162,7 +174,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
   - [ ] Cancel/reschedule reminders when bookings change; schedule reminders for every confirmed order slot.
 - [ ] Add promo codes, discounts, and pricing rules.
 - [ ] Add customer-support and booking-dispute workflows.
-- [ ] Add admin workflows for vendor/ground verification and account moderation.
+- [ ] Complete per-ground verification workflow and mandatory public/booking approval gating. (Vendor verification and account moderation are implemented.)
 - [ ] Decide whether chat is required; implement conversations, retention, notifications, blocking, and moderation only if justified.
 
 ## P3 - Expansion ideas
@@ -184,7 +196,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Document the canonical timezone as `Asia/Karachi` across API, database, and UI behavior.
 - [ ] Define privacy, data-retention, cancellation, refund, and vendor payout policies.
 - [ ] Review vendor access to player phone numbers and apply masking/consent rules.
-- [ ] Remove stale Supabase configuration if the custom backend remains authoritative.
+- [ ] Remove stale Supabase configuration from Expo app config; the custom Express/PostgreSQL backend is authoritative.
 - [ ] Update `README.md` and `AGENTS.md` when implementation changes make documented limitations stale.
 
 ## Baseline verification for every completed task
@@ -200,7 +212,13 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Cancellation policy selectable as Lenient, Standard, or Strict and locked into each new booking.
 - [x] Time-tier cancellation quote, grace windows, exact cancellation preview, and no-show strike tracking.
 - [ ] Add payment-gateway refund execution, account-credit fallback, force-majeure review, rescheduling, and an enforcement workflow after three no-shows.
-- [ ] ammeneties select from (,,,) + add more 
+- [x] Add vendor-selectable pitch sizes and a practical preset amenity list, with support for custom amenities.
 - [x] Allow a player to reserve future recurring slots while paying only the first slot. Future slots open a configurable payment window 2 hours before start (30 minutes by default); payment confirms that slot, otherwise maintenance releases it. In-app notifications are implemented; remote push will reuse this event later.
 - [x] allow vendors to activate or deactivate ground on future date
 - 
+
+## Auth and iOS push follow-up
+
+- [ ] Add Google Sign-In with server-side identity-token verification.
+- [ ] Add Sign in with Apple for iOS with server-side identity-token verification.
+- [ ] Configure and test APNs/EAS credentials and iOS remote-push delivery, permissions, foreground/background behavior, and notification tap routing.

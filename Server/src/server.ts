@@ -27,6 +27,8 @@ import { createMediaRouter } from './router/mediaRoutes.js';
 import { EngagementController } from './controllers/engagementController.js';
 import { createEngagementRouter } from './router/engagementRoutes.js';
 import { processExpoPushReceipts } from './services/expoPushService.js';
+import { AdminController } from './controllers/adminController.js';
+import { createAdminRouter } from './router/adminRoutes.js';
 
 const app = express();
 
@@ -58,6 +60,7 @@ const notificationController = new NotificationController();
 const reviewController = new ReviewController();
 const mediaController = new MediaController(new CloudinaryStorageProvider());
 const engagementController = new EngagementController();
+const adminController = new AdminController();
 
 app.use('/api/auth', createAuthRouter(authController, tokenService));
 app.use('/api/vendors', createVendorRouter(vendorController, tokenService));
@@ -67,6 +70,7 @@ app.use('/api/notifications', createNotificationRouter(notificationController, t
 app.use('/api/reviews', createReviewRouter(reviewController, tokenService));
 app.use('/api/media', createMediaRouter(mediaController, tokenService));
 app.use('/api/engagement', createEngagementRouter(engagementController, tokenService));
+app.use('/api/admin', createAdminRouter(adminController, tokenService));
 
 app.get("/api/health", (_req, res) => {
   res.json({

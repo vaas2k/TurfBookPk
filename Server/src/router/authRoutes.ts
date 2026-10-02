@@ -9,8 +9,8 @@ export function createAuthRouter(controller: AuthController, tokenService: Token
   const router = Router();
   const otpRequestLimit = createRateLimiter({ windowMs: 60_000, maxRequests: 5, code: 'too_many_otp_requests', message: 'Too many verification codes requested. Please try again later.' });
   const otpVerifyLimit = createRateLimiter({ windowMs: 60_000, maxRequests: 15, code: 'too_many_otp_attempts', message: 'Too many verification attempts. Please try again in one minute.' });
-  router.post('/otp/request', requireJsonBody, controller.requestOtp);
-  router.post('/otp/verify', requireJsonBody, controller.verifyOtp);
+  router.post('/otp/request', otpRequestLimit, requireJsonBody, controller.requestOtp);
+  router.post('/otp/verify', otpVerifyLimit, requireJsonBody, controller.verifyOtp);
   router.post('/refresh', requireJsonBody, controller.refresh);
   router.post('/logout', requireJsonBody, controller.logout);
   router.get('/me', requireAuth(tokenService), controller.me);

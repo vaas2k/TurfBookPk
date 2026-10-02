@@ -1,0 +1,3 @@
+import { NextRequest, NextResponse } from 'next/server';
+export function middleware(request: NextRequest) { if (request.nextUrl.pathname.startsWith('/dashboard') && !request.cookies.get('turfbook_admin_access')) return NextResponse.redirect(new URL('/login', request.url)); const response = NextResponse.next(); response.headers.set('X-Content-Type-Options', 'nosniff'); response.headers.set('X-Frame-Options', 'DENY'); response.headers.set('Referrer-Policy', 'no-referrer'); response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()'); return response; }
+export const config = { matcher: ['/dashboard/:path*', '/login', '/api/:path*'] };

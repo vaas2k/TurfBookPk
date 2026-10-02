@@ -81,6 +81,12 @@ export async function activateVendorMode(): Promise<void> {
   await apiRequest('/vendors/mode', { method: 'PATCH', data: {} });
 }
 
+export type VendorVerificationDocument = { type: 'cnic_front' | 'cnic_back' | 'business_registration' | 'authorization_letter'; storage_key: string; content_type: string; original_filename?: string | null };
+export type VendorVerification = { status: string; identity_status: string; business_status: string; payout_status: string; identity_reason?: string | null; business_reason?: string | null; payout_reason?: string | null; business_type?: string | null; registrant_relationship?: string | null; cnic_last_four?: string | null; business_number_last_four?: string | null; payout_bank_name?: string | null; payout_account_title?: string | null; documents: { id: string; type: string; contentType: string; originalFilename: string | null }[] };
+export async function getVendorVerification(): Promise<VendorVerification | null> { return (await apiRequest<{ verification: VendorVerification | null }>('/vendors/verification')).verification; }
+export async function saveVendorVerificationStep(step: 'identity' | 'business' | 'payout', data: Record<string, unknown>): Promise<void> { await apiRequest(`/vendors/verification/${step}`, { method: 'PUT', data }); }
+export async function submitVendorVerification(): Promise<void> { await apiRequest('/vendors/verification/submit', { method: 'POST', data: {} }); }
+
 export interface EarningsEntry {
   id: string;
   booking_id: string;
