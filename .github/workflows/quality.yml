@@ -61,3 +61,20 @@ jobs:
       - run: npm run lint
       - run: npx expo config --type public
       - run: npx tsc --noEmit
+
+  admin:
+    name: Admin panel checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Admin_Panel_TurfbookPK
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Admin_Panel_TurfbookPK/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build

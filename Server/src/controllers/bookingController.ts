@@ -143,7 +143,7 @@ export class BookingController {
       }
       let totalAmount = 0; let platformFee = 0;
       for (const item of selected) {
-        if (!item.ground.isActive || !item.vendor.isActive || item.slot.isBooked || item.slot.isBlocked || (item.slot.holdExpiresAt && item.slot.holdExpiresAt > now) || hasStarted(item.slot.date, item.slot.startTime)) throw new AppError('slot_unavailable', 'One or more selected slots are unavailable', 409);
+        if (!item.ground.isActive || !item.ground.isVerified || item.ground.verificationStatus !== 'approved' || !item.vendor.isActive || item.vendor.verificationStatus !== 'approved' || item.slot.isBooked || item.slot.isBlocked || (item.slot.holdExpiresAt && item.slot.holdExpiresAt > now) || hasStarted(item.slot.date, item.slot.startTime)) throw new AppError('slot_unavailable', 'One or more selected slots are unavailable', 409);
         if (item.vendor.userId === request.auth!.userId) throw new AppError('self_booking_not_allowed', 'You cannot book your own ground', 403);
         const effective = effectiveSlotPrice(item.slot.date, item.slot.startTime, item.slot.endTime, { basePrice: item.slot.price, peakPercentage: item.ground.peakPercentage, peakWindows: item.ground.peakWindows });
         const price = calculateBookingPrice(effective.amount, env.platformCommissionBps); totalAmount += price.totalAmount; platformFee += price.platformFee;
@@ -198,7 +198,7 @@ export class BookingController {
         .innerJoin(grounds, eq(slots.groundId, grounds.id)).innerJoin(vendors, eq(grounds.vendorId, vendors.id))
         .where(eq(slots.id, slotId)).limit(1))[0];
       if (!selected) throw new AppError('slot_not_found', 'Slot was not found', 404);
-      if (!selected.ground.isActive || !selected.vendor.isActive) throw new AppError('ground_unavailable', 'This ground is not accepting bookings', 409);
+      if (!selected.ground.isActive || !selected.ground.isVerified || selected.ground.verificationStatus !== 'approved' || !selected.vendor.isActive || selected.vendor.verificationStatus !== 'approved') throw new AppError('ground_unavailable', 'This ground is not accepting bookings', 409);
       if (hasStarted(selected.slot.date, selected.slot.startTime)) throw new AppError('slot_expired', 'This slot has already started', 409);
       if (selected.slot.isBooked || selected.slot.isBlocked) throw new AppError('slot_unavailable', 'This slot is no longer available', 409);
       if (selected.vendor.userId === request.auth!.userId) throw new AppError('self_booking_not_allowed', 'You cannot book your own ground', 403);

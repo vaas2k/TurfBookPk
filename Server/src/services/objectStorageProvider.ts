@@ -8,7 +8,7 @@ export interface UploadTarget {
 }
 
 export interface ObjectStorageProvider {
-  createUploadTarget(input: { ownerId: string; contentType: string; contentLength: number; purpose: 'avatar' | 'ground' | 'vendor_logo' | 'vendor_cover' | 'vendor_identity_document' | 'vendor_business_document' | 'vendor_authorization_document' }): Promise<UploadTarget>;
+  createUploadTarget(input: { ownerId: string; contentType: string; contentLength: number; purpose: 'avatar' | 'ground' | 'vendor_logo' | 'vendor_cover' | 'vendor_identity_document' | 'vendor_business_document' | 'vendor_authorization_document' | 'ground_authority_document' }): Promise<UploadTarget>;
   deleteObject(input: { ownerId: string; key: string }): Promise<void>;
 }
 

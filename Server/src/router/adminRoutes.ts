@@ -9,9 +9,15 @@ export function createAdminRouter(controller: AdminController, tokenService: Tok
   router.get('/dashboard', controller.dashboard);
   router.get('/vendors', controller.listVendors);
   router.get('/vendors/:id/verification', controller.vendorVerification);
+  router.get('/vendors/:id', controller.vendorDetail);
   router.patch('/vendors/:id/verification/:area', controller.reviewVendorVerification);
+  router.post('/vendors/:id/approve', controller.approveVendor);
   router.get('/verification-documents/:id/download', controller.vendorDocumentDownload);
   router.get('/grounds', controller.listGrounds);
+  router.get('/grounds/:id/verification', controller.groundVerification);
+  router.patch('/grounds/:id/verification/review', controller.reviewGroundVerification);
+  router.post('/grounds/:id/approve', controller.approveGround);
+  router.get('/ground-verification-documents/:id/download', controller.groundDocumentDownload);
   router.get('/users', controller.listUsers);
   router.get('/transactions', controller.listTransactions);
   router.get('/operations', controller.operations);

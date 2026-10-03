@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ScrollView,
   StatusBar,
@@ -8,23 +8,25 @@ import {
   Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
 import { appDialog } from "@/components/ui/app-dialog";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { useVendorStore } from "@/store/vendorStore";
-import VendorVerificationModal, { VendorBaseData } from "@/components/vendor/VendorVerificationModal";
+import VendorVerificationFlow, { VendorBaseData } from "@/components/vendor/VendorVerificationFlow";
 import { playerThemes } from "@/theme/playerTheme";
 import { IconButton } from "@/components/ui/icon-button";
 
 export default function ProfileScreen() {
+  const { openVendorVerification } = useLocalSearchParams<{ openVendorVerification?: string }>();
   const { profile, signOut, user, switchToVendor } = useAuthStore();
   const { isVendor, checkVendorStatus, registerVendor } = useVendorStore();
   const { appearance } = useAppearanceStore();
   const theme = playerThemes.dark;
   const [showVendorModal, setShowVendorModal] = useState(false);
   const [vendorLoading, setVendorLoading] = useState(false);
+  useEffect(() => { if (openVendorVerification === '1') setShowVendorModal(true); }, [openVendorVerification]);
   const initials = (profile?.full_name || "User")
     .split(" ")
     .map((part) => part[0])
@@ -49,7 +51,7 @@ export default function ProfileScreen() {
 
   const handleSwitchToVendor = async () => {
     if (!user) return;
-    const status = isVendor ? { isVendor } : await checkVendorStatus(user.id);
+    const status = await checkVendorStatus(user.id);
     if (!status.isVendor) {
       setShowVendorModal(true);
       return;
@@ -284,7 +286,7 @@ export default function ProfileScreen() {
           </View>
         </View>
       </ScrollView>
-      <VendorVerificationModal
+      <VendorVerificationFlow
         visible={showVendorModal}
         onClose={() => setShowVendorModal(false)}
         onCreateVendor={handleVendorRegister}

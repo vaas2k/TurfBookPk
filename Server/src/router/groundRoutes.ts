@@ -10,6 +10,9 @@ export function createGroundRouter(controller: GroundController, tokenService: T
   router.get('/:id', controller.getPublic);
   router.get('/:id/slots', controller.listSlots);
   router.use(requireAuth(tokenService));
+  router.get('/:id/verification', controller.verification);
+  router.put('/:id/verification', controller.saveVerification);
+  router.post('/:id/verification/submit', controller.submitVerification);
   router.post('/', controller.create);
   router.patch('/:id', controller.update);
   router.delete('/:id', controller.remove);

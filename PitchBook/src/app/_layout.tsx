@@ -80,7 +80,17 @@ export default function RootLayout() {
     void registerForPushNotifications().then(async (token) => {
       if (active && token) await registerPushToken(token, Platform.OS);
     }).catch(() => undefined);
-    return listenForNotificationResponses((bookingId) => {
+    return listenForNotificationResponses((data) => {
+      if (data.destination === 'vendor_verification') {
+        router.push('/(player)/profile?openVendorVerification=1' as never);
+        return;
+      }
+      if (data.destination === 'ground_verification') {
+        router.push({ pathname: '/(vendor)/ground-verification', params: { id: data.groundId || data.ground_id || '' } } as never);
+        return;
+      }
+      const bookingId = data.bookingId;
+      if (!bookingId) return;
       const group = currentRole === 'vendor' ? 'vendor' : 'player';
       router.push(`/(${group})/booking/${bookingId}` as never);
     });

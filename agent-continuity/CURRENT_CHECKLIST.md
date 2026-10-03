@@ -174,7 +174,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
   - [ ] Cancel/reschedule reminders when bookings change; schedule reminders for every confirmed order slot.
 - [ ] Add promo codes, discounts, and pricing rules.
 - [ ] Add customer-support and booking-dispute workflows.
-- [ ] Complete per-ground verification workflow and mandatory public/booking approval gating. (Vendor verification and account moderation are implemented.)
+- [x] Complete per-ground verification workflow and mandatory public/booking approval gating, including private authority proof, expiry dates, admin audit/review actions, final approval, and notification deep links.
 - [ ] Decide whether chat is required; implement conversations, retention, notifications, blocking, and moderation only if justified.
 
 ## P3 - Expansion ideas

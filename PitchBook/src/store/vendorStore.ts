@@ -45,7 +45,7 @@ export const useVendorStore = create<VendorState>((set, get) => ({
     set({ isLoading: true });
     try {
       const data = await getVendorProfile();
-      const isVendor = !!data;
+      const isVendor = data?.verification_status === 'approved';
       set({ 
         vendorProfile: data,
         isVendor: isVendor,
@@ -70,19 +70,9 @@ export const useVendorStore = create<VendorState>((set, get) => ({
 
       const vendorData = await registerVendorApi(data);
 
-      const authState = useAuthStore.getState();
-      useAuthStore.setState({
-        role: 'vendor',
-        profile: authState.profile ? { ...authState.profile, role: 'vendor' } : authState.profile,
-        lastMode: 'vendor',
-        lastModeByUser: authState.user
-          ? { ...authState.lastModeByUser, [authState.user.id]: 'vendor' }
-          : authState.lastModeByUser,
-      });
-
       set({ 
         vendorProfile: vendorData, 
-        isVendor: true,
+        isVendor: vendorData.verification_status === 'approved',
         isLoading: false 
       });
 
@@ -99,7 +89,7 @@ export const useVendorStore = create<VendorState>((set, get) => ({
       const data = await getVendorProfile();
       if (!data) throw new Error('Vendor profile not found');
 
-      set({ vendorProfile: data, isVendor: true });
+      set({ vendorProfile: data, isVendor: data.verification_status === 'approved' });
       return { profile: data, error: null };
     } catch (error: any) {
       console.error('Get vendor profile error:', error);

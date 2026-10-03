@@ -1,11 +1,12 @@
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, or, sql } from 'drizzle-orm';
 import { Response } from 'express';
 import { createHash } from 'node:crypto';
 import { db } from '../database/client.js';
-import { adminAuditLogs, bookings, grounds, ledgerEntries, paymentAttempts, reviewReports, reviews, users, vendorVerificationDocuments, vendorVerifications, vendors } from '../database/schema.js';
+import { adminAuditLogs, bookings, groundVerificationDocuments, groundVerifications, grounds, ledgerEntries, notifications, paymentAttempts, reviewReports, reviews, users, vendorVerificationDocuments, vendorVerifications, vendors } from '../database/schema.js';
 import { env } from '../configs/env.js';
 import { AppError } from '../helpers/errors.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
+import { sendExpoPush } from '../services/expoPushService.js';
 
 type VerificationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -34,7 +35,10 @@ function privateDocumentUrl(key: string, contentType: string): string {
   const params = { expires_at: expiresAt, format, public_id: key, timestamp, type: 'authenticated' };
   const serialized = Object.entries(params).sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => `${name}=${value}`).join('&');
   const signature = createHash('sha256').update(`${serialized}${env.cloudinaryApiSecret}`).digest('hex');
-  return `https://api.cloudinary.com/v1_1/${env.cloudinaryCloudName}/auto/download?${new URLSearchParams({ ...params, api_key: env.cloudinaryApiKey, signature }).toString()}`;
+  // `private_download_url` uses a concrete resource type. CNIC/business files
+  // in this application are images or PDFs, both of which Cloudinary stores as
+  // image assets; `auto/download` is not a valid private-download endpoint.
+  return `https://api.cloudinary.com/v1_1/${env.cloudinaryCloudName}/image/download?${new URLSearchParams({ ...params, api_key: env.cloudinaryApiKey, signature }).toString()}`;
 }
 
 export class AdminController {
@@ -52,10 +56,13 @@ export class AdminController {
 
   listVendors = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const status = typeof request.query.status === 'string' ? request.query.status : 'pending';
+    const includeChangesRequested = request.query.include_changes_requested === 'true';
     if (!['draft', 'pending', 'under_review', 'approved', 'rejected', 'suspended', 'all'].includes(status)) throw new AppError('invalid_status', 'Use a valid vendor status', 422);
-    const rows = await db.select({ vendor: vendors, user: users }).from(vendors).innerJoin(users, eq(vendors.userId, users.id))
-      .where(status === 'all' ? undefined : eq(vendors.verificationStatus, status)).orderBy(desc(vendors.createdAt)).limit(100);
-    response.json({ vendors: rows.map(({ vendor, user }) => ({ id: vendor.id, business_name: vendor.businessName, business_city: vendor.businessCity, business_phone: vendor.businessPhone, verification_status: vendor.verificationStatus, verification_reason: vendor.verificationReason, is_active: vendor.isActive, owner: { id: user.id, full_name: user.fullName, phone: user.phone, is_suspended: user.isSuspended }, created_at: vendor.createdAt.toISOString() })) });
+    const changesRequested = or(eq(vendorVerifications.identityStatus, 'changes_requested'), eq(vendorVerifications.businessStatus, 'changes_requested'), eq(vendorVerifications.payoutStatus, 'changes_requested'));
+    const where = status === 'all' ? undefined : status === 'under_review' && includeChangesRequested ? or(eq(vendors.verificationStatus, 'under_review'), and(eq(vendors.verificationStatus, 'draft'), changesRequested)) : eq(vendors.verificationStatus, status);
+    const rows = await db.select({ vendor: vendors, user: users, verification: vendorVerifications }).from(vendors).innerJoin(users, eq(vendors.userId, users.id)).leftJoin(vendorVerifications, eq(vendorVerifications.vendorId, vendors.id))
+      .where(where).orderBy(desc(vendors.createdAt)).limit(100);
+    response.json({ vendors: rows.map(({ vendor, user, verification }) => ({ id: vendor.id, business_name: vendor.businessName, business_city: vendor.businessCity, business_phone: vendor.businessPhone, verification_status: verification && [verification.identityStatus, verification.businessStatus, verification.payoutStatus].includes('changes_requested') ? 'changes_requested' : vendor.verificationStatus, verification_reason: vendor.verificationReason, is_active: vendor.isActive, owner: { id: user.id, full_name: user.fullName, phone: user.phone, is_suspended: user.isSuspended }, created_at: vendor.createdAt.toISOString() })) });
   };
 
   vendorVerification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -67,20 +74,45 @@ export class AdminController {
     response.json({ vendor: { id: vendor.id, business_name: vendor.businessName, business_city: vendor.businessCity }, verification: { id: verification.id, status: verification.status, identity_status: verification.identityStatus, identity_reason: verification.identityReason, business_status: verification.businessStatus, business_reason: verification.businessReason, payout_status: verification.payoutStatus, payout_reason: verification.payoutReason, cnic_last_four: verification.cnicLastFour, business_type: verification.businessType, business_number_last_four: verification.businessNumberLastFour, registrant_relationship: verification.registrantRelationship, payout_bank_name: verification.payoutBankName, payout_account_title: verification.payoutAccountTitle, documents } });
   };
 
+  vendorDetail = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const id = param(request.params.id, 'Vendor id');
+    const row = (await db.select({ vendor: vendors, owner: users }).from(vendors).innerJoin(users, eq(vendors.userId, users.id)).where(eq(vendors.id, id)).limit(1))[0];
+    if (!row) throw new AppError('not_found', 'Vendor was not found', 404);
+    const managedGrounds = await db.select({ id: grounds.id, title: grounds.title, city: grounds.city, address: grounds.address, pitchType: grounds.pitchType, isActive: grounds.isActive, verificationStatus: grounds.verificationStatus, rating: grounds.rating, createdAt: grounds.createdAt }).from(grounds).where(eq(grounds.vendorId, id)).orderBy(desc(grounds.createdAt));
+    response.json({ vendor: { id: row.vendor.id, business_name: row.vendor.businessName, business_phone: row.vendor.businessPhone, business_city: row.vendor.businessCity, business_description: row.vendor.businessDescription, verification_status: row.vendor.verificationStatus, verification_reason: row.vendor.verificationReason, is_active: row.vendor.isActive, is_verified: row.vendor.isVerified, rating: row.vendor.rating, total_reviews: row.vendor.totalReviews, total_earnings: row.vendor.totalEarnings, pending_earnings: row.vendor.pendingEarnings, created_at: row.vendor.createdAt.toISOString(), owner: { id: row.owner.id, full_name: row.owner.fullName, phone: row.owner.phone, email: row.owner.email, city: row.owner.city, is_suspended: row.owner.isSuspended } }, grounds: managedGrounds.map((ground) => ({ id: ground.id, title: ground.title, city: ground.city, address: ground.address, pitch_type: ground.pitchType, is_active: ground.isActive, verification_status: ground.verificationStatus, rating: ground.rating, created_at: ground.createdAt.toISOString() })) });
+  };
+
   reviewVendorVerification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const actorId = request.auth!.userId; const vendorId = param(request.params.id, 'Vendor id'); const area = String(request.params.area || ''); const body = request.body as Record<string, unknown>; const action = body?.action; const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 500) || null : null;
     if (!['identity', 'business', 'payout'].includes(area) || !['approved', 'rejected', 'changes_requested'].includes(String(action))) throw new AppError('invalid_verification', 'Use a valid verification area and action', 422);
     if (action !== 'approved' && !reason) throw new AppError('invalid_verification', 'A reason is required when rejecting or requesting changes', 422);
     const verification = (await db.select().from(vendorVerifications).where(eq(vendorVerifications.vendorId, vendorId)).limit(1))[0]; if (!verification) throw new AppError('not_found', 'Vendor verification was not found', 404);
+    const vendor = (await db.select({ userId: vendors.userId }).from(vendors).where(eq(vendors.id, vendorId)).limit(1))[0]; if (!vendor) throw new AppError('not_found', 'Vendor was not found', 404);
     const values: Partial<typeof vendorVerifications.$inferInsert> = { reviewedBy: actorId, reviewedAt: new Date(), updatedAt: new Date() };
     if (area === 'identity') { values.identityStatus = String(action); values.identityReason = reason; }
     if (area === 'business') { values.businessStatus = String(action); values.businessReason = reason; }
     if (area === 'payout') { values.payoutStatus = String(action); values.payoutReason = reason; }
+    const statuses = [values.identityStatus ?? verification.identityStatus, values.businessStatus ?? verification.businessStatus, values.payoutStatus ?? verification.payoutStatus]; const vendorStatus = statuses.some((status) => status === 'rejected') ? 'rejected' : statuses.some((status) => status === 'changes_requested') ? 'draft' : 'under_review';
+    values.status = vendorStatus;
     const [updated] = await db.update(vendorVerifications).set(values).where(eq(vendorVerifications.id, verification.id)).returning();
-    const statuses = [updated?.identityStatus, updated?.businessStatus, updated?.payoutStatus]; const vendorStatus = statuses.every((status) => status === 'approved') ? 'approved' : statuses.some((status) => status === 'rejected') ? 'rejected' : statuses.some((status) => status === 'changes_requested') ? 'draft' : 'under_review';
-    await db.update(vendors).set({ verificationStatus: vendorStatus, verificationReason: vendorStatus === 'approved' ? null : reason, isVerified: vendorStatus === 'approved', updatedAt: new Date() }).where(eq(vendors.id, vendorId));
+    await db.update(vendors).set({ verificationStatus: vendorStatus, verificationReason: reason, isVerified: false, updatedAt: new Date() }).where(eq(vendors.id, vendorId));
     await audit(actorId, `vendor_${area}_${action}`, 'vendor', vendorId, reason);
+    if (action !== 'approved') { const actionText = String(action) === 'rejected' ? 'rejected' : 'needs changes'; const areaText = area.charAt(0).toUpperCase() + area.slice(1); const title = `${areaText} verification ${actionText}`; const message = reason || `Your ${area} verification ${actionText}.`; const data = { destination: 'vendor_verification', area, action: String(action) }; await db.insert(notifications).values({ userId: vendor.userId, type: 'vendor_verification', title, message, data }); void sendExpoPush({ userIds: [vendor.userId], title: 'Vendor verification update', body: 'Open TurfBookPK to review your verification status.', data }); }
     response.json({ verification: { status: vendorStatus, identity_status: updated?.identityStatus, business_status: updated?.businessStatus, payout_status: updated?.payoutStatus } });
+  };
+
+  approveVendor = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const actorId = request.auth!.userId; const vendorId = param(request.params.id, 'Vendor id');
+    const verification = (await db.select().from(vendorVerifications).where(eq(vendorVerifications.vendorId, vendorId)).limit(1))[0];
+    const vendor = (await db.select({ id: vendors.id, userId: vendors.userId }).from(vendors).where(eq(vendors.id, vendorId)).limit(1))[0];
+    if (!verification || !vendor) throw new AppError('not_found', 'Vendor verification was not found', 404);
+    if (![verification.identityStatus, verification.businessStatus, verification.payoutStatus].every((status) => status === 'approved')) throw new AppError('verification_incomplete', 'Approve identity, business, and payout before approving this vendor', 422);
+    await db.transaction(async (tx) => { await tx.update(vendorVerifications).set({ status: 'approved', reviewedBy: actorId, reviewedAt: new Date(), updatedAt: new Date() }).where(eq(vendorVerifications.id, verification.id)); await tx.update(vendors).set({ verificationStatus: 'approved', verificationReason: null, isVerified: true, updatedAt: new Date() }).where(eq(vendors.id, vendorId)); });
+    await audit(actorId, 'vendor_final_approved', 'vendor', vendorId, null);
+    const data = { destination: 'vendor_verification', action: 'approved' };
+    await db.insert(notifications).values({ userId: vendor.userId, type: 'vendor_verification', title: 'Vendor account approved', message: 'Your vendor account is approved. You can now switch to vendor mode and add grounds.', data });
+    void sendExpoPush({ userIds: [vendor.userId], title: 'Vendor account approved', body: 'Your TurfBookPK vendor account is ready.', data });
+    response.json({ vendor: { id: vendorId, verification_status: 'approved', is_verified: true } });
   };
 
   vendorDocumentDownload = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -90,11 +122,57 @@ export class AdminController {
   };
 
   listGrounds = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const status = typeof request.query.status === 'string' ? request.query.status : 'pending';
-    if (!['pending', 'approved', 'rejected', 'all'].includes(status)) throw new AppError('invalid_status', 'Use pending, approved, rejected, or all', 422);
+    const status = typeof request.query.status === 'string' ? request.query.status : 'under_review';
+    const includeChangesRequested = request.query.include_changes_requested === 'true';
+    if (!['draft', 'pending', 'under_review', 'changes_requested', 'approved', 'rejected', 'suspended', 'all'].includes(status)) throw new AppError('invalid_status', 'Use a valid ground status', 422);
     const rows = await db.select({ ground: grounds, vendor: vendors }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id))
-      .where(status === 'all' ? undefined : eq(grounds.verificationStatus, status)).orderBy(desc(grounds.createdAt)).limit(100);
+      .leftJoin(groundVerifications, eq(groundVerifications.groundId, grounds.id))
+      .where(status === 'all' ? undefined : status === 'under_review' && includeChangesRequested ? or(eq(grounds.verificationStatus, 'under_review'), and(eq(grounds.verificationStatus, 'draft'), eq(groundVerifications.authorityStatus, 'changes_requested'))) : eq(grounds.verificationStatus, status)).orderBy(desc(grounds.createdAt)).limit(100);
     response.json({ grounds: rows.map(({ ground, vendor }) => ({ id: ground.id, title: ground.title, city: ground.city, address: ground.address, amenities: ground.amenities, images: ground.images, cover_image: ground.coverImage, pitch_type: ground.pitchType, price_per_hour: ground.pricePerHour, verification_status: ground.verificationStatus, verification_reason: ground.verificationReason, is_active: ground.isActive, vendor: { id: vendor.id, business_name: vendor.businessName }, created_at: ground.createdAt.toISOString() })) });
+  };
+
+  groundVerification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const id = param(request.params.id, 'Ground id');
+    const row = (await db.select({ ground: grounds, vendor: vendors, owner: users }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).innerJoin(users, eq(vendors.userId, users.id)).where(eq(grounds.id, id)).limit(1))[0];
+    if (!row) throw new AppError('not_found', 'Ground was not found', 404);
+    const verification = (await db.select().from(groundVerifications).where(eq(groundVerifications.groundId, id)).limit(1))[0];
+    const documents = verification ? await db.select({ id: groundVerificationDocuments.id, type: groundVerificationDocuments.type, contentType: groundVerificationDocuments.contentType, originalFilename: groundVerificationDocuments.originalFilename }).from(groundVerificationDocuments).where(eq(groundVerificationDocuments.verificationId, verification.id)) : [];
+    response.json({ ground: { id: row.ground.id, title: row.ground.title, description: row.ground.description, location: row.ground.location, city: row.ground.city, address: row.ground.address, latitude: row.ground.latitude, longitude: row.ground.longitude, images: row.ground.images, cover_image: row.ground.coverImage, pitch_type: row.ground.pitchType, amenities: row.ground.amenities, price_per_hour: row.ground.pricePerHour, operating_hours: row.ground.operatingHours, cancellation_policy: row.ground.cancellationPolicy, verification_status: row.ground.verificationStatus, verification_reason: row.ground.verificationReason }, vendor: { id: row.vendor.id, business_name: row.vendor.businessName, owner_name: row.owner.fullName }, verification: verification ? { id: verification.id, status: verification.status, authority_status: verification.authorityStatus, authority_reason: verification.authorityReason, relationship: verification.relationship, document_expiry_date: verification.documentExpiryDate, documents } : null });
+  };
+
+  reviewGroundVerification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const actorId = request.auth!.userId; const id = param(request.params.id, 'Ground id'); const body = request.body as Record<string, unknown>; const action = String(body?.action || ''); const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 500) || null : null;
+    if (!['approved', 'rejected', 'changes_requested'].includes(action)) throw new AppError('invalid_verification', 'Use approved, rejected, or changes_requested', 422);
+    if (action !== 'approved' && !reason) throw new AppError('invalid_verification', 'A reason is required when rejecting or requesting changes', 422);
+    const row = (await db.select({ ground: grounds, vendor: vendors }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(eq(grounds.id, id)).limit(1))[0];
+    const verification = (await db.select().from(groundVerifications).where(eq(groundVerifications.groundId, id)).limit(1))[0];
+    if (!row || !verification) throw new AppError('not_found', 'Ground verification was not found', 404);
+    const groundStatus = action === 'rejected' ? 'rejected' : action === 'changes_requested' ? 'draft' : 'under_review';
+    await db.transaction(async (tx) => { await tx.update(groundVerifications).set({ status: groundStatus, authorityStatus: action, authorityReason: reason, reviewedAt: new Date(), reviewedBy: actorId, updatedAt: new Date() }).where(eq(groundVerifications.id, verification.id)); await tx.update(grounds).set({ verificationStatus: groundStatus, verificationReason: reason, isVerified: false, updatedAt: new Date() }).where(eq(grounds.id, id)); });
+    await audit(actorId, `ground_authority_${action}`, 'ground', id, reason);
+    if (action !== 'approved') { const data = { destination: 'ground_verification', ground_id: id, action }; await db.insert(notifications).values({ userId: row.vendor.userId, type: 'ground_verification', title: `Ground verification ${action === 'rejected' ? 'rejected' : 'needs changes'}`, message: reason || 'Open TurfBookPK to review the ground verification.', data }); void sendExpoPush({ userIds: [row.vendor.userId], title: 'Ground verification update', body: 'Open TurfBookPK to review your ground verification.', data }); }
+    response.json({ ground: { id, verification_status: groundStatus } });
+  };
+
+  approveGround = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const actorId = request.auth!.userId; const id = param(request.params.id, 'Ground id');
+    const row = (await db.select({ ground: grounds, vendor: vendors }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(eq(grounds.id, id)).limit(1))[0];
+    const verification = (await db.select().from(groundVerifications).where(eq(groundVerifications.groundId, id)).limit(1))[0];
+    if (!row || !verification) throw new AppError('not_found', 'Ground verification was not found', 404);
+    if (row.vendor.verificationStatus !== 'approved') throw new AppError('vendor_verification_required', 'The vendor must be approved before this ground can be approved', 422);
+    if (verification.authorityStatus !== 'approved') throw new AppError('verification_incomplete', 'Approve the ground authority proof before final approval', 422);
+    await db.transaction(async (tx) => { await tx.update(groundVerifications).set({ status: 'approved', reviewedAt: new Date(), reviewedBy: actorId, updatedAt: new Date() }).where(eq(groundVerifications.id, verification.id)); await tx.update(grounds).set({ verificationStatus: 'approved', verificationReason: null, isVerified: true, isActive: true, updatedAt: new Date() }).where(eq(grounds.id, id)); });
+    await audit(actorId, 'ground_final_approved', 'ground', id, null);
+    const data = { destination: 'ground_verification', ground_id: id, action: 'approved' };
+    await db.insert(notifications).values({ userId: row.vendor.userId, type: 'ground_verification', title: 'Ground approved', message: `${row.ground.title} is approved and can now accept bookings.`, data });
+    void sendExpoPush({ userIds: [row.vendor.userId], title: 'Ground approved', body: 'Your ground is now live on TurfBookPK.', data });
+    response.json({ ground: { id, verification_status: 'approved', is_verified: true } });
+  };
+
+  groundDocumentDownload = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const id = param(request.params.id, 'Document id'); const document = (await db.select().from(groundVerificationDocuments).where(eq(groundVerificationDocuments.id, id)).limit(1))[0];
+    if (!document) throw new AppError('not_found', 'Document was not found', 404);
+    response.json({ download_url: privateDocumentUrl(document.storageKey, document.contentType), expires_in_seconds: 300 });
   };
 
   listUsers = async (request: AuthenticatedRequest, response: Response): Promise<void> => {

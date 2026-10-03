@@ -3,7 +3,7 @@ import { and, arrayContains, asc, desc, eq, gt, ilike, inArray, lt, ne, or, sql 
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
-import { bookings, favoriteGrounds, groundBlackoutDates, grounds, recentlyViewedGrounds, slots, slotScheduleTemplates, vendors } from '../database/schema.js';
+import { bookings, favoriteGrounds, groundBlackoutDates, groundVerificationDocuments, groundVerifications, grounds, recentlyViewedGrounds, slots, slotScheduleTemplates, vendors } from '../database/schema.js';
 import { env } from '../configs/env.js';
 import { CANCELLATION_POLICIES, cancellationPolicy } from '../services/cancellationPolicy.js';
 import { PeakWindow, effectiveSlotPrice } from '../services/peakPricing.js';
@@ -58,6 +58,17 @@ function normalizedDate(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const clean = value.trim();
   return validDate(clean) ? clean : null;
+}
+
+const groundRelationships = ['owner', 'tenant_lessee', 'manager_operator'] as const;
+type GroundRelationship = typeof groundRelationships[number];
+function authorityDocument(value: unknown, ownerId: string, relationship: GroundRelationship) {
+  const item = value as Record<string, unknown> | null;
+  const expectedType = relationship === 'owner' ? 'ownership_control_document' : relationship === 'tenant_lessee' ? 'lease_rental_agreement' : 'authorization_agreement';
+  if (!item || item.type !== expectedType || typeof item.storage_key !== 'string' || !item.storage_key.startsWith(`turfbookpk/${ownerId}/ground_authority_document/`) || typeof item.content_type !== 'string' || !['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(item.content_type)) {
+    throw new AppError('invalid_verification_document', 'Upload the required private ownership or operating-authority proof', 422);
+  }
+  return { type: expectedType, storageKey: item.storage_key, contentType: item.content_type, originalFilename: typeof item.original_filename === 'string' ? item.original_filename.slice(0, 180) : null };
 }
 
 function optionalQueryText(value: unknown, name: string, maxLength = 100): string | null {
@@ -184,7 +195,7 @@ export class GroundController {
     const sort = request.query.sort === undefined ? 'recommended' : request.query.sort;
     if (!['recommended', 'price_low', 'price_high', 'rating'].includes(String(sort))) throw new AppError('invalid_search', 'Sort must be recommended, price_low, price_high, or rating', 422);
 
-    const filters = [eq(grounds.isActive, true), eq(vendors.isActive, true)];
+    const filters = [eq(grounds.isActive, true), eq(grounds.isVerified, true), eq(grounds.verificationStatus, 'approved'), eq(vendors.isActive, true), eq(vendors.verificationStatus, 'approved')];
     if (q) {
       const pattern = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
       filters.push(or(ilike(grounds.title, pattern), ilike(grounds.city, pattern), ilike(grounds.location, pattern), ilike(grounds.address, pattern), ilike(grounds.pitchType, pattern), ilike(sql<string>`array_to_string(${grounds.amenities}, ' ')`, pattern))!);
@@ -238,7 +249,7 @@ export class GroundController {
   };
 
   getPublic = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const row = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(vendors.isActive, true))).limit(1))[0];
+    const row = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(grounds.isVerified, true), eq(grounds.verificationStatus, 'approved'), eq(vendors.isActive, true), eq(vendors.verificationStatus, 'approved'))).limit(1))[0];
     if (!row) throw new AppError('not_found', 'Ground was not found', 404);
     await materializeSchedule(row.ground);
     const groundSlots = await db.select().from(slots).where(eq(slots.groundId, row.ground.id));
@@ -280,8 +291,7 @@ export class GroundController {
       pitchType: body.pitch_type?.trim() || null, pricePerHour: body.price_per_hour, peakPercentage: configuredPeakPercentage, peakWindows: configuredPeakWindows,
       operatingHours: body.operating_hours === undefined ? { open: '06:00', close: '23:00' } : operatingHours(body.operating_hours),
       rules: textArray(body.rules), cancellationPolicy: body.cancellation_policy === undefined ? 'standard' : validatedCancellationPolicy(body.cancellation_policy),
-      // Temporary MVP behavior: listings are auto-approved until the admin review workflow is introduced.
-      isVerified: true, verificationStatus: 'approved', verificationReason: null,
+      isVerified: false, verificationStatus: 'draft', verificationReason: null,
     }).returning())[0];
     if (!row) throw new AppError('ground_creation_failed', 'Ground could not be created', 500);
     response.status(201).json({ ground: toGround(row) });
@@ -339,8 +349,51 @@ export class GroundController {
     response.json({ deleted: true, archived: false });
   };
 
+  verification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const ground = await ownedGround(routeParam(request.params.id, 'Ground id'), request.auth.userId);
+    const verification = (await db.select().from(groundVerifications).where(eq(groundVerifications.groundId, ground.id)).limit(1))[0];
+    const documents = verification ? await db.select({ id: groundVerificationDocuments.id, type: groundVerificationDocuments.type, contentType: groundVerificationDocuments.contentType, originalFilename: groundVerificationDocuments.originalFilename }).from(groundVerificationDocuments).where(eq(groundVerificationDocuments.verificationId, verification.id)) : [];
+    response.json({ ground: toGround(ground), verification: verification ? { status: verification.status, authority_status: verification.authorityStatus, authority_reason: verification.authorityReason, relationship: verification.relationship, document_expiry_date: verification.documentExpiryDate, documents, submitted_at: verification.submittedAt?.toISOString() || null } : { status: 'draft', authority_status: 'draft', authority_reason: null, relationship: null, document_expiry_date: null, documents: [], submitted_at: null } });
+  };
+
+  saveVerification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const ground = await ownedGround(routeParam(request.params.id, 'Ground id'), request.auth.userId);
+    const existing = (await db.select().from(groundVerifications).where(eq(groundVerifications.groundId, ground.id)).limit(1))[0] || (await db.insert(groundVerifications).values({ groundId: ground.id }).returning())[0];
+    if (!existing) throw new AppError('verification_failed', 'Unable to prepare ground verification', 500);
+    if (existing.status === 'approved' || (existing.status === 'under_review' && existing.authorityStatus !== 'changes_requested')) throw new AppError('verification_locked', 'This ground verification is already under review or approved', 409);
+    const relationship = request.body?.relationship as GroundRelationship;
+    if (!groundRelationships.includes(relationship)) throw new AppError('invalid_verification', 'Choose owner, tenant/lessee, or manager/operator', 422);
+    const expiry = request.body?.document_expiry_date === undefined || request.body?.document_expiry_date === '' ? null : normalizedDate(request.body.document_expiry_date);
+    if (request.body?.document_expiry_date && !expiry) throw new AppError('invalid_verification', 'Document expiry must use YYYY-MM-DD', 422);
+    if (relationship === 'tenant_lessee' && !expiry) throw new AppError('invalid_verification', 'Lease or rental agreement expiry date is required', 422);
+    const document = authorityDocument(request.body?.document, request.auth.userId, relationship);
+    await db.transaction(async (tx) => {
+      await tx.update(groundVerifications).set({ status: 'draft', authorityStatus: 'pending', authorityReason: null, relationship, documentExpiryDate: expiry, updatedAt: new Date() }).where(eq(groundVerifications.id, existing.id));
+      await tx.delete(groundVerificationDocuments).where(eq(groundVerificationDocuments.verificationId, existing.id));
+      await tx.insert(groundVerificationDocuments).values({ verificationId: existing.id, ...document });
+      await tx.update(grounds).set({ verificationStatus: 'draft', verificationReason: null, isVerified: false, updatedAt: new Date() }).where(eq(grounds.id, ground.id));
+    });
+    response.json({ message: 'Ground authority proof saved', status: 'draft' });
+  };
+
+  submitVerification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const ground = await ownedGround(routeParam(request.params.id, 'Ground id'), request.auth.userId);
+    if (ground.images.length < 4 || ground.images.length > 8) throw new AppError('verification_incomplete', 'Add between 4 and 8 ground photos before submitting', 422);
+    const verification = (await db.select().from(groundVerifications).where(eq(groundVerifications.groundId, ground.id)).limit(1))[0];
+    const document = verification ? (await db.select({ id: groundVerificationDocuments.id }).from(groundVerificationDocuments).where(eq(groundVerificationDocuments.verificationId, verification.id)).limit(1))[0] : null;
+    if (!verification?.relationship || !document) throw new AppError('verification_incomplete', 'Add your relationship and authority proof before submitting', 422);
+    await db.transaction(async (tx) => {
+      await tx.update(groundVerifications).set({ status: 'under_review', authorityStatus: 'pending', submittedAt: new Date(), updatedAt: new Date() }).where(eq(groundVerifications.id, verification.id));
+      await tx.update(grounds).set({ verificationStatus: 'under_review', verificationReason: null, isVerified: false, updatedAt: new Date() }).where(eq(grounds.id, ground.id));
+    });
+    response.json({ message: 'Ground submitted for review', status: 'under_review' });
+  };
+
   listSlots = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const ground = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(vendors.isActive, true))).limit(1))[0];
+    const ground = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(grounds.isVerified, true), eq(grounds.verificationStatus, 'approved'), eq(vendors.isActive, true), eq(vendors.verificationStatus, 'approved'))).limit(1))[0];
     if (!ground) throw new AppError('not_found', 'Ground was not found', 404);
     await materializeSchedule(ground.ground);
     const page = queryInteger(request.query.page, 'Page', 1, 1, 10_000);

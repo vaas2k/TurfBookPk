@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BookingProfile } from '@/types/booking';
 
 export const isExpoGoRuntime = (Constants as any).executionEnvironment === 'storeClient' || (Constants as any).appOwnership === 'expo';
+export type NotificationNavigationData = { bookingId?: string; groundId?: string; ground_id?: string; destination?: 'vendor_verification' | 'ground_verification'; area?: string; action?: string };
 
 if (!isExpoGoRuntime) {
   Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: true }) });
@@ -34,13 +35,13 @@ export async function registerForPushNotifications(): Promise<string | null> {
   }
 }
 
-export function listenForNotificationResponses(onBookingOpen: (bookingId: string) => void): () => void {
+export function listenForNotificationResponses(onOpen: (data: NotificationNavigationData) => void): () => void {
   // Remote response listeners are only installed in an app-owned native build.
   // This keeps Expo Go usable while local/in-app notifications remain available.
   if (isExpoGoRuntime) return () => undefined;
   const open = (response: Notifications.NotificationResponse) => {
-    const bookingId = response.notification.request.content.data?.bookingId;
-    if (typeof bookingId === 'string' && bookingId) onBookingOpen(bookingId);
+    const data = response.notification.request.content.data as NotificationNavigationData | undefined;
+    if (data && (typeof data.bookingId === 'string' || data.destination === 'vendor_verification' || data.destination === 'ground_verification')) onOpen(data);
   };
   const subscription = Notifications.addNotificationResponseReceivedListener(open);
   void Notifications.getLastNotificationResponseAsync().then((response) => {

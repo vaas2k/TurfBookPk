@@ -15,9 +15,9 @@ import { router } from "expo-router";
 import { useState, useCallback, useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
-import VendorVerificationModal from "@/components/vendor/VendorVerificationModal";
+import VendorVerificationFlow from "@/components/vendor/VendorVerificationFlow";
 import { useVendorStore } from "@/store/vendorStore";
-import { VendorBaseData } from "@/components/vendor/VendorVerificationModal";
+import { VendorBaseData } from "@/components/vendor/VendorVerificationFlow";
 import {
   Ground,
   listPublicGrounds,
@@ -1094,7 +1094,7 @@ export default function PlayerHome() {
 
         {/* ─── NOTIFICATIONS MODAL ─── */}
         {/* ─── VENDOR REGISTRATION MODAL (Full Screen) ─── */}
-        <VendorVerificationModal
+        <VendorVerificationFlow
           visible={showVendorModal}
           onClose={() => setShowVendorModal(false)}
           onCreateVendor={handleVendorRegister}

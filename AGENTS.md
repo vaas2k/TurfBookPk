@@ -47,6 +47,7 @@ cd Admin_Panel_TurfbookPK
 cp .env.example .env.local
 npm install
 npm run dev
+npm run typecheck
 ```
 
 Set `NEXT_PUBLIC_API_URL` to the server's `/api` URL. The panel is intentionally internal: it uses OTP authentication and the server verifies that the authenticated user has the `admin` role before any admin API action.
@@ -182,7 +183,7 @@ Drizzle migrations are stored in `Server/drizzle/`. Run migrations against the c
 - Real SMS delivery is not implemented; development OTP is fixed/configured.
 - Payment gateway integration is not implemented; booking confirmation is mocked.
 - Image storage uses a provider-neutral signed-upload API with a Cloudinary adapter. Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` on the server; R2/S3 can replace the adapter later without changing feature screens.
-- Real SMS delivery, payment-gateway webhooks/refunds/payouts, separate ground authority verification, and map rendering remain deferred.
+- Real SMS delivery, payment-gateway webhooks/refunds/payouts, and map rendering remain deferred. Vendor KYC and separate per-ground authority verification are implemented; a ground must be approved before it can be public or booked.
 - Android Expo push delivery is implemented and manually tested in a development build. iOS APNs/EAS setup and real-device verification remain.
 - Phone OTP is the sole active account sign-in method. Google Sign-In and Sign in with Apple are optional future work.
 - The custom Express/PostgreSQL backend is authoritative; stale Supabase config remains to be removed from Expo config.

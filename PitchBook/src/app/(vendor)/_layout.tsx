@@ -1,7 +1,10 @@
 import { Stack, usePathname, router } from "expo-router";
 import { View, Text, TouchableOpacity, Platform } from "react-native";
+import { useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuthStore } from "@/store/authStore";
+import { useVendorStore } from "@/store/vendorStore";
 
 // Custom Tab Bar Component for Vendor
 function VendorTabBar() {
@@ -19,6 +22,7 @@ function VendorTabBar() {
       "/booking/",
       "/notifications",
       "/edit-profile",
+      "/ground-verification",
     ];
     return !detailRoutes.some((route) => pathname.includes(route));
   };
@@ -99,6 +103,23 @@ function VendorTabBar() {
 }
 
 export default function VendorLayout() {
+  const user = useAuthStore((state) => state.user);
+  const { isVendor, checkVendorStatus, isLoading } = useVendorStore();
+
+  useEffect(() => {
+    if (!user) {
+      router.replace('/(auth)/phone-input');
+      return;
+    }
+    void checkVendorStatus(user.id).then(({ isVendor: approved }) => {
+      if (!approved) router.replace('/(player)/profile');
+    });
+  }, [user?.id, checkVendorStatus]);
+
+  if (!isVendor) {
+    return <View className="flex-1 bg-[#10120F] items-center justify-center">{isLoading ? <Text className="text-[#E5E7E1]">Checking vendor verification…</Text> : null}</View>;
+  }
+
   return (
     <View className="flex-1 bg-[#10120F]">
       <Stack
@@ -120,6 +141,7 @@ export default function VendorLayout() {
         <Stack.Screen name="booking/[id]" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="edit-profile" />
+        <Stack.Screen name="ground-verification" />
       </Stack>
       <VendorTabBar />
     </View>

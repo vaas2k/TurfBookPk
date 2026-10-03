@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { ObjectStorageProvider } from '../services/objectStorageProvider.js';
 
-const purposes = ['avatar', 'ground', 'vendor_logo', 'vendor_cover', 'vendor_identity_document', 'vendor_business_document', 'vendor_authorization_document'] as const;
+const purposes = ['avatar', 'ground', 'vendor_logo', 'vendor_cover', 'vendor_identity_document', 'vendor_business_document', 'vendor_authorization_document', 'ground_authority_document'] as const;
 export class MediaController {
   constructor(private readonly storage: ObjectStorageProvider) {}
   createUploadTarget = async (request: AuthenticatedRequest, response: Response): Promise<void> => {

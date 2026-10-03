@@ -207,6 +207,32 @@ export const vendorVerificationDocuments = pgTable('vendor_verification_document
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Ground ownership/operating authority is intentionally distinct from vendor KYC. */
+export const groundVerifications = pgTable('ground_verifications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  groundId: uuid('ground_id').notNull().unique().references(() => grounds.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('draft'),
+  authorityStatus: text('authority_status').notNull().default('draft'),
+  authorityReason: text('authority_reason'),
+  relationship: text('relationship'),
+  documentExpiryDate: date('document_expiry_date'),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const groundVerificationDocuments = pgTable('ground_verification_documents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  verificationId: uuid('verification_id').notNull().references(() => groundVerifications.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(),
+  storageKey: text('storage_key').notNull().unique(),
+  contentType: text('content_type').notNull(),
+  originalFilename: text('original_filename'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const slotScheduleTemplates = pgTable('slot_schedule_templates', {
   id: uuid('id').defaultRandom().primaryKey(),
   groundId: uuid('ground_id').notNull().references(() => grounds.id, { onDelete: 'cascade' }),

@@ -26,6 +26,8 @@ export interface Ground {
   peak_windows: { days: number[]; start_time: string; end_time: string }[];
   is_active: boolean;
   is_verified: boolean;
+  verification_status: string;
+  verification_reason: string | null;
   rating: number;
   total_reviews: number;
   operating_hours: { open: string; close: string };
@@ -86,6 +88,11 @@ export type VendorVerification = { status: string; identity_status: string; busi
 export async function getVendorVerification(): Promise<VendorVerification | null> { return (await apiRequest<{ verification: VendorVerification | null }>('/vendors/verification')).verification; }
 export async function saveVendorVerificationStep(step: 'identity' | 'business' | 'payout', data: Record<string, unknown>): Promise<void> { await apiRequest(`/vendors/verification/${step}`, { method: 'PUT', data }); }
 export async function submitVendorVerification(): Promise<void> { await apiRequest('/vendors/verification/submit', { method: 'POST', data: {} }); }
+export type GroundVerificationDocument = { id?: string; type: string; storage_key?: string; content_type?: string; original_filename?: string | null; contentType?: string; originalFilename?: string | null };
+export type GroundVerification = { status: string; authority_status: string; authority_reason?: string | null; relationship?: 'owner' | 'tenant_lessee' | 'manager_operator' | null; document_expiry_date?: string | null; documents: GroundVerificationDocument[]; submitted_at?: string | null };
+export async function getGroundVerification(id: string): Promise<{ ground: Ground; verification: GroundVerification }> { return apiRequest(`/grounds/${id}/verification`); }
+export async function saveGroundVerification(id: string, data: Record<string, unknown>): Promise<void> { await apiRequest(`/grounds/${id}/verification`, { method: 'PUT', data }); }
+export async function submitGroundVerification(id: string): Promise<void> { await apiRequest(`/grounds/${id}/verification/submit`, { method: 'POST', data: {} }); }
 
 export interface EarningsEntry {
   id: string;

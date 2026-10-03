@@ -27,8 +27,6 @@ import { goBackOrReplace } from "@/lib/navigation";
 import { TimePicker } from "@/components/ui/time-picker";
 import { deleteOwnedImageUrl, uploadImage } from "@/lib/api/media";
 
-const MOCK_GROUND_IMAGE =
-  "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200";
 const fieldClass =
   "bg-[#1B1F19] border border-[#30372B] rounded-xl px-4 py-3 text-[#F5F5F0]";
 type FormState = {
@@ -327,7 +325,8 @@ export default function AddGround() {
       return setToast("Choose peak days and valid peak start/end times.");
     if (form.operating_open >= form.operating_close) return setToast('Closing time must be later than opening time.');
     setSaving(true);
-    const images = form.images.length ? form.images : [MOCK_GROUND_IMAGE];
+    if (form.images.length < 4 || form.images.length > 8) return setToast("Add 4 to 8 clear photos of the ground for verification.");
+    const images = form.images;
     const data = {
       title: form.title.trim(),
       description: form.description.trim(),
@@ -433,7 +432,7 @@ export default function AddGround() {
   if (step === 4 && completedGround) {
     return <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
       <StatusBar barStyle="light-content" backgroundColor="#10120F" />
-      <View className="flex-1 px-6 items-center justify-center"><View className="h-20 w-20 rounded-full bg-[#17301B] border border-[#42B84F] items-center justify-center"><Ionicons name="checkmark" size={42} color="#57CC63" /></View><Text style={{ fontFamily: "BigShouldersDisplay_800ExtraBold", fontSize: 29 }} className="text-[#F5F5F0] mt-7 text-center">GROUND SUBMITTED</Text><Text className="text-[#AFAFA9] text-center text-[15px] leading-6 mt-3">{completedGround.title} is ready for approval. Admin review will be added later; for this MVP your ground has been approved automatically.</Text><View className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 w-full mt-6"><Text className="text-[#57CC63] font-bold">Approved automatically</Text><Text className="text-[#A8C9AC] text-sm mt-1">Set your repeating booking times next so players can book the ground.</Text></View><TouchableOpacity accessibilityRole="button" onPress={() => router.replace({ pathname: "/(vendor)/setup-schedule", params: { id: completedGround.id, title: completedGround.title } })} className="w-full bg-[#42B84F] rounded-full py-4 items-center mt-6"><Text className="text-[#102110] font-bold">Set booking times</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => router.replace("/(vendor)/grounds")} className="py-4 mt-2"><Text className="text-[#D5D8D1] font-semibold">Back to My Grounds</Text></TouchableOpacity></View><Toast message={toast} tone="error" onHide={() => setToast(null)} /></SafeAreaView>;
+      <View className="flex-1 px-6 items-center justify-center"><View className="h-20 w-20 rounded-full bg-[#17301B] border border-[#42B84F] items-center justify-center"><Ionicons name="shield-checkmark" size={42} color="#57CC63" /></View><Text style={{ fontFamily: "BigShouldersDisplay_800ExtraBold", fontSize: 29 }} className="text-[#F5F5F0] mt-7 text-center">GROUND DETAILS SAVED</Text><Text className="text-[#AFAFA9] text-center text-[15px] leading-6 mt-3">One quick verification step remains before {completedGround.title} can be reviewed and listed to players.</Text><View className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 w-full mt-6"><Text className="text-[#57CC63] font-bold">Verification required</Text><Text className="text-[#A8C9AC] text-sm mt-1">Tell us your relationship to the ground and upload the relevant proof securely.</Text></View><TouchableOpacity accessibilityRole="button" onPress={() => router.replace({ pathname: "/(vendor)/ground-verification", params: { id: completedGround.id } })} className="w-full bg-[#42B84F] rounded-full py-4 items-center mt-6"><Text className="text-[#102110] font-bold">Continue to verification</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => router.replace("/(vendor)/grounds")} className="py-4 mt-2"><Text className="text-[#D5D8D1] font-semibold">Finish later</Text></TouchableOpacity></View><Toast message={toast} tone="error" onHide={() => setToast(null)} /></SafeAreaView>;
   }
 
   return (
@@ -592,7 +591,7 @@ export default function AddGround() {
         <View className="flex-row items-center justify-between mb-2">
           <Text className="text-[#F5F5F0] font-medium">Ground images</Text>
           <Text className="text-[#92978F] text-xs">
-            {form.images.length} selected
+            {form.images.length}/8 selected (minimum 4)
           </Text>
         </View>
         <ScrollView
@@ -620,7 +619,7 @@ export default function AddGround() {
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Add ground images"
-            onPress={addImages}
+            onPress={form.images.length >= 8 ? undefined : addImages}
             className="w-28 h-24 rounded-xl bg-[#1B251B] border border-dashed border-[#42B84F] items-center justify-center"
           >
             <Ionicons name="add" size={28} color="#57CC63" />

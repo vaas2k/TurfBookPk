@@ -58,7 +58,8 @@ export class VendorController {
     if (!vendor) throw new AppError('vendor_required', 'Create your basic vendor profile before verification', 409);
     const existing = (await db.select().from(vendorVerifications).where(eq(vendorVerifications.vendorId, vendor.id)).limit(1))[0] || (await db.insert(vendorVerifications).values({ vendorId: vendor.id }).returning())[0];
     if (!existing) throw new AppError('verification_failed', 'Unable to prepare verification', 500);
-    if (['approved', 'under_review'].includes(existing.status)) throw new AppError('verification_locked', 'This verification is already under review or approved', 409);
+    const changesRequested = [existing.identityStatus, existing.businessStatus, existing.payoutStatus].includes('changes_requested');
+    if (existing.status === 'approved' || (existing.status === 'under_review' && !changesRequested)) throw new AppError('verification_locked', 'This verification is already under review or approved', 409);
     const step = String(request.params.step || ''); const body = request.body || {}; const values: Partial<typeof vendorVerifications.$inferInsert> = { updatedAt: new Date(), status: 'draft' };
     let documents: { type: DocumentType; storageKey: string; contentType: string; originalFilename: string | null }[] = [];
     if (step === 'identity') {
@@ -99,11 +100,12 @@ export class VendorController {
 
   activateMode = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
-    const vendor = await db.select({ id: vendors.id })
+    const vendor = await db.select({ id: vendors.id, verificationStatus: vendors.verificationStatus })
       .from(vendors)
       .where(eq(vendors.userId, request.auth.userId))
       .limit(1);
     if (!vendor[0]) throw new AppError('vendor_required', 'A vendor profile is required', 403);
+    if (vendor[0].verificationStatus !== 'approved') throw new AppError('vendor_verification_required', 'Your vendor verification must be approved before switching to vendor mode', 403);
 
     await db.update(users)
       .set({ role: 'vendor', updatedAt: new Date() })
@@ -172,7 +174,6 @@ export class VendorController {
       verificationStatus: 'draft',
     }).returning())[0];
     if (!row) throw new AppError('vendor_creation_failed', 'Vendor profile could not be created', 500);
-    await db.update(users).set({ role: 'vendor', updatedAt: new Date() }).where(eq(users.id, request.auth.userId));
     response.status(existing[0] ? 200 : 201).json({ profile: toProfile(row) });
   };
 
