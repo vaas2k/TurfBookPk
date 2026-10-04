@@ -1651,3 +1651,37 @@
 - Fixed the vendor Grounds reload path for unapproved listings: draft/review grounds no longer make public slot-summary calls that are intentionally denied by the approval gate, and each such card exposes a direct Verify this ground / View verification status action.
 - Added a standalone admin `typecheck` command and a GitHub Actions Admin panel checks job (`npm ci`, TypeScript validation, and production build).
 - Validation: server, mobile, and admin TypeScript checks passed; migration `0022_ground_verification` applied successfully. The local Windows Next production build initializes but does not progress or report a compile error, so the new clean-Linux CI build is the authoritative build check.
+
+## 2026-10-04 - Admin P0 verification hardening
+
+- Removed the legacy admin vendor/ground verification mutation routes that could bypass section-level evidence review and final approval. Dashboard queues and Ground Listings now direct staff into the dedicated verification review workspaces instead.
+- Corrected dashboard review counts and queue requests to use `under_review` plus `changes_requested` records, excluding untouched drafts.
+- Added a protected audit-log API with actor/action/target filters and pagination, together with an Admin Audit log screen. It exposes the existing verification, moderation, suspension, and activation audit records without exposing sensitive verification identifiers.
+- Server and admin TypeScript checks passed after the P0 changes. The server test suite passed all 21 tests after allowing the runner to create child test processes.
+
+## 2026-10-04 - Admin P1 review moderation workspace
+
+- Added a dedicated, protected Reviews Moderation screen with search, open/resolved/dismissed filters, reported-review context, hidden-state visibility, and explicit keep/hide/dismiss actions.
+- Reused the existing audited moderation API, preserving required review-hide reasons and avoiding a duplicate resolution workflow. The admin navigation now routes directly to this workspace.
+- Admin TypeScript validation passed.
+
+## 2026-10-04 - Vendor-centred ground operations
+
+- Removed standalone Ground Listings from primary admin navigation. Grounds are now managed in the owning vendor’s detail view, so staff can see the responsible business and all its grounds together.
+- Added per-ground Review and Suspend/Restore actions to the vendor’s managed-grounds cards. Review opens the protected ground-verification workspace; availability updates retain the existing audited admin API and require a suspension reason.
+- Admin TypeScript validation and whitespace checks passed.
+
+## 2026-10-04 - Ground detail and feedback visibility
+
+- Added a protected admin ground-detail API that returns the selected ground's complete operational information, managing vendor summary, and up to 100 player reviews, including internal hidden-review state. It does not expose private verification documents.
+- Each managed-ground card now opens its own vendor-scoped detail page. Admins can review photos, location coordinates, pricing, hours, amenities, rules, cancellation policy, verification state, and feedback, then open the existing verification workspace or use the audited Suspend/Restore action.
+- Validation: server and admin TypeScript checks, plus `git diff --check`, passed.
+
+## 2026-10-04 - Live admin dashboard analytics
+
+- Expanded the protected dashboard response with 30-day paid-GMV trend data, paid booking totals, booking distribution by city, and top ground performance. The figures are calculated from persisted booking and ground data; no dashboard mock values were introduced.
+
+## 2026-10-04 - Admin financial operations visibility
+
+- Added protected Payouts and Commission & Configuration admin routes. Payouts provides searchable ledger visibility and totals; configuration exposes the live commission rate, GMV, and refund exposure with a controlled-release procedure.
+- Settlement-changing actions intentionally remain unavailable: a payout/refund must be executed and reconciled by the future payment provider webhook, not by changing an internal database record from the admin UI.

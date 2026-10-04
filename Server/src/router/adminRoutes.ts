@@ -18,12 +18,12 @@ export function createAdminRouter(controller: AdminController, tokenService: Tok
   router.patch('/grounds/:id/verification/review', controller.reviewGroundVerification);
   router.post('/grounds/:id/approve', controller.approveGround);
   router.get('/ground-verification-documents/:id/download', controller.groundDocumentDownload);
+  router.get('/grounds/:id', controller.groundDetail);
   router.get('/users', controller.listUsers);
+  router.get('/audit-logs', controller.auditLogs);
   router.get('/transactions', controller.listTransactions);
   router.get('/operations', controller.operations);
   router.get('/refunds', controller.listRefunds);
-  router.patch('/vendors/:id/verification', controller.setVendorVerification);
-  router.patch('/grounds/:id/verification', controller.setGroundVerification);
   router.patch('/grounds/:id/activation', controller.setGroundActivation);
   router.get('/review-reports', controller.listReports);
   router.patch('/review-reports/:id', controller.resolveReport);

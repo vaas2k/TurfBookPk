@@ -90,6 +90,15 @@ Implementation order (prioritise simplicity over player-style decoration):
 
 ## Validation and completion
 
+## Phase 6 - Internal admin console Figma pass
+
+- [x] Inspect supplied admin Figma reference exports and establish the shared shell/token direction.
+- [x] Apply the shared sidebar, top bar, dense panels, filter controls, status badges, and responsive fallback without changing API contracts.
+- [ ] Match Dashboard metrics, trend, city-performance, and top-ground layout to the reference using real current operations data.
+- [ ] Match Ground Listings table and listing-detail drawer to the reference while preserving verification/suspension actions.
+- [ ] Match Transactions, Refunds, Reviews Moderation, Users, and Analytics layouts to their respective references.
+- [ ] Run desktop and narrow-window visual review of every admin route.
+
 - [ ] Run mobile TypeScript validation after each focused UI slice.
 - [ ] Run lint and `git diff --check` after each completed phase.
 - [ ] Verify player flows visually in dark and light themes on iOS and Android.

@@ -15,6 +15,12 @@ function param(value: string | string[] | undefined, name: string): string {
   return value;
 }
 
+function pagination(request: AuthenticatedRequest): { page: number; limit: number; offset: number } {
+  const page = Number(request.query.page || 1); const limit = Number(request.query.limit || 50);
+  if (!Number.isSafeInteger(page) || page < 1 || page > 10_000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new AppError('invalid_pagination', 'Use a valid page and limit', 422);
+  return { page, limit, offset: (page - 1) * limit };
+}
+
 function verificationBody(body: unknown): { status: VerificationStatus; reason: string | null } {
   const value = body as Record<string, unknown> | null;
   const status = value?.status;
@@ -43,26 +49,41 @@ function privateDocumentUrl(key: string, contentType: string): string {
 
 export class AdminController {
   dashboard = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const [pendingVendors, pendingGrounds, openReports, suspendedUsers, totalUsers, activeGrounds] = await Promise.all([
-      db.select({ total: count() }).from(vendors).where(eq(vendors.verificationStatus, 'pending')),
-      db.select({ total: count() }).from(grounds).where(eq(grounds.verificationStatus, 'pending')),
+    const [pendingVendors, pendingGrounds, openReports, suspendedUsers, totalUsers, activeGrounds, bookingRows] = await Promise.all([
+      db.select({ total: count() }).from(vendors).leftJoin(vendorVerifications, eq(vendorVerifications.vendorId, vendors.id)).where(or(eq(vendors.verificationStatus, 'under_review'), and(eq(vendors.verificationStatus, 'draft'), or(eq(vendorVerifications.identityStatus, 'changes_requested'), eq(vendorVerifications.businessStatus, 'changes_requested'), eq(vendorVerifications.payoutStatus, 'changes_requested'))))),
+      db.select({ total: count() }).from(grounds).leftJoin(groundVerifications, eq(groundVerifications.groundId, grounds.id)).where(or(eq(grounds.verificationStatus, 'under_review'), and(eq(grounds.verificationStatus, 'draft'), eq(groundVerifications.authorityStatus, 'changes_requested')))),
       db.select({ total: count() }).from(reviewReports).where(eq(reviewReports.status, 'open')),
       db.select({ total: count() }).from(users).where(eq(users.isSuspended, true)),
       db.select({ total: count() }).from(users),
       db.select({ total: count() }).from(grounds).where(and(eq(grounds.isActive, true), eq(grounds.verificationStatus, 'approved'))),
+      db.select({ booking: bookings, ground: grounds }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).orderBy(desc(bookings.createdAt)).limit(5_000),
     ]);
-    response.json({ counts: { pending_vendors: pendingVendors[0]?.total ?? 0, pending_grounds: pendingGrounds[0]?.total ?? 0, open_review_reports: openReports[0]?.total ?? 0, suspended_users: suspendedUsers[0]?.total ?? 0, total_users: totalUsers[0]?.total ?? 0, active_verified_grounds: activeGrounds[0]?.total ?? 0 } });
+    const now = new Date(); const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const days = Array.from({ length: 30 }, (_, index) => { const day = new Date(today); day.setUTCDate(day.getUTCDate() - (29 - index)); return day; });
+    const key = (date: Date) => date.toISOString().slice(0, 10);
+    const daily = new Map(days.map((day) => [key(day), 0])); const cities = new Map<string, number>(); const groundTotals = new Map<string, { title: string; amount: number; bookings: number; image: string | null }>();
+    let paidGmv = 0;
+    for (const { booking, ground } of bookingRows) {
+      if (booking.paymentStatus !== 'paid') continue;
+      paidGmv += booking.totalAmount;
+      const bookingDay = key(booking.createdAt); if (daily.has(bookingDay)) daily.set(bookingDay, (daily.get(bookingDay) || 0) + booking.totalAmount);
+      cities.set(ground.city, (cities.get(ground.city) || 0) + 1);
+      const total = groundTotals.get(ground.id) || { title: ground.title, amount: 0, bookings: 0, image: ground.coverImage || ground.images[0] || null };
+      total.amount += booking.totalAmount; total.bookings += 1; groundTotals.set(ground.id, total);
+    }
+    response.json({ counts: { pending_vendors: pendingVendors[0]?.total ?? 0, pending_grounds: pendingGrounds[0]?.total ?? 0, open_review_reports: openReports[0]?.total ?? 0, suspended_users: suspendedUsers[0]?.total ?? 0, total_users: totalUsers[0]?.total ?? 0, active_verified_grounds: activeGrounds[0]?.total ?? 0 }, analytics: { paid_gmv: paidGmv, total_bookings: bookingRows.filter(({ booking }) => booking.paymentStatus === 'paid').length, revenue_trend: days.map((day) => ({ date: key(day), amount: daily.get(key(day)) || 0 })), bookings_by_city: [...cities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([city, count]) => ({ city, count })), top_grounds: [...groundTotals.entries()].sort(([, a], [, b]) => b.amount - a.amount).slice(0, 5).map(([id, value]) => ({ id, ...value })) } });
   };
 
   listVendors = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const status = typeof request.query.status === 'string' ? request.query.status : 'pending';
+    const { page, limit, offset } = pagination(request);
     const includeChangesRequested = request.query.include_changes_requested === 'true';
     if (!['draft', 'pending', 'under_review', 'approved', 'rejected', 'suspended', 'all'].includes(status)) throw new AppError('invalid_status', 'Use a valid vendor status', 422);
     const changesRequested = or(eq(vendorVerifications.identityStatus, 'changes_requested'), eq(vendorVerifications.businessStatus, 'changes_requested'), eq(vendorVerifications.payoutStatus, 'changes_requested'));
     const where = status === 'all' ? undefined : status === 'under_review' && includeChangesRequested ? or(eq(vendors.verificationStatus, 'under_review'), and(eq(vendors.verificationStatus, 'draft'), changesRequested)) : eq(vendors.verificationStatus, status);
     const rows = await db.select({ vendor: vendors, user: users, verification: vendorVerifications }).from(vendors).innerJoin(users, eq(vendors.userId, users.id)).leftJoin(vendorVerifications, eq(vendorVerifications.vendorId, vendors.id))
-      .where(where).orderBy(desc(vendors.createdAt)).limit(100);
-    response.json({ vendors: rows.map(({ vendor, user, verification }) => ({ id: vendor.id, business_name: vendor.businessName, business_city: vendor.businessCity, business_phone: vendor.businessPhone, verification_status: verification && [verification.identityStatus, verification.businessStatus, verification.payoutStatus].includes('changes_requested') ? 'changes_requested' : vendor.verificationStatus, verification_reason: vendor.verificationReason, is_active: vendor.isActive, owner: { id: user.id, full_name: user.fullName, phone: user.phone, is_suspended: user.isSuspended }, created_at: vendor.createdAt.toISOString() })) });
+      .where(where).orderBy(desc(vendors.createdAt)).limit(limit + 1).offset(offset);
+    response.json({ vendors: rows.slice(0, limit).map(({ vendor, user, verification }) => ({ id: vendor.id, business_name: vendor.businessName, business_city: vendor.businessCity, business_phone: vendor.businessPhone, verification_status: verification && [verification.identityStatus, verification.businessStatus, verification.payoutStatus].includes('changes_requested') ? 'changes_requested' : vendor.verificationStatus, verification_reason: vendor.verificationReason, is_active: vendor.isActive, owner: { id: user.id, full_name: user.fullName, phone: user.phone, is_suspended: user.isSuspended }, created_at: vendor.createdAt.toISOString() })), pagination: { page, limit, has_more: rows.length > limit } });
   };
 
   vendorVerification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -123,12 +144,32 @@ export class AdminController {
 
   listGrounds = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const status = typeof request.query.status === 'string' ? request.query.status : 'under_review';
+    const { page, limit, offset } = pagination(request);
     const includeChangesRequested = request.query.include_changes_requested === 'true';
     if (!['draft', 'pending', 'under_review', 'changes_requested', 'approved', 'rejected', 'suspended', 'all'].includes(status)) throw new AppError('invalid_status', 'Use a valid ground status', 422);
     const rows = await db.select({ ground: grounds, vendor: vendors }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id))
       .leftJoin(groundVerifications, eq(groundVerifications.groundId, grounds.id))
-      .where(status === 'all' ? undefined : status === 'under_review' && includeChangesRequested ? or(eq(grounds.verificationStatus, 'under_review'), and(eq(grounds.verificationStatus, 'draft'), eq(groundVerifications.authorityStatus, 'changes_requested'))) : eq(grounds.verificationStatus, status)).orderBy(desc(grounds.createdAt)).limit(100);
-    response.json({ grounds: rows.map(({ ground, vendor }) => ({ id: ground.id, title: ground.title, city: ground.city, address: ground.address, amenities: ground.amenities, images: ground.images, cover_image: ground.coverImage, pitch_type: ground.pitchType, price_per_hour: ground.pricePerHour, verification_status: ground.verificationStatus, verification_reason: ground.verificationReason, is_active: ground.isActive, vendor: { id: vendor.id, business_name: vendor.businessName }, created_at: ground.createdAt.toISOString() })) });
+      .where(status === 'all' ? undefined : status === 'under_review' && includeChangesRequested ? or(eq(grounds.verificationStatus, 'under_review'), and(eq(grounds.verificationStatus, 'draft'), eq(groundVerifications.authorityStatus, 'changes_requested'))) : eq(grounds.verificationStatus, status)).orderBy(desc(grounds.createdAt)).limit(limit + 1).offset(offset);
+    response.json({ grounds: rows.slice(0, limit).map(({ ground, vendor }) => ({ id: ground.id, title: ground.title, city: ground.city, address: ground.address, amenities: ground.amenities, images: ground.images, cover_image: ground.coverImage, pitch_type: ground.pitchType, price_per_hour: ground.pricePerHour, verification_status: ground.verificationStatus, verification_reason: ground.verificationReason, is_active: ground.isActive, vendor: { id: vendor.id, business_name: vendor.businessName }, created_at: ground.createdAt.toISOString() })), pagination: { page, limit, has_more: rows.length > limit } });
+  };
+
+  groundDetail = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const id = param(request.params.id, 'Ground id');
+    const row = (await db.select({ ground: grounds, vendor: vendors, owner: users }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).innerJoin(users, eq(vendors.userId, users.id)).where(eq(grounds.id, id)).limit(1))[0];
+    if (!row) throw new AppError('not_found', 'Ground was not found', 404);
+    const entries = await db.select({ review: reviews, player: users }).from(reviews).innerJoin(users, eq(reviews.playerId, users.id)).where(eq(reviews.groundId, id)).orderBy(desc(reviews.createdAt)).limit(100);
+    response.json({
+      ground: {
+        id: row.ground.id, title: row.ground.title, description: row.ground.description, location: row.ground.location, city: row.ground.city, address: row.ground.address,
+        latitude: row.ground.latitude, longitude: row.ground.longitude, amenities: row.ground.amenities, images: row.ground.images, cover_image: row.ground.coverImage,
+        pitch_type: row.ground.pitchType, price_per_hour: row.ground.pricePerHour, peak_percentage: row.ground.peakPercentage, peak_windows: row.ground.peakWindows,
+        operating_hours: row.ground.operatingHours, rules: row.ground.rules, cancellation_policy: row.ground.cancellationPolicy, is_active: row.ground.isActive,
+        is_verified: row.ground.isVerified, verification_status: row.ground.verificationStatus, verification_reason: row.ground.verificationReason,
+        rating: row.ground.rating, total_reviews: row.ground.totalReviews, created_at: row.ground.createdAt.toISOString(),
+      },
+      vendor: { id: row.vendor.id, business_name: row.vendor.businessName, business_phone: row.vendor.businessPhone, owner_name: row.owner.fullName },
+      reviews: entries.map(({ review, player }) => ({ id: review.id, rating: review.rating, comment: review.comment, is_hidden: review.isHidden, hidden_reason: review.hiddenReason, created_at: review.createdAt.toISOString(), player: { id: player.id, full_name: player.fullName } })),
+    });
   };
 
   groundVerification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -177,18 +218,31 @@ export class AdminController {
 
   listUsers = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const query = typeof request.query.q === 'string' ? request.query.q.trim().slice(0, 100) : '';
+    const { page, limit, offset } = pagination(request);
     const rows = await db.select({ id: users.id, fullName: users.fullName, phone: users.phone, city: users.city, role: users.role, isSuspended: users.isSuspended, createdAt: users.createdAt })
-      .from(users).where(query ? sql`(${users.fullName} ILIKE ${`%${query}%`} OR ${users.phone} ILIKE ${`%${query}%`})` : undefined).orderBy(desc(users.createdAt)).limit(100);
-    response.json({ users: rows.map((user) => ({ id: user.id, full_name: user.fullName, phone: user.phone, city: user.city, role: user.role, is_suspended: user.isSuspended, created_at: user.createdAt.toISOString() })) });
+      .from(users).where(query ? sql`(${users.fullName} ILIKE ${`%${query}%`} OR ${users.phone} ILIKE ${`%${query}%`} OR ${users.city} ILIKE ${`%${query}%`})` : undefined).orderBy(desc(users.createdAt)).limit(limit + 1).offset(offset);
+    response.json({ users: rows.slice(0, limit).map((user) => ({ id: user.id, full_name: user.fullName, phone: user.phone, city: user.city, role: user.role, is_suspended: user.isSuspended, created_at: user.createdAt.toISOString() })), pagination: { page, limit, has_more: rows.length > limit } });
+  };
+
+  auditLogs = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const action = typeof request.query.action === 'string' ? request.query.action.trim().slice(0, 120) : '';
+    const targetType = typeof request.query.target_type === 'string' ? request.query.target_type.trim().slice(0, 80) : '';
+    const actorId = typeof request.query.actor_id === 'string' ? request.query.actor_id.trim() : '';
+    const page = Number(request.query.page || 1); const limit = Number(request.query.limit || 50);
+    if (!Number.isSafeInteger(page) || page < 1 || page > 10_000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new AppError('invalid_pagination', 'Use a valid page and limit', 422);
+    const conditions = [action ? eq(adminAuditLogs.action, action) : undefined, targetType ? eq(adminAuditLogs.targetType, targetType) : undefined, actorId ? eq(adminAuditLogs.actorId, actorId) : undefined].filter(Boolean) as ReturnType<typeof eq>[];
+    const rows = await db.select({ log: adminAuditLogs, actor: users }).from(adminAuditLogs).innerJoin(users, eq(adminAuditLogs.actorId, users.id)).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(adminAuditLogs.createdAt), desc(adminAuditLogs.id)).limit(limit).offset((page - 1) * limit);
+    response.json({ logs: rows.map(({ log, actor }) => ({ id: log.id, action: log.action, target_type: log.targetType, target_id: log.targetId, reason: log.reason, metadata: log.metadata, created_at: log.createdAt.toISOString(), actor: { id: actor.id, full_name: actor.fullName, phone: actor.phone } })), pagination: { page, limit, has_more: rows.length === limit } });
   };
 
   listTransactions = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const status = typeof request.query.status === 'string' ? request.query.status : 'all';
     if (!['all', 'pending', 'paid', 'failed', 'cancelled', 'refund_pending', 'refunded'].includes(status)) throw new AppError('invalid_status', 'Invalid payment status', 422);
+    const query = typeof request.query.q === 'string' ? request.query.q.trim().slice(0, 100) : ''; const { page, limit, offset } = pagination(request);
     const rows = await db.select({ attempt: paymentAttempts, booking: bookings, ground: grounds, player: users, vendor: vendors }).from(paymentAttempts)
       .innerJoin(bookings, eq(paymentAttempts.bookingId, bookings.id)).innerJoin(grounds, eq(bookings.groundId, grounds.id)).innerJoin(users, eq(paymentAttempts.playerId, users.id)).innerJoin(vendors, eq(paymentAttempts.vendorId, vendors.id))
-      .where(status === 'all' ? undefined : eq(paymentAttempts.status, status as typeof paymentAttempts.status.enumValues[number])).orderBy(desc(paymentAttempts.createdAt)).limit(200);
-    response.json({ transactions: rows.map(({ attempt, booking, ground, player, vendor }) => ({ id: attempt.id, provider: attempt.provider, provider_reference: attempt.providerReference, amount: attempt.amount, status: attempt.status, booking_number: booking.bookingNumber, ground_title: ground.title, player_name: player.fullName, vendor_name: vendor.businessName, created_at: attempt.createdAt.toISOString(), paid_at: attempt.paidAt?.toISOString() || null })) });
+      .where(and(status === 'all' ? undefined : eq(paymentAttempts.status, status as typeof paymentAttempts.status.enumValues[number]), query ? sql`(${bookings.bookingNumber} ILIKE ${`%${query}%`} OR ${grounds.title} ILIKE ${`%${query}%`} OR ${users.fullName} ILIKE ${`%${query}%`} OR ${vendors.businessName} ILIKE ${`%${query}%`})` : undefined)).orderBy(desc(paymentAttempts.createdAt)).limit(limit + 1).offset(offset);
+    response.json({ transactions: rows.slice(0, limit).map(({ attempt, booking, ground, player, vendor }) => ({ id: attempt.id, provider: attempt.provider, provider_reference: attempt.providerReference, amount: attempt.amount, status: attempt.status, booking_number: booking.bookingNumber, ground_title: ground.title, player_name: player.fullName, vendor_name: vendor.businessName, created_at: attempt.createdAt.toISOString(), paid_at: attempt.paidAt?.toISOString() || null })), pagination: { page, limit, has_more: rows.length > limit } });
   };
 
   operations = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -204,9 +258,11 @@ export class AdminController {
     response.json({ analytics: { total_bookings: bookingRows.length, paid_gmv: paidAmount, refunded_amount: refundedAmount, commission_bps: env.platformCommissionBps, bookings_by_city: [...cities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([city, count]) => ({ city, count })) }, payouts: payoutRows.map((row) => ({ vendor_id: row.vendorId, amount: row.amount, status: row.status, created_at: row.createdAt.toISOString() })) });
   };
 
-  listRefunds = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
+  listRefunds = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const query = typeof request.query.q === 'string' ? request.query.q.trim().slice(0, 100) : ''; const status = typeof request.query.status === 'string' ? request.query.status : 'all'; const { page, limit, offset } = pagination(request);
     const rows = await db.select({ booking: bookings, ground: grounds, player: users, vendor: vendors }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).innerJoin(users, eq(bookings.playerId, users.id)).innerJoin(vendors, eq(bookings.vendorId, vendors.id)).where(sql`${bookings.refundAmount} > 0`).orderBy(desc(bookings.cancelledAt)).limit(200);
-    response.json({ refunds: rows.map(({ booking, ground, player, vendor }) => ({ id: booking.id, booking_number: booking.bookingNumber, ground_title: ground.title, player_name: player.fullName, vendor_name: vendor.businessName, amount: booking.refundAmount, status: booking.paymentStatus, reason: booking.cancellationReason, cancelled_at: booking.cancelledAt?.toISOString() || null })) });
+    const filtered = rows.filter(({ booking, ground, player, vendor }) => (status === 'all' || booking.paymentStatus === status) && (!query || `${booking.bookingNumber} ${ground.title} ${player.fullName} ${vendor.businessName}`.toLowerCase().includes(query.toLowerCase()))); const pageRows = filtered.slice(offset, offset + limit + 1);
+    response.json({ refunds: pageRows.slice(0, limit).map(({ booking, ground, player, vendor }) => ({ id: booking.id, booking_number: booking.bookingNumber, ground_title: ground.title, player_name: player.fullName, vendor_name: vendor.businessName, amount: booking.refundAmount, status: booking.paymentStatus, reason: booking.cancellationReason, cancelled_at: booking.cancelledAt?.toISOString() || null })), pagination: { page, limit, has_more: pageRows.length > limit } });
   };
 
   setVendorVerification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -236,11 +292,13 @@ export class AdminController {
     response.json({ ground: { id: ground.id, is_active: ground.isActive } });
   };
 
-  listReports = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
+  listReports = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const status = typeof request.query.status === 'string' ? request.query.status : 'all'; const { page, limit, offset } = pagination(request);
+    if (!['all', 'open', 'resolved', 'dismissed'].includes(status)) throw new AppError('invalid_status', 'Use a valid report status', 422);
     const rows = await db.select({ report: reviewReports, review: reviews, reporter: users, ground: grounds }).from(reviewReports)
       .innerJoin(reviews, eq(reviewReports.reviewId, reviews.id)).innerJoin(users, eq(reviewReports.reporterId, users.id)).innerJoin(grounds, eq(reviews.groundId, grounds.id))
-      .orderBy(desc(reviewReports.createdAt)).limit(100);
-    response.json({ reports: rows.map(({ report, review, reporter, ground }) => ({ id: report.id, status: report.status, reason: report.reason, resolution_reason: report.resolutionReason, review: { id: review.id, rating: review.rating, comment: review.comment, is_hidden: review.isHidden }, reporter: { id: reporter.id, full_name: reporter.fullName }, ground: { id: ground.id, title: ground.title }, created_at: report.createdAt.toISOString() })) });
+      .where(status === 'all' ? undefined : eq(reviewReports.status, status)).orderBy(desc(reviewReports.createdAt)).limit(limit + 1).offset(offset);
+    response.json({ reports: rows.slice(0, limit).map(({ report, review, reporter, ground }) => ({ id: report.id, status: report.status, reason: report.reason, resolution_reason: report.resolutionReason, review: { id: review.id, rating: review.rating, comment: review.comment, is_hidden: review.isHidden }, reporter: { id: reporter.id, full_name: reporter.fullName }, ground: { id: ground.id, title: ground.title }, created_at: report.createdAt.toISOString() })), pagination: { page, limit, has_more: rows.length > limit } });
   };
 
   resolveReport = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
