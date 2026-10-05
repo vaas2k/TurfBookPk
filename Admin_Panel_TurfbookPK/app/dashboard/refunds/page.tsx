@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { AdminShell, useAdminSession } from "../../../components/AdminShell";
 import { request } from "../../../lib/api";
+import { CsvExport, PageControls } from "../../../components/AdminListTools";
 type Refund = {
   id: string;
   booking_number: string;
@@ -16,17 +17,20 @@ type Refund = {
 export default function RefundsPage() {
   const ready = useAdminSession();
   const [items, setItems] = useState<Refund[]>([]);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
     if (ready)
-      void request("/refunds")
-        .then((value) => setItems((value as { refunds: Refund[] }).refunds))
+      void request(`/refunds?q=${encodeURIComponent(query)}&page=${page}&limit=50`)
+        .then((value) => { const data = value as { refunds: Refund[]; pagination: { has_more: boolean } }; setItems(data.refunds); setHasMore(data.pagination.has_more); })
         .catch((error) =>
           setMessage(
             error instanceof Error ? error.message : "Unable to load refunds.",
           ),
         );
-  }, [ready]);
+  }, [ready, query, page]);
   return (
     <AdminShell active="refunds">
       <header>
@@ -34,12 +38,14 @@ export default function RefundsPage() {
           <p className="eyebrow">REFUNDS &amp; DISPUTES</p>
           <h1>Refund records</h1>
         </div>
+        <CsvExport rows={items.map((item) => ({ booking: item.booking_number, ground: item.ground_title, player: item.player_name, vendor: item.vendor_name, amount_pkr: item.amount, status: item.status, reason: item.reason, cancelled_at: item.cancelled_at }))} filename={`refunds-page-${page}.csv`} columns={[{ key: "booking", label: "Booking" }, { key: "ground", label: "Ground" }, { key: "player", label: "Player" }, { key: "vendor", label: "Vendor" }, { key: "amount_pkr", label: "Amount PKR" }, { key: "status", label: "Status" }, { key: "reason", label: "Reason" }, { key: "cancelled_at", label: "Cancelled at" }]} />
       </header>
       <p className="muted compact">
         Refund calculations are recorded here. Gateway settlement actions remain
         disabled until provider webhooks are available.
       </p>
       {message && <p className="banner-error">{message}</p>}
+      <div className="toolbar"><input placeholder="Search booking, ground, player…" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} /></div>
       <section className="data-table">
         <div className="table-head transaction-table">
           <span>Booking</span>
@@ -82,6 +88,7 @@ export default function RefundsPage() {
           <p className="empty">No refundable cancellations are recorded.</p>
         )}
       </section>
+      <PageControls page={page} hasMore={hasMore} onPrevious={() => setPage((value) => Math.max(1, value - 1))} onNext={() => setPage((value) => value + 1)} />
     </AdminShell>
   );
 }

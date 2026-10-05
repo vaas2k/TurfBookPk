@@ -1685,3 +1685,37 @@
 
 - Added protected Payouts and Commission & Configuration admin routes. Payouts provides searchable ledger visibility and totals; configuration exposes the live commission rate, GMV, and refund exposure with a controlled-release procedure.
 - Settlement-changing actions intentionally remain unavailable: a payout/refund must be executed and reconciled by the future payment provider webhook, not by changing an internal database record from the admin UI.
+
+## 2026-10-05 - Mobile list and image performance pass
+
+- Replaced the player Saved Grounds and Nearby Grounds `ScrollView` list rendering with virtualized section/list components, preserving favorites, recently viewed, location messaging, empty states, and ground navigation.
+- Search result imagery now uses Expo Image memory/disk caching with recycling keys; long Search and Earnings containers also clip off-screen children and preserve keyboard interaction.
+- Validation: mobile TypeScript and Expo lint pass.
+
+## 2026-10-05 - Mobile reliability and cleanup pass
+
+- Removed dead imports and duplicate module imports across the active mobile flows, fixed an OTP error-reset effect dependency, and consolidated active vendor ground/slot UI onto the current management paths.
+- Kept the date-based vendor slot manager as the supported flow and isolated the obsolete editor from the shipped code path; inactive historical variants no longer participate in TypeScript builds.
+- Validation: `npx tsc --noEmit` and `git diff --check` pass. Expo lint has no errors; remaining warnings are legacy/unreachable UI candidates and a small number of hook-dependency follow-ups.
+
+## 2026-10-05 - Discovery and notification follow-up
+
+- Hardened player discovery pagination by clearing stale retry errors on a fresh query and deduplicating grounds returned on subsequent pages. The retry card now respects the active player theme and exposes an accessible retry action.
+- Normalized notification booking identifiers (`bookingId` and `booking_id`) and route navigation for both player and vendor notification screens, so booking-linked in-app notifications reliably open the typed booking-detail route.
+- Player booking list loading now schedules reminders for every confirmed booking returned across pages and cancels saved local reminders for cancelled/expired bookings. Booking detail reinforces this when opened and cancels reminders immediately after cancellation.
+- Validation: mobile TypeScript passes; Expo lint has zero errors.
+
+## 2026-10-05 - Player home refresh policy
+
+- Replaced destructive player tab switching with route-preserving navigation and removed an unreachable legacy home-feed effect that made a second discovery request on each Home mount.
+- Home now uses a 15-second stale-while-revalidate window only for volatile data (availability, unread count, and recent activity); pull-to-refresh always forces a live request. Static presentation is preserved during short tab changes without treating slots or booking state as durable cache.
+- Validation: mobile TypeScript and whitespace checks pass.
+
+## 2026-10-05 - Persisted player discovery cache
+
+- Added splash-time preload and persisted, user/date-scoped player-home card cache. Cached ground cards and recently viewed metadata render immediately after a cold start or route remount; live discovery revalidates them in the background.
+- Added a bounded cache for previously opened public ground metadata. Ground-detail slots are explicitly excluded: every ground-detail request still fetches and sorts current slots live before a player can select or book one.
+
+## 2026-10-05 - Booking start reminder
+
+- Added a third local booking reminder scheduled at the slot start time. It is stored with the existing 24-hour and one-hour reminder IDs, so the existing cancellation/rescheduling cleanup removes all three.

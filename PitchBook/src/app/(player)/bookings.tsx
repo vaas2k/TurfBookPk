@@ -15,9 +15,9 @@ import { formatTimeRange12 } from '@/lib/time';
 import { BookingProfile, getPlayerBookings } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
-import { goBackOrReplace } from '@/lib/navigation';
 import { useAppearanceStore } from '@/store/appearanceStore';
 import { playerThemes } from '@/theme/playerTheme';
+import { cancelBookingReminders, scheduleBookingReminders } from '@/lib/notifications';
 
 interface BookingSection {
   title: string;
@@ -46,6 +46,7 @@ export default function BookingsScreen() {
     try {
       const data = await getPlayerBookings(1);
       setBookings(data.bookings); setPage(1); setHasMore(data.pagination.has_more); setTotal(data.pagination.total);
+      void Promise.all(data.bookings.map((booking) => booking.status === 'confirmed' ? scheduleBookingReminders(booking) : cancelBookingReminders(booking.id))).catch(() => undefined);
     } catch (error: any) {
       setToast(error?.message || 'Unable to load bookings.');
     } finally {
@@ -60,6 +61,7 @@ export default function BookingsScreen() {
     try {
       const data = await getPlayerBookings(page + 1);
       setBookings((current) => [...current, ...data.bookings]); setPage(data.pagination.page); setHasMore(data.pagination.has_more); setTotal(data.pagination.total);
+      void Promise.all(data.bookings.map((booking) => booking.status === 'confirmed' ? scheduleBookingReminders(booking) : cancelBookingReminders(booking.id))).catch(() => undefined);
     } catch (error: any) {
       setToast(error?.message || 'Unable to load more bookings.');
     } finally { setLoadingMore(false); }

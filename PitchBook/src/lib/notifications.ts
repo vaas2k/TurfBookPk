@@ -54,11 +54,15 @@ export async function scheduleBookingReminders(booking: BookingProfile): Promise
   if (booking.status !== 'confirmed' || !(await getNotificationPreferences()).matchReminders) return;
   await cancelBookingReminders(booking.id);
   const startsAt = new Date(`${booking.date}T${booking.start_time.length === 5 ? `${booking.start_time}:00` : booking.start_time}+05:00`).getTime();
-  const reminders = [{ ms: 24 * 60 * 60 * 1000, label: 'tomorrow' }, { ms: 60 * 60 * 1000, label: 'in one hour' }];
+  const reminders = [
+    { ms: 24 * 60 * 60 * 1000, label: 'tomorrow', title: 'Match reminder' },
+    { ms: 60 * 60 * 1000, label: 'in one hour', title: 'Match reminder' },
+    { ms: 0, label: 'now', title: 'Your slot is starting now' },
+  ];
   const ids: string[] = [];
   for (const reminder of reminders) {
     const seconds = Math.floor((startsAt - reminder.ms - Date.now()) / 1000);
-    if (seconds > 5) ids.push(await Notifications.scheduleNotificationAsync({ content: { title: 'Match reminder', body: `Your booking at ${booking.ground_title} starts ${reminder.label}.`, data: { bookingId: booking.id } }, trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds } }));
+    if (seconds > 5) ids.push(await Notifications.scheduleNotificationAsync({ content: { title: reminder.title, body: reminder.ms === 0 ? `Your booking at ${booking.ground_title} is starting now.` : `Your booking at ${booking.ground_title} starts ${reminder.label}.`, data: { bookingId: booking.id } }, trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds } }));
   }
   await AsyncStorage.setItem(reminderKey(booking.id), JSON.stringify(ids));
 }

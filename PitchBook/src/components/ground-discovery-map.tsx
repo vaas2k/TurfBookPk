@@ -1,4 +1,4 @@
-import { Linking, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, Platform, Text, View } from 'react-native';
 import MapView, { Callout, Marker, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { Ground } from '@/lib/api/vendors';

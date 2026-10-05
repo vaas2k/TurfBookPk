@@ -172,7 +172,6 @@ export default function VendorEarnings() {
     .sort((left, right) => right.total - left.total)
     .slice(0, 3);
   const maxGroundRevenue = Math.max(...groundPerformance.map((item) => item.total), 1);
-  const periodLabel = period === "week" ? "Weekly" : period === "month" ? "Monthly" : "All time";
   return (
     <SafeAreaView className="flex-1 bg-[#10120F]">
       <View className="px-6 pt-5 flex-row items-center justify-between">
@@ -188,6 +187,8 @@ export default function VendorEarnings() {
       </View>
       <ScrollView
         className="flex-1 px-6 pt-5"
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={
           <RefreshControl

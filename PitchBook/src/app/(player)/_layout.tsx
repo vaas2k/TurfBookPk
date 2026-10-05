@@ -74,7 +74,10 @@ function BottomTabBar() {
 
   const handlePress = (route: string) => {
     if (!isActive(route)) {
-      router.replace(route as any);
+      // `replace` unmounted the current tab and forced Home to repeat its
+      // location, discovery, notification, and recent-ground requests.
+      // Navigate reuses the existing stack route when possible.
+      router.navigate(route as any);
     }
   };
 

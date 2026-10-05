@@ -6,7 +6,7 @@ export interface Pagination {
   has_more: boolean;
 }
 
-export interface Paginated<T, Key extends string = "items"> {
+export interface Paginated<T> {
   pagination: Pagination;
   [key: string]: T[] | Pagination;
 }

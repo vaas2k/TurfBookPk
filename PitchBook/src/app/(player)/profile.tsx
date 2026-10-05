@@ -25,7 +25,6 @@ export default function ProfileScreen() {
   const { appearance } = useAppearanceStore();
   const theme = playerThemes.dark;
   const [showVendorModal, setShowVendorModal] = useState(false);
-  const [vendorLoading, setVendorLoading] = useState(false);
   useEffect(() => { if (openVendorVerification === '1') setShowVendorModal(true); }, [openVendorVerification]);
   const initials = (profile?.full_name || "User")
     .split(" ")
@@ -74,9 +73,7 @@ export default function ProfileScreen() {
   };
 
   const handleVendorRegister = async (data: VendorBaseData) => {
-    setVendorLoading(true);
     const { error } = await registerVendor(data);
-    setVendorLoading(false);
     if (error) appDialog.alert("Registration failed", error);
   };
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AdminShell, useAdminSession } from "../../../components/AdminShell";
 import { request } from "../../../lib/api";
+import { CsvExport, PageControls } from "../../../components/AdminListTools";
 
 type Report = {
   id: string;
@@ -26,15 +27,15 @@ export default function ReviewsPage() {
     "open" | "resolved" | "dismissed" | "all"
   >("open");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [message, setMessage] = useState("");
   const [working, setWorking] = useState<string | null>(null);
   async function load() {
     if (!ready) return;
     try {
       setMessage("");
-      setItems(
-        ((await request("/review-reports")) as { reports: Report[] }).reports,
-      );
+      const data = (await request(`/review-reports?status=${status}&page=${page}&limit=50`)) as { reports: Report[]; pagination: { has_more: boolean } }; setItems(data.reports); setHasMore(data.pagination.has_more);
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -45,7 +46,7 @@ export default function ReviewsPage() {
   }
   useEffect(() => {
     void load();
-  }, [ready]);
+  }, [ready, status, page]);
   const visible = useMemo(
     () =>
       items.filter(
@@ -96,13 +97,13 @@ export default function ReviewsPage() {
             log.
           </p>
         </div>
-        <button
+        <div className="actions"><CsvExport rows={visible.map((item) => ({ ground: item.ground.title, reporter: item.reporter.full_name, status: item.status, rating: item.review.rating, report_reason: item.reason, review: item.review.comment, created_at: item.created_at }))} filename={`review-reports-page-${page}.csv`} columns={[{ key: "ground", label: "Ground" }, { key: "reporter", label: "Reporter" }, { key: "status", label: "Status" }, { key: "rating", label: "Rating" }, { key: "report_reason", label: "Reason" }, { key: "review", label: "Review" }, { key: "created_at", label: "Created" }]} /><button
           className="refresh"
           disabled={Boolean(working)}
           onClick={() => void load()}
         >
           Refresh
-        </button>
+        </button></div>
       </header>
       {message ? <p className="banner-error">{message}</p> : null}
       <div className="toolbar">
@@ -113,7 +114,7 @@ export default function ReviewsPage() {
         />
         <select
           value={status}
-          onChange={(event) => setStatus(event.target.value as typeof status)}
+          onChange={(event) => { setPage(1); setStatus(event.target.value as typeof status); }}
         >
           <option value="open">Open reports</option>
           <option value="resolved">Resolved</option>
@@ -189,6 +190,7 @@ export default function ReviewsPage() {
           <p className="empty">No review reports match this view.</p>
         ) : null}
       </section>
+      <PageControls page={page} hasMore={hasMore} onPrevious={() => setPage((value) => Math.max(1, value - 1))} onNext={() => setPage((value) => value + 1)} />
     </AdminShell>
   );
 }

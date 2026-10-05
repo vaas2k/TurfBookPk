@@ -1,7 +1,7 @@
-import { Slot } from 'expo-router';
+import { Slot , useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, ActivityIndicator, Text } from 'react-native';
+import { View, ActivityIndicator, Text , Platform } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import {useVendorStore} from '@/store/vendorStore';
@@ -13,10 +13,9 @@ import { getApiConfigurationError } from '@/lib/api/client';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { useAppearanceStore } from '@/store/appearanceStore';
 import { colorScheme } from 'nativewind';
-import { useRouter } from 'expo-router';
-import { Platform } from 'react-native';
 import { listenForNotificationResponses, registerForPushNotifications } from '@/lib/notifications';
 import { registerPushToken } from '@/lib/api/notifications';
+import { preloadHomeFeedCache } from '@/lib/home-feed-cache';
 
 //@ts-ignore
 import '../global.css';
@@ -65,7 +64,10 @@ export default function RootLayout() {
         await checkAuth();
         const currentUser = useAuthStore.getState().user;
         if (currentUser) {
-          await checkVendorStatus(currentUser.id);
+          await Promise.all([
+            checkVendorStatus(currentUser.id),
+            preloadHomeFeedCache(),
+          ]);
         }
       } finally {
         setIsReady(true);

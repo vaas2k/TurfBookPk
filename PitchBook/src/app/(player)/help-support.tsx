@@ -25,12 +25,6 @@ export default function HelpSupportScreen() {
         "Email support@turfbookpk.com for help.",
       ),
     );
-  const row = (title: string, text: string) => (
-    <View className="bg-[#20241D] rounded-[18px] p-4 mb-3">
-      <Text className="text-[#F3F4EF] font-semibold text-base">{title}</Text>
-      <Text className="text-[#AFAFA9] text-sm leading-5 mt-2">{text}</Text>
-    </View>
-  );
   return (
     <SafeAreaView
       edges={["top", "left", "right"]}

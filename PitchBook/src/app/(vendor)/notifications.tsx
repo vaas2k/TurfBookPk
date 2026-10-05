@@ -3,9 +3,8 @@ import { ActivityIndicator, FlatList, RefreshControl, StatusBar, Text, Touchable
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { AppNotification, getNotifications, markAllNotificationsRead, markNotificationRead } from '@/lib/api/notifications';
+import { AppNotification, getNotifications, markAllNotificationsRead, markNotificationRead, notificationBookingId } from '@/lib/api/notifications';
 import { Toast } from '@/components/ui/toast';
-import { goBackOrReplace } from '@/lib/navigation';
 
 export default function VendorNotificationsScreen() {
   const [items, setItems] = useState<AppNotification[]>([]);
@@ -22,7 +21,7 @@ export default function VendorNotificationsScreen() {
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
   const loadMore = useCallback(async () => { if (loading || loadingMore || !hasMore) return; setLoadingMore(true); try { const result = await getNotifications(page + 1); setItems((current) => [...current, ...result.notifications]); setPage(result.pagination.page); setHasMore(result.pagination.has_more); } catch (caught: any) { setError(caught?.message || 'Unable to load more notifications.'); } finally { setLoadingMore(false); } }, [hasMore, loading, loadingMore, page]);
-  const open = async (item: AppNotification) => { try { if (!item.isRead) { await markNotificationRead(item.id); setItems((current) => current.map((value) => value.id === item.id ? { ...value, isRead: true } : value)); } if (item.data?.bookingId) router.push(`/(vendor)/booking/${item.data.bookingId}`); } catch (caught: any) { setError(caught?.message || 'Unable to update notification.'); } };
+  const open = async (item: AppNotification) => { try { if (!item.isRead) { await markNotificationRead(item.id); setItems((current) => current.map((value) => value.id === item.id ? { ...value, isRead: true } : value)); } const bookingId = notificationBookingId(item); if (bookingId) router.push({ pathname: '/(vendor)/booking/[id]', params: { id: bookingId } }); } catch (caught: any) { setError(caught?.message || 'Unable to update notification.'); } };
   const markAll = async () => { try { await markAllNotificationsRead(); setItems((current) => current.map((item) => ({ ...item, isRead: true }))); } catch (caught: any) { setError(caught?.message || 'Unable to mark notifications as read.'); } };
   const visualFor = (item: AppNotification) => {
     const content = `${item.type} ${item.title}`.toLowerCase();

@@ -1,6 +1,6 @@
 import { 
   View, Text, TouchableOpacity, ActivityIndicator, 
-  TextInput, Keyboard
+  TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -19,7 +19,7 @@ export default function OTPVerificationScreen() {
   const [canResend, setCanResend] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const inputs = useRef<(TextInput | null)[]>([]);
-  const { verifyOTP, sendOTP, clearError, error, isNewUser, checkAuth } = useAuthStore();
+  const { verifyOTP, sendOTP, clearError, error } = useAuthStore();
 
   useEffect(() => {
     inputs.current = Array(6).fill(null);
@@ -38,7 +38,7 @@ export default function OTPVerificationScreen() {
   // Clear errors when OTP changes
   useEffect(() => {
     if (error) clearError();
-  }, [otp]);
+  }, [otp, error, clearError]);
 
   const handleChange = (text: string, index: number) => {
     const digit = text.replace(/\D/g, '');

@@ -11,8 +11,8 @@ import {
   StatusBar,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
-import { useState, useCallback, useEffect } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
 import VendorVerificationFlow from "@/components/vendor/VendorVerificationFlow";
@@ -29,6 +29,10 @@ import { appDialog } from "@/components/ui/app-dialog";
 import * as Location from "expo-location";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { playerThemes } from "@/theme/playerTheme";
+import {
+  getHomeFeedCache,
+  saveHomeFeedCache,
+} from "@/lib/home-feed-cache";
 
 const { width } = Dimensions.get("window");
 
@@ -40,6 +44,7 @@ const homeBannerImages = [
   "https://images.unsplash.com/photo-1553778263-73a83bab9b0c?w=1200&q=85",
   "https://images.unsplash.com/photo-1551958219-acbc608c6377?w=1200&q=85",
 ];
+const HOME_VOLATILE_REFRESH_MS = 15_000;
 
 function distanceKm(
   from: { latitude: number; longitude: number },
@@ -95,6 +100,9 @@ export default function PlayerHome() {
   const [todayGrounds, setTodayGrounds] = useState<PlayerGround[]>([]);
   const [recentGrounds, setRecentGrounds] = useState<Ground[]>([]);
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [homeInitialLoading, setHomeInitialLoading] = useState(true);
+  const lastVolatileRefreshAt = useRef(0);
+  const hasLiveHomeFeed = useRef(false);
 
   // Modal states
   const [toastVisible, setToastVisible] = useState(false);
@@ -122,8 +130,26 @@ export default function PlayerHome() {
 
   const today = () =>
     new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const loadHome = useCallback(async () => {
-    setRefreshing(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    void getHomeFeedCache(user.id, today()).then((cached) => {
+      if (!active || !cached || hasLiveHomeFeed.current) return;
+      // Cached cards make the first paint immediate. Availability is replaced
+      // by the live request below and is never used for booking decisions.
+      setTodayGrounds(cached.grounds);
+      setRecentGrounds(cached.recent);
+      setHomeCity(cached.city || profile?.city || "Your area");
+      setHomeInitialLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [profile?.city, user?.id]);
+
+  const loadHome = useCallback(async (showRefreshIndicator = true) => {
+    if (showRefreshIndicator) setRefreshing(true);
     let position: { latitude: number; longitude: number } | null = null;
     try {
       try {
@@ -196,16 +222,35 @@ export default function PlayerHome() {
             : a.distanceKm - b.distanceKm,
       );
       setTodayGrounds(current);
+      hasLiveHomeFeed.current = true;
+      lastVolatileRefreshAt.current = Date.now();
+      if (user?.id) {
+        void saveHomeFeedCache({
+          userId: user.id,
+          date: today(),
+          city: homeCity,
+          grounds: current,
+          recent: viewed || [],
+        });
+      }
     } catch (error) {
       console.log("[PlayerHome] Unable to load home feed:", error);
     } finally {
-      setRefreshing(false);
+      setHomeInitialLoading(false);
+      if (showRefreshIndicator) setRefreshing(false);
     }
-  }, [profile?.city]);
+  }, [homeCity, profile?.city, user?.id]);
 
-  useEffect(() => {
-    loadHome();
-  }, [loadHome]);
+  useFocusEffect(
+    useCallback(() => {
+      // Ground availability, unread notifications, and recent activity are
+      // volatile. Keep the current UI for quick tab changes, then revalidate
+      // those values after a brief freshness window without showing a spinner.
+      if (Date.now() - lastVolatileRefreshAt.current >= HOME_VOLATILE_REFRESH_MS) {
+        void loadHome(false);
+      }
+    }, [loadHome]),
+  );
 
   const compactNearbyCard = (ground: PlayerGround) => (
     <TouchableOpacity
@@ -364,8 +409,20 @@ export default function PlayerHome() {
               </Text>
             </TouchableOpacity>
           </View>
-          {todayGrounds.slice(0, 3).map(compactNearbyCard)}
-          {todayGrounds.length === 0 && !refreshing && (
+          {homeInitialLoading && todayGrounds.length === 0 ? (
+            <View accessibilityLabel="Loading nearby grounds" accessibilityRole="progressbar">
+              {[0, 1, 2].map((item) => (
+                <View key={item} className="border rounded-[16px] overflow-hidden flex-row mb-3" style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}>
+                  <View className="w-[124px] h-[126px]" style={{ backgroundColor: theme.businessSurface }} />
+                  <View className="flex-1 px-3 py-4 justify-between"><View><View className="h-4 w-3/4 rounded-full" style={{ backgroundColor: theme.businessSurface }} /><View className="h-3 w-1/2 rounded-full mt-3" style={{ backgroundColor: theme.businessSurface }} /></View><View className="h-3 w-1/3 rounded-full" style={{ backgroundColor: theme.businessSurface }} /></View>
+                </View>
+              ))}
+              <Text style={{ color: theme.subtle }} className="text-center text-xs mt-1">Finding grounds with slots today…</Text>
+            </View>
+          ) : (
+            todayGrounds.slice(0, 3).map(compactNearbyCard)
+          )}
+          {todayGrounds.length === 0 && !homeInitialLoading && !refreshing && (
             <Text style={{ color: theme.subtle }} className="text-sm text-center py-6">
               No grounds have slots available today.
             </Text>
@@ -538,10 +595,6 @@ export default function PlayerHome() {
       setLoadingMoreGrounds(false);
     }
   }, [groundPage, hasMoreGrounds, loadingMoreGrounds, userLocation]);
-
-  useEffect(() => {
-    loadGrounds();
-  }, [loadGrounds]);
 
   const onRefresh = loadGrounds;
 

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
-  Image,
   Modal,
   PanResponder,
   Pressable,
@@ -14,6 +13,7 @@ import {
   View,
   StatusBar,
 } from "react-native";
+import { Image as CachedImage } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -91,6 +91,7 @@ export default function SearchScreen() {
       if (nextPage > 1) setLoadingMore(true);
       else if (refresh) setRefreshing(true);
       else setLoading(true);
+      if (nextPage === 1) setLoadError(null);
       try {
         const result = await searchPublicGrounds({
           q: query.trim() || undefined,
@@ -102,7 +103,11 @@ export default function SearchScreen() {
           page: nextPage,
           limit: 12,
         });
-        setGrounds((current) => nextPage === 1 ? result.grounds : [...current, ...result.grounds]);
+        setGrounds((current) => {
+          if (nextPage === 1) return result.grounds;
+          const known = new Set(current.map((ground) => ground.id));
+          return [...current, ...result.grounds.filter((ground) => !known.has(ground.id))];
+        });
         setSlotsByGround((current) => nextPage === 1 ? result.slots_by_ground : { ...current, ...result.slots_by_ground });
         setPage(nextPage); setHasMore(result.pagination.has_more); setLoadError(null);
       } catch (error: any) {
@@ -521,6 +526,8 @@ export default function SearchScreen() {
       )}
       <ScrollView
         className="flex-1 px-5 pt-4"
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 104 }}
         refreshControl={
           <RefreshControl
@@ -538,7 +545,7 @@ export default function SearchScreen() {
         {loading ? (
           <ActivityIndicator className="mt-10" color={theme.green} />
         ) : loadError ? (
-          <View className="bg-white border border-[#FECACA] rounded-2xl p-8 items-center mt-3"><Ionicons name="cloud-offline-outline" size={40} color="#DC2626" /><Text className="text-[#1A1A2E] font-bold text-lg mt-3">Couldn’t load grounds</Text><Text className="text-[#737373] text-center text-sm mt-2">Check your connection and try again.</Text><TouchableOpacity onPress={() => load()} className="mt-5 bg-[#1A1A2E] rounded-xl px-5 py-3"><Text className="text-white font-bold">Try again</Text></TouchableOpacity></View>
+          <View className="border rounded-2xl p-8 items-center mt-3" style={{ backgroundColor: theme.surfaceRaised, borderColor: '#DC6262' }}><Ionicons name="cloud-offline-outline" size={40} color="#DC6262" /><Text style={{ color: theme.text }} className="font-bold text-lg mt-3">Couldn’t load grounds</Text><Text style={{ color: theme.subtle }} className="text-center text-sm mt-2">Check your connection and try again.</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry loading grounds" onPress={() => load()} className="mt-5 rounded-xl px-5 py-3" style={{ backgroundColor: theme.green }}><Text className="text-white font-bold">Try again</Text></TouchableOpacity></View>
         ) : results.length === 0 ? (
           <View className="border rounded-2xl p-8 items-center mt-3" style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}>
             <Ionicons name="search-outline" size={40} color={theme.muted} />
@@ -566,7 +573,7 @@ export default function SearchScreen() {
               className="border rounded-2xl overflow-hidden mb-4"
               style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
             >
-              <Image
+              <CachedImage
                 source={{
                   uri:
                     ground.cover_image ||
@@ -574,7 +581,10 @@ export default function SearchScreen() {
                     "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800",
                 }}
                 className="h-36 w-full"
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={ground.id}
+                transition={180}
               />
               <View className="p-4">
                 <View className="flex-row justify-between">

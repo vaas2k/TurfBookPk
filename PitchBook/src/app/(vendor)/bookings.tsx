@@ -13,7 +13,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { formatTimeRange12 } from '@/lib/time';
 import { BookingProfile, getVendorBookings } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
-import { goBackOrReplace } from '@/lib/navigation';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 
 interface VendorBookingSection {

@@ -14,12 +14,11 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDuration, formatTimeRange12 } from "@/lib/time";
-import { getPublicGround, Ground, Slot } from "@/lib/api/vendors";
+import { CANCELLATION_POLICY_LABELS, getPublicGround, Ground, Slot } from "@/lib/api/vendors";
 import { Toast } from "@/components/ui/toast";
 import { goBackOrReplace } from "@/lib/navigation";
 import { GroundReview, listGroundReviews } from "@/lib/api/reviews";
 import { openGroundDirections } from "@/components/ground-discovery-map";
-import { CANCELLATION_POLICY_LABELS } from "@/lib/api/vendors";
 import {
   addFavoriteGround,
   listFavoriteGrounds,
@@ -28,6 +27,10 @@ import {
 } from "@/lib/api/engagement";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { playerThemes } from "@/theme/playerTheme";
+import {
+  getCachedGroundDetail,
+  saveCachedGroundDetail,
+} from "@/lib/home-feed-cache";
 
 const fallbackImage =
   "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200";
@@ -82,9 +85,21 @@ export default function GroundDetail() {
   const fetchGround = useCallback(() => {
     if (typeof id !== "string") return;
     setLoading(true);
+    let liveResolved = false;
+    // Render public ground metadata as soon as it is available from cache.
+    // Slots are intentionally excluded from this cache and always come from
+    // the live API response below.
+    void getCachedGroundDetail(id).then((cached) => {
+      if (cached && !liveResolved) {
+        setGround(cached);
+        setLoading(false);
+      }
+    });
     getPublicGround(id)
       .then((result) => {
+        liveResolved = true;
         setGround(result.ground);
+        void saveCachedGroundDetail(result.ground);
         const orderedSlots = [...result.slots].sort((a, b) =>
           `${a.date}T${a.start_time}`.localeCompare(
             `${b.date}T${b.start_time}`,

@@ -6,8 +6,7 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from "react-native";
-import { Linking } from "react-native";
+ Linking } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,6 +26,10 @@ import { appDialog } from "@/components/ui/app-dialog";
 import { goBackOrReplace } from "@/lib/navigation";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { playerThemes } from "@/theme/playerTheme";
+import {
+  cancelBookingReminders,
+  scheduleBookingReminders,
+} from "@/lib/notifications";
 
 export function BookingDetails({
   id,
@@ -63,6 +66,15 @@ export function BookingDetails({
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (vendorView || !booking) return;
+    if (booking.status === "confirmed") {
+      void scheduleBookingReminders(booking).catch(() => undefined);
+    } else if (booking.status === "cancelled" || booking.status === "expired") {
+      void cancelBookingReminders(booking.id).catch(() => undefined);
+    }
+  }, [booking, vendorView]);
+
   const handleCancel = async () => {
     setActionLoading(true);
     let preview;
@@ -92,6 +104,7 @@ export function BookingDetails({
                   : "Cancelled by player",
               );
               setBooking(updated);
+              void cancelBookingReminders(updated.id).catch(() => undefined);
             } catch (error: any) {
               setToast(error?.message || "Unable to cancel this booking.");
             } finally {
