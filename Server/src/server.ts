@@ -36,6 +36,7 @@ import { connectRedis, closeRedis, redis } from './services/redisClient.js';
 import { sql } from './database/client.js';
 
 const app = express();
+let shuttingDown = false;
 if (env.trustProxyHops > 0) app.set('trust proxy', env.trustProxyHops);
 
 
@@ -111,8 +112,10 @@ app.get("/api/health", (_req, res) => {
   });
 });
 app.get('/api/ready', async (_req, res) => {
+  if (shuttingDown) return void res.status(503).json({ status: 'shutting_down' });
   try {
-    await sql`SELECT 1`;
+    await sql`SELECT expiry_retry_count FROM payment_attempts LIMIT 0`;
+    await sql`SELECT id FROM notification_outbox LIMIT 0`;
     if (redis && !redis.isReady) throw new Error('Redis is not ready');
     res.json({ status: 'ready', postgres: 'ok', redis: redis ? 'ok' : 'local_only' });
   } catch { res.status(503).json({ status: 'not_ready' }); }
@@ -167,7 +170,26 @@ app.use((error: unknown, request: express.Request, response: express.Response, _
 connectRedis().then(() => {
   const server = app.listen(env.port, () => logEvent('info', 'server_started', { port: env.port, environment: env.nodeEnv, timezone: 'Asia/Karachi' }));
   const shutdown = () => {
-    server.close(() => { void Promise.all([closeRedis(), sql.end()]).then(() => { process.exitCode = 0; }); });
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logEvent('info', 'server_shutdown_started', { grace_ms: env.shutdownGraceMs });
+    const deadline = setTimeout(() => {
+      logEvent('error', 'server_shutdown_grace_exceeded');
+      server.closeAllConnections();
+    }, env.shutdownGraceMs);
+    deadline.unref();
+    server.close((error) => {
+      clearTimeout(deadline);
+      if (error) logEvent('error', 'server_close_failed', errorMetadata(error));
+      void Promise.all([closeRedis(), sql.end()]).then(() => {
+        logEvent('info', 'server_shutdown_completed');
+        process.exitCode = error ? 1 : 0;
+      }).catch((closeError) => {
+        logEvent('error', 'server_resource_close_failed', errorMetadata(closeError));
+        process.exitCode = 1;
+      });
+    });
+    server.closeIdleConnections();
   };
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);

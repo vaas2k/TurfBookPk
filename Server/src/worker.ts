@@ -4,7 +4,7 @@ import { BookingMaintenanceService } from './services/bookingMaintenance.js';
 import { PaymentController } from './controllers/paymentController.js';
 import { processExpoPushReceipts } from './services/expoPushService.js';
 import { processNotificationOutbox } from './services/notificationOutbox.js';
-import { extendAllScheduleHorizons } from './services/scheduleMaterialization.js';
+import { cleanupExpiredUnbookedSlots, extendAllScheduleHorizons } from './services/scheduleMaterialization.js';
 import { escalateStaleClinkGeneration } from './services/paymentEscalation.js';
 import { errorMetadata, logEvent } from './services/operationalLogger.js';
 
@@ -12,6 +12,13 @@ const maintenance = new BookingMaintenanceService();
 const payments = new PaymentController();
 let stopping = false;
 let active: Promise<void> | null = null;
+const otherJobs = new Set<Promise<unknown>>();
+
+function track<T>(job: Promise<T>): Promise<T> {
+  otherJobs.add(job);
+  void job.then(() => otherJobs.delete(job), () => otherJobs.delete(job));
+  return job;
+}
 
 async function exclusiveJob(name: string, lockId: number, task: () => Promise<unknown>): Promise<void> {
   let connection: Awaited<ReturnType<typeof sql.reserve>> | undefined;
@@ -47,28 +54,32 @@ async function tick(): Promise<void> {
 
 async function main(): Promise<void> {
   await connectRedis();
-  logEvent('info', 'worker_started');
-  await tick();
-  await exclusiveJob('notification_outbox', 2026102404, processNotificationOutbox);
-  await exclusiveJob('schedule_horizon', 2026102405, extendAllScheduleHorizons);
-  const maintenanceTimer = setInterval(() => { void tick().catch((error) => logEvent('error', 'worker_tick_failed', errorMetadata(error))); }, 15_000);
-  const pushTimer = setInterval(() => { void exclusiveJob('notification_outbox', 2026102404, processNotificationOutbox).catch((error) => logEvent('error', 'worker_outbox_tick_failed', errorMetadata(error))); }, 2_000);
-  const receiptTimer = setInterval(() => { void exclusiveJob('push_receipts', 2026102403, processExpoPushReceipts).catch((error) => logEvent('error', 'worker_receipt_tick_failed', errorMetadata(error))); }, 5 * 60_000);
-  const scheduleTimer = setInterval(() => { void exclusiveJob('schedule_horizon', 2026102405, extendAllScheduleHorizons).catch((error) => logEvent('error', 'worker_schedule_tick_failed', errorMetadata(error))); }, 10 * 60_000);
+  const timers: NodeJS.Timeout[] = [];
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
-    clearInterval(maintenanceTimer);
-    clearInterval(pushTimer);
-    clearInterval(receiptTimer);
-    clearInterval(scheduleTimer);
-    if (active) await active;
+    for (const timer of timers) clearInterval(timer);
+    await Promise.allSettled([...(active ? [active] : []), ...otherJobs]);
     await closeRedis();
     await sql.end();
-    process.exit(0);
+    process.exitCode = 0;
   };
-  process.on('SIGTERM', () => { void shutdown(); });
-  process.on('SIGINT', () => { void shutdown(); });
+  process.on('SIGTERM', () => { void shutdown().catch((error) => logEvent('error', 'worker_shutdown_failed', errorMetadata(error))); });
+  process.on('SIGINT', () => { void shutdown().catch((error) => logEvent('error', 'worker_shutdown_failed', errorMetadata(error))); });
+  logEvent('info', 'worker_started');
+  await tick();
+  if (stopping) return;
+  await track(exclusiveJob('notification_outbox', 2026102404, processNotificationOutbox));
+  if (stopping) return;
+  await track(exclusiveJob('schedule_horizon', 2026102405, extendAllScheduleHorizons));
+  if (stopping) return;
+  await track(exclusiveJob('old_unbooked_slot_cleanup', 2026102407, cleanupExpiredUnbookedSlots));
+  if (stopping) return;
+  timers.push(setInterval(() => { void tick().catch((error) => logEvent('error', 'worker_tick_failed', errorMetadata(error))); }, 15_000));
+  timers.push(setInterval(() => { void track(exclusiveJob('notification_outbox', 2026102404, processNotificationOutbox)).catch((error) => logEvent('error', 'worker_outbox_tick_failed', errorMetadata(error))); }, 2_000));
+  timers.push(setInterval(() => { void track(exclusiveJob('push_receipts', 2026102403, processExpoPushReceipts)).catch((error) => logEvent('error', 'worker_receipt_tick_failed', errorMetadata(error))); }, 5 * 60_000));
+  timers.push(setInterval(() => { void track(exclusiveJob('schedule_horizon', 2026102405, extendAllScheduleHorizons)).catch((error) => logEvent('error', 'worker_schedule_tick_failed', errorMetadata(error))); }, 10 * 60_000));
+  timers.push(setInterval(() => { void track(exclusiveJob('old_unbooked_slot_cleanup', 2026102407, cleanupExpiredUnbookedSlots)).catch((error) => logEvent('error', 'worker_cleanup_tick_failed', errorMetadata(error))); }, 60 * 60_000));
 }
 
 main().catch((error) => { logEvent('error', 'worker_start_failed', errorMetadata(error)); process.exitCode = 1; });

@@ -57,7 +57,17 @@ Run one or more API processes and at least one separate `npm run worker` process
 
 The worker owns recurring payment-window updates, ended-booking completion, Clink expiry/ambiguity escalation, Expo push delivery/receipts, and recurring schedule-horizon extension. PostgreSQL advisory locks avoid duplicate scheduled scans across worker replicas. Notification inserts create outbox jobs transactionally; check `GET /api/admin/operations` for `push_outbox` counts and `GET /api/admin/operations/push-outbox/dead` for failed jobs. Admins can retry a dead job with `POST /api/admin/operations/push-outbox/:id/retry` and a required JSON `reason`; this writes an audit entry.
 
-Push delivery is at-least-once, not exactly-once. If the worker crashes after Expo accepts a ticket but before the outbox row is marked sent, the push can repeat. A dead job is never retried automatically after six attempts. Do not run automatic deletion of old slots until a retention policy is approved.
+Push delivery is at-least-once, not exactly-once. If the worker crashes after Expo accepts a ticket but before the outbox row is marked sent, the push can repeat. A dead job is never retried automatically after six attempts.
+
+The worker removes at most 500 unused slots per hourly run once their date is older than three full Pakistan calendar days. It never removes a slot linked to any booking, or one that is booked, blocked, club-reserved, or held. Run `node scripts/audit-slot-retention.mjs` before a new deployment to see the number currently eligible. Migration `0030_unbooked_slot_retention` adds the lookup indexes; it does not itself delete rows. Deletion begins when the new worker starts and is recoverable only from a database backup.
+
+## Connection budget and multi-process check
+
+Set `DB_POOL_MAX` per API and worker process. Keep `(API replicas + worker replicas) × DB_POOL_MAX` below PostgreSQL `max_connections`, with room for migrations, administration, and monitoring. Defaults are 10 in production and 3 in development. `DB_CONNECT_TIMEOUT_SECONDS`, `DB_IDLE_TIMEOUT_SECONDS`, `DB_STATEMENT_TIMEOUT_MS`, `DB_LOCK_TIMEOUT_MS`, and `SHUTDOWN_GRACE_MS` are configurable. Use transaction-compatible PgBouncer before increasing replica counts, and retain `prepare: false` in the API. Enable PostgreSQL slow-query logging on the deployed database and review log access before logging query parameters.
+
+For a local multi-process check, build the backend, make sure Redis and the isolated `_loadtest` database are available, then run `node scripts/check-multi-instance.mjs` from `Server/`. It starts two APIs and two workers, checks shared rate limiting and single notification delivery, and holds unrelated maintenance locks so it cannot clean seeded slots. This does not replace a hosted staging drill with the real load balancer and real-device Expo push.
+
+Clink bill-expiry calls are owned by the worker, not payment-status reads. A failed expiry is retried with persisted exponential backoff for at most six attempts; the booking is not released until the provider confirms expiry. After six failures, the attempt remains in the admin manual-review queue and must be checked with the provider before any manual slot release or refund action. Apply migration `0029_clink_expiry_retry` before deploying this worker version.
 
 ## Privacy and access boundaries
 

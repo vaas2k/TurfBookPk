@@ -67,3 +67,21 @@ export async function extendAllScheduleHorizons(): Promise<{ grounds: number; ge
   }
   return { grounds: processed, generated };
 }
+
+/** Only unused, unblocked, unreserved slots older than three full Pakistan calendar days. */
+export async function cleanupExpiredUnbookedSlots(groundId: string | null = null): Promise<number> {
+  const removed = await db.execute(sql`
+    WITH eligible AS (
+      SELECT slot.id FROM slots AS slot
+      WHERE slot.date < ((now() AT TIME ZONE 'Asia/Karachi')::date - 3)
+        AND slot.is_booked = false AND slot.is_blocked = false AND slot.is_club_reserved = false
+        AND slot.booking_id IS NULL AND slot.booked_by IS NULL
+        AND slot.hold_booking_id IS NULL AND slot.held_by IS NULL AND slot.hold_expires_at IS NULL
+        AND (${groundId}::uuid IS NULL OR slot.ground_id = ${groundId}::uuid)
+        AND NOT EXISTS (SELECT 1 FROM bookings AS booking WHERE booking.slot_id = slot.id)
+      ORDER BY slot.date, slot.id
+      FOR UPDATE OF slot SKIP LOCKED LIMIT 500
+    )
+    DELETE FROM slots WHERE id IN (SELECT id FROM eligible) RETURNING id`);
+  return removed.length;
+}

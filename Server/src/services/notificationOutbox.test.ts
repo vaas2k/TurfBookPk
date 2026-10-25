@@ -55,3 +55,29 @@ test('worker marks a notification sent when the user has no push tokens', async 
     await db.delete(users).where(eq(users.id, user!.id));
   }
 });
+
+test('worker reclaims an expired lease after a crash', async () => {
+  const [user] = await db.insert(users).values({ phone: `+92316${String(Date.now()).slice(-7)}`, fullName: 'Outbox Lease Test' }).returning();
+  try {
+    const [notification] = await db.insert(notifications).values({ userId: user!.id, type: 'booking', title: 'Test', message: 'Test message' }).returning();
+    assert.equal((await claimDuePushJobs(notification!.id))[0]?.attempts, 1);
+    await db.update(notificationOutbox).set({ lockedUntil: new Date(Date.now() - 1000) }).where(eq(notificationOutbox.notificationId, notification!.id));
+    assert.equal((await claimDuePushJobs(notification!.id))[0]?.attempts, 2);
+  } finally { await db.delete(users).where(eq(users.id, user!.id)); }
+});
+
+test('repeated push failures reach dead-letter without affecting other jobs', async () => {
+  const [user] = await db.insert(users).values({ phone: `+92315${String(Date.now()).slice(-7)}`, fullName: 'Outbox Retry Test' }).returning();
+  try {
+    const [notification] = await db.insert(notifications).values({ userId: user!.id, type: 'booking', title: 'Test', message: 'Test message' }).returning();
+    const fail = async () => { throw new Error('simulated transport failure'); };
+    for (let attempt = 1; attempt <= MAX_PUSH_ATTEMPTS; attempt++) {
+      const result = await processNotificationOutbox(notification!.id, fail);
+      assert.equal(result.retried + result.dead, 1);
+      const [job] = await db.select().from(notificationOutbox).where(eq(notificationOutbox.notificationId, notification!.id));
+      assert.equal(job?.status, attempt === MAX_PUSH_ATTEMPTS ? 'dead' : 'pending');
+      if (attempt < MAX_PUSH_ATTEMPTS) await db.update(notificationOutbox).set({ availableAt: new Date(Date.now() - 1000) }).where(eq(notificationOutbox.notificationId, notification!.id));
+    }
+    assert.deepEqual(await processNotificationOutbox(notification!.id, fail), { sent: 0, retried: 0, dead: 0 });
+  } finally { await db.delete(users).where(eq(users.id, user!.id)); }
+});

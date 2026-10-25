@@ -5,12 +5,15 @@ import { logEvent } from '../services/operationalLogger.js';
 import * as schema from './schema.js';
 
 export const sql = postgres(env.databaseUrl, {
-  max: env.nodeEnv === 'production' ? 10 : 3,
+  max: env.dbPoolMax,
   prepare: false,
+  connect_timeout: env.dbConnectTimeoutSeconds,
+  idle_timeout: env.dbIdleTimeoutSeconds,
+  connection: { statement_timeout: env.dbStatementTimeoutMs, lock_timeout: env.dbLockTimeoutMs },
 });
 
 export const db = drizzle(sql, { schema });
 
-logEvent('info', 'database_client_initialized');
+logEvent('info', 'database_client_initialized', { pool_max: env.dbPoolMax, statement_timeout_ms: env.dbStatementTimeoutMs });
 
 

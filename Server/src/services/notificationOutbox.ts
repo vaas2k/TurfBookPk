@@ -32,7 +32,7 @@ export async function claimDuePushJobs(onlyNotificationId: string | null = null)
   return [...claimed];
 }
 
-export async function processNotificationOutbox(onlyNotificationId: string | null = null): Promise<{ sent: number; retried: number; dead: number }> {
+export async function processNotificationOutbox(onlyNotificationId: string | null = null, deliver: typeof deliverExpoPush = deliverExpoPush): Promise<{ sent: number; retried: number; dead: number }> {
   const claimed = await claimDuePushJobs(onlyNotificationId);
   const result = { sent: 0, retried: 0, dead: 0 };
   for (const job of claimed) {
@@ -41,7 +41,7 @@ export async function processNotificationOutbox(onlyNotificationId: string | nul
       if (notification) {
         const data = notification.data && typeof notification.data === 'object' && !Array.isArray(notification.data)
           ? Object.fromEntries(Object.entries(notification.data).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) : undefined;
-        await deliverExpoPush({ userIds: [notification.userId], title: notification.title, body: pushBody(notification.type, notification.message), ...(data ? { data } : {}) });
+        await deliver({ userIds: [notification.userId], title: notification.title, body: pushBody(notification.type, notification.message), ...(data ? { data } : {}) });
       }
       await db.update(notificationOutbox).set({ status: 'sent', lockedUntil: null, sentAt: new Date(), lastError: null, updatedAt: new Date() }).where(eq(notificationOutbox.id, job.id));
       result.sent += 1;

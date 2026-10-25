@@ -35,7 +35,16 @@ function requestJson<T>(urlValue: string, method: 'GET' | 'POST', body: string, 
     const url = new URL(urlValue);
     const request = httpsRequest(url, { method, headers: { 'Content-Type': contentType, 'Content-Length': Buffer.byteLength(body), ...(authorization ? { Authorization: authorization } : {}) }, timeout: 15_000 }, (response) => {
       const chunks: Buffer[] = [];
-      response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      let responseBytes = 0;
+      response.on('data', (chunk) => {
+        responseBytes += Buffer.byteLength(chunk);
+        if (responseBytes > 256 * 1024) {
+          response.destroy(new Error('Clink response exceeded the size limit'));
+          return;
+        }
+        chunks.push(Buffer.from(chunk));
+      });
+      response.on('error', reject);
       response.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8');
         const status = response.statusCode || 0;

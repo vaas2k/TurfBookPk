@@ -38,3 +38,24 @@
 - Applied migration `0028` to both local and isolated load-test databases. The expanded 36-test suite passes, including transactional rollback, two-worker single-claim, worker delivery without tokens, advisory-lock ownership, and parallel booking-completion earnings checks; backend build/typecheck pass. The worker schedule smoke checked 1,000 seeded grounds and generated no duplicate slots. A guarded 10-client, 10-second load-test read mix completed without errors at roughly 237 aggregate requests/second; this is not a production capacity estimate.
 - Automatic old-slot deletion was not added. The attempted cleanup policy was blocked because it would remove historical records without an approved retention rule. Existing data remains untouched; a retention decision is required before implementing cleanup.
 - Remaining before multi-instance production: full payment/booking multi-instance integration tests, live Expo delivery/retry testing, production proxy/Redis failure drills, and a decision on whether maintenance scans need durable per-item job records beyond the protected due scans.
+
+## 2026-10-25 — Day 2 local reliability verification
+
+- Added a concurrent Clink acknowledgment integration test that submits the same payment twice and verifies one confirmed booking, one allocated slot, one earnings ledger entry, one vendor earnings increment, one payment event, and one player notification/outbox entry.
+- Added Redis rate-limiter fail-closed/reconnect tests, abandoned outbox-lease recovery, and repeated push failure/dead-letter tests. The full backend suite now passes 41 tests.
+- Fixed Clink expiry retry behavior: payment-status reads no longer call the provider. Worker expiry attempts use a persisted retry count and bounded exponential backoff; after six failures the payment remains held for manual review and admins receive one notification. Migration `0029_clink_expiry_retry.sql` was applied to local and isolated load-test databases.
+- Still requires manual real-device Expo push retry/tap verification and a deployed staging drill with multiple API and worker processes. Historical-slot cleanup remains deferred until a retention policy is approved.
+
+## 2026-10-25 — Three-day unbooked-slot retention
+
+- User selected three days for past unbooked slots. Added a read-only audit script, migration `0030` with cleanup and booking-slot lookup indexes, and an hourly worker-only cleanup capped at 500 rows per run under an advisory lock.
+- The delete predicate excludes booked, blocked, club-reserved, held, and any booking-linked slot (including cancelled bookings). Exactly three-day-old dates remain; only dates older than three full Pakistan calendar days qualify.
+- Audited the local database before and after a fixture-scoped test: 444 slots currently qualify, and none of those existing rows were deleted during this change. The new test removed only its own fixture slot and confirmed protected rows remained. Backend suite passes 42 tests and typecheck; migration `0030` is applied to local and isolated load-test databases.
+- The next worker start will begin removing those 444 eligible local slots. This is expected under the selected policy; recovery would require a database backup because deletion is permanent.
+
+## 2026-10-25 — Isolated multi-process drill and Day 3 lifecycle start
+
+- Added `Server/scripts/check-multi-instance.mjs`. Two API processes shared one Redis limit (300 accepted, one rejected), and two worker processes handled one notification with one outbox attempt. The drill held unrelated maintenance locks; audits confirmed the 72,000 eligible synthetic load-test slots and 444 eligible development slots were unchanged.
+- Chose authoritative, indexed, idempotent due scans instead of a duplicate per-item job table. External push delivery remains in the transactional outbox; Clink expiry retry/manual-review state is persisted.
+- Added configurable PostgreSQL pool, connection/idle/statement/lock timeouts, stronger readiness schema checks, API shutdown draining, and worker active-job draining. Added bounded/time-limited Clink, Cloudinary deletion, and Expo HTTP responses.
+- Backend build/typecheck and all 43 tests pass. Hosted staging signal/failure drills, real-device Expo retry/tap, cache design, PgBouncer, migration locking, and slow-query logging remain.

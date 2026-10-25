@@ -41,7 +41,8 @@ export class CloudinaryStorageProvider implements ObjectStorageProvider {
     const privateDocument = /\/(vendor_(identity|business|authorization)|ground_authority)_document\//.test(input.key);
     const timestamp = String(Math.floor(Date.now() / 1000)); const params = privateDocument ? { invalidate: 'true', public_id: input.key, timestamp, type: 'authenticated' } : { invalidate: 'true', public_id: input.key, timestamp };
     const body = new URLSearchParams({ ...params, api_key: env.cloudinaryApiKey, signature: signature(params) });
-    const result = await fetch(`https://api.cloudinary.com/v1_1/${env.cloudinaryCloudName}/${privateDocument ? 'auto' : 'image'}/destroy`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+    const result = await fetch(`https://api.cloudinary.com/v1_1/${env.cloudinaryCloudName}/${privateDocument ? 'auto' : 'image'}/destroy`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(10_000) });
+    await result.body?.cancel();
     if (!result.ok) throw new AppError('media_delete_failed', 'Unable to delete the image', 502);
   }
 }

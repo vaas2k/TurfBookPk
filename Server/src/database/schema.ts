@@ -279,6 +279,8 @@ export const paymentAttempts = pgTable('payment_attempts', {
   providerStatus: text('provider_status').notNull().default('pending'),
   providerDueDate: date('provider_due_date'),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
+  expiryRetryCount: integer('expiry_retry_count').notNull().default(0),
+  expiryNextAttemptAt: timestamp('expiry_next_attempt_at', { withTimezone: true }),
   gatewayPaidAt: timestamp('gateway_paid_at', { withTimezone: true }),
   acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
   serviceCharge: integer('service_charge'),

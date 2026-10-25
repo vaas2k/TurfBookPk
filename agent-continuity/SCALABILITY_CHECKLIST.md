@@ -49,23 +49,24 @@ Day 1 implementation and local measurements are recorded in `Server/SCALABILITY_
   - [x] Keep the existing database-backed phone-number OTP cooldown/attempt protections as the authoritative second layer.
   - [x] Add global and sensitive-route limits for auth, uploads, payment generation/status, acknowledgments, booking creation, and admin operations; tune thresholds with staging traffic.
 - [x] Create a separate worker entry point/process and remove maintenance timers from API startup.
-- [ ] Move these jobs to the worker:
+- [x] Move these jobs to the worker:
   - [x] recurring reservation payment-window opening and expiry;
   - [x] ended-booking completion;
   - [x] Clink reference expiry and interrupted-generation manual-review escalation run in the worker; unknown provider results are never retried automatically.
   - [x] Expo push delivery and receipt processing run in the worker through the notification outbox.
-  - [ ] Recurring-slot horizon extension runs in the worker; old-slot cleanup is deferred pending an explicit retention policy.
-- [ ] Notification pushes now have a durable PostgreSQL outbox with unique notification identity, bounded retry, dead-letter/manual-review state, and observability; decide whether the remaining maintenance scans require per-item durable jobs before multi-instance production.
+  - [x] Recurring-slot horizon extension and bounded cleanup of unbooked slots older than three full Pakistan calendar days run in the worker. Booking-linked, blocked, club-reserved, and held slots are excluded.
+- [x] Push delivery uses a durable PostgreSQL outbox with unique notification identity, bounded retry, dead-letter/manual-review state, and observability. Indexed maintenance scans derive due work from authoritative rows and use idempotent state changes; Clink expiry retry state is persisted, so a duplicate per-item job table is not required for those scans.
 - [x] Protect current scheduled maintenance with PostgreSQL session advisory locks so multiple workers cannot own the same scan.
 - [x] Replace booking and payment full-table 15-second scans with due-only batches of at most 200 and 100 records respectively; receipt scans were already bounded.
 - [x] Move push sending out of request paths and into a PostgreSQL outbox; direct legacy calls are compatibility no-ops and the worker sends from committed notification rows.
 - [x] Add a transactional notification outbox for booking/payment/admin notifications. Expand to any other external side effects before they are introduced.
 - [x] Add bounded exponential push retry, dead-letter state, worker logs, admin queue counts, and audited manual retry. Expo transport remains at-least-once: a crash after Expo accepts a ticket but before marking it sent can cause a duplicate push.
-- [ ] Parallel worker claim and advisory-lock exclusivity tests pass; add full multi-instance booking/payment integration tests for one state transition, ledger effect, and notification event.
+- [x] Parallel worker claim, advisory-lock exclusivity, booking-completion earnings, and duplicate Clink acknowledgment integration tests prove one local database state transition, ledger entry, payment event, and notification/outbox record. Repeat across deployed API/worker processes on staging.
+- [ ] Run a real-device Expo retry/tap test and a hosted staging failure drill. An isolated local drill with two API and two worker processes passed: one shared Redis limit and one outbox delivery; fail-closed/reconnect, abandoned-lease recovery, and dead-letter tests pass.
 
 ## Day 3 — P0 caching, connection management, and lifecycle
 
-- [ ] Split recurring schedule materialization from public read endpoints.
+- [x] Split recurring schedule materialization from public read endpoints.
   - [x] Materialize on schedule creation/change and through worker horizon-extension jobs.
   - [x] Make public discovery/detail endpoints read-only.
   - [x] Make materialization bulk/idempotent and enforce database uniqueness for generated slots.
@@ -77,14 +78,14 @@ Day 1 implementation and local measurements are recorded in `Server/SCALABILITY_
   - [ ] Allow cache failure to degrade to PostgreSQL instead of failing requests.
 - [ ] Add HTTP caching headers/ETags for safe public metadata and immutable/versioned Cloudinary assets.
 - [ ] Add response compression at the reverse proxy or API layer after measuring CPU trade-offs.
-- [ ] Make database pool size configurable; calculate `replicas × pool size + worker pool` below the PostgreSQL connection limit.
+- [x] Make database pool size and timeouts configurable; the runbook documents the API/worker connection budget. Confirm the actual VPS/PostgreSQL limit before rollout.
 - [ ] Put PgBouncer in transaction-pooling mode for production and retain `prepare: false` compatibility.
-- [ ] Add database statement timeout, connection timeout, idle timeout, and slow-query logging.
-- [ ] Add explicit timeouts and bounded response-size handling to every external HTTP integration, including Cloudinary deletion and Expo push APIs.
-- [ ] Add graceful shutdown for `SIGTERM`/`SIGINT`: stop accepting traffic, drain requests/jobs, and close PostgreSQL/Redis clients.
-- [ ] Separate liveness from readiness.
-  - [ ] Liveness confirms the Node process is responsive.
-  - [ ] Readiness checks required PostgreSQL connectivity and migration compatibility; Redis should be required only for routes that cannot safely degrade.
+- [ ] Database statement, lock, connection, and idle timeouts are configured; enable and verify slow-query logging on deployed PostgreSQL.
+- [x] Add explicit timeouts and bounded response-size handling to Clink, Cloudinary deletion, and Expo push/receipt HTTP integrations.
+- [x] Add graceful shutdown for `SIGTERM`/`SIGINT`: API stops accepting requests and drains connections; worker waits for active jobs; both close PostgreSQL/Redis. Verify signal delivery and grace timing on hosted staging.
+- [x] Separate liveness from readiness.
+  - [x] Liveness confirms the Node process is responsive.
+  - [x] Readiness checks PostgreSQL connectivity, required schema objects, and configured Redis; it fails during shutdown.
 - [ ] Add migration locking/a single migration job so replicas never race migrations during rollout.
 
 ## Day 4 — P1 reliability, security, and verified capacity

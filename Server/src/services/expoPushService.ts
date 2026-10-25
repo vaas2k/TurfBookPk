@@ -6,11 +6,32 @@ import { errorMetadata, logEvent } from './operationalLogger.js';
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const EXPO_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
 const MAX_BATCH_SIZE = 100;
+const MAX_RESPONSE_BYTES = 512 * 1024;
 type ExpoTicket = { status?: 'ok' | 'error'; id?: string; details?: { error?: string } };
 type ExpoReceipt = { status?: 'ok' | 'error'; details?: { error?: string } };
 
 function chunks<T>(items: T[], size: number): T[][] {
   return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
+}
+
+export async function parseExpoResponse<T>(response: Response): Promise<T> {
+  const length = Number(response.headers.get('content-length') || 0);
+  if (length > MAX_RESPONSE_BYTES) throw new Error('Expo response exceeded the size limit');
+  if (!response.body) throw new Error('Expo returned an empty response');
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new Error('Expo response exceeded the size limit');
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as T;
 }
 
 async function removeInvalidTokens(tokens: string[]): Promise<void> {
@@ -34,7 +55,7 @@ export async function deliverExpoPush(input: { userIds: string[]; title: string;
         signal: AbortSignal.timeout(10_000),
       });
       if (!response.ok) throw new Error(`Expo push request failed with ${response.status}`);
-      const payload = await response.json() as { data?: ExpoTicket[] };
+      const payload = await parseExpoResponse<{ data?: ExpoTicket[] }>(response);
       const tickets = payload.data ?? [];
       if (tickets.length !== batch.length) throw new Error('Expo push ticket count mismatch');
       await removeInvalidTokens(batch.filter((_, index) => tickets[index]?.details?.error === 'DeviceNotRegistered').map((row) => row.token));
@@ -53,9 +74,9 @@ export async function processExpoPushReceipts(now = new Date()): Promise<number>
     .limit(MAX_BATCH_SIZE);
   if (!pending.length) return 0;
   try {
-    const response = await fetch(EXPO_RECEIPTS_URL, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: pending.map((item) => item.ticketId) }) });
+    const response = await fetch(EXPO_RECEIPTS_URL, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: pending.map((item) => item.ticketId) }), signal: AbortSignal.timeout(10_000) });
     if (!response.ok) throw new Error(`Expo receipt request failed with ${response.status}`);
-    const payload = await response.json() as { data?: Record<string, ExpoReceipt> };
+    const payload = await parseExpoResponse<{ data?: Record<string, ExpoReceipt> }>(response);
     const receipts = payload.data ?? {};
     const resolved = pending.filter((item) => receipts[item.ticketId]);
     await removeInvalidTokens(resolved.filter((item) => receipts[item.ticketId]?.details?.error === 'DeviceNotRegistered').map((item) => item.token));

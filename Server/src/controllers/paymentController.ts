@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Response } from 'express';
-import { and, eq, inArray, isNull, lte, or, sql as expression } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, lte, or, sql as expression } from 'drizzle-orm';
 import { db } from '../database/client.js';
 import { bookingOrders, bookings, grounds, ledgerEntries, notifications, paymentAttempts, paymentBillingProfiles, paymentEvents, slots, users, vendors } from '../database/schema.js';
 import { env } from '../configs/env.js';
@@ -10,6 +10,7 @@ import { clinkPhone, referencePaymentProvider } from '../services/paymentProvide
 import { sendExpoPush } from '../services/expoPushService.js';
 import { decryptPaymentValue, encryptPaymentValue, identifierLastFour, paymentIdentifierFingerprint } from '../services/sensitiveData.js';
 import { errorMetadata, logEvent, redactOperationalData } from '../services/operationalLogger.js';
+import { expiryRetryDelayMs, MAX_EXPIRY_ATTEMPTS } from '../services/paymentExpiryRetry.js';
 
 function requestId(response: Response): string | null { return typeof response.locals.requestId === 'string' ? response.locals.requestId : null; }
 function paymentResponse(response: Response, body: Record<string, unknown>, message: string, workflowStage: string, nextAction: string, status = 200): void {
@@ -87,7 +88,7 @@ export class PaymentController {
     const expiresAt = new Date(Date.now() + env.paymentHoldMinutes * 60_000); const dueDate = pakistanDate(expiresAt);
     if (['failed', 'expired'].includes(targetAttempt.providerStatus)) await this.reacquireTarget(targetAttempt, expiresAt);
     const applicantReference = `TB-${targetAttempt.id.replace(/-/g, '').slice(0, 24)}`;
-    await db.update(paymentAttempts).set({ provider: 'clink', providerStatus: 'initializing', applicantReference, expiresAt, providerDueDate: dueDate, providerError: null, updatedAt: new Date() }).where(eq(paymentAttempts.id, targetAttempt.id));
+    await db.update(paymentAttempts).set({ provider: 'clink', providerStatus: 'initializing', applicantReference, expiresAt, providerDueDate: dueDate, providerError: null, expiryRetryCount: 0, expiryNextAttemptAt: null, updatedAt: new Date() }).where(eq(paymentAttempts.id, targetAttempt.id));
     const targetBookings = targetAttempt.bookingId
       ? [targetAttempt.bookingId]
       : (await db.select({ id: bookings.id }).from(bookings).where(and(eq(bookings.orderId, targetAttempt.orderId!), eq(bookings.status, 'pending_payment')))).map((row) => row.id);
@@ -113,17 +114,15 @@ export class PaymentController {
 
   paymentStatus = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const id = String(request.params.id || '');
-    let attempt = (await db.select().from(paymentAttempts).where(and(eq(paymentAttempts.id, id), eq(paymentAttempts.playerId, request.auth!.userId))).limit(1))[0];
+    const attempt = (await db.select().from(paymentAttempts).where(and(eq(paymentAttempts.id, id), eq(paymentAttempts.playerId, request.auth!.userId))).limit(1))[0];
     if (!attempt) throw new AppError('not_found', 'Payment was not found', 404);
-    attempt = await this.expireAttempt(attempt);
     logEvent('info', 'payment_status_checked', { request_id: requestId(response), payment_attempt_id: attempt.id, status: attempt.status, provider_status: attempt.providerStatus, review_status: attempt.reviewStatus });
     paymentResponse(response, { payment: paymentView(attempt) }, `Payment status is ${attempt.providerStatus.replaceAll('_', ' ')}.`, 'status_checked', attempt.providerStatus === 'pending' ? 'Complete payment and wait for provider acknowledgment.' : attempt.providerStatus === 'paid' ? 'Open the confirmed booking.' : attempt.reviewStatus === 'manual_review' ? 'Contact support with the request ID and payment attempt ID.' : 'Start a new checkout if the slot remains available.');
   };
 
   bookingPaymentStatus = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const bookingId = String(request.params.bookingId || '');
-    let attempt = (await db.select().from(paymentAttempts).where(and(eq(paymentAttempts.bookingId, bookingId), eq(paymentAttempts.playerId, request.auth!.userId))).limit(1))[0];
-    if (attempt) attempt = await this.expireAttempt(attempt);
+    const attempt = (await db.select().from(paymentAttempts).where(and(eq(paymentAttempts.bookingId, bookingId), eq(paymentAttempts.playerId, request.auth!.userId))).limit(1))[0];
     paymentResponse(response, { payment: attempt ? paymentView(attempt) : null }, attempt ? `Booking payment status is ${attempt.providerStatus.replaceAll('_', ' ')}.` : 'No payment attempt exists for this booking.', 'booking_payment_checked', attempt ? 'Open the payment attempt for details.' : 'Generate a payment reference when the payment window is open.');
   };
 
@@ -187,7 +186,7 @@ export class PaymentController {
   }
 
   async expirePendingAttempts(now = new Date()): Promise<number> {
-    const candidates = await db.select().from(paymentAttempts).where(and(eq(paymentAttempts.provider, 'clink'), eq(paymentAttempts.providerStatus, 'pending'), lte(paymentAttempts.expiresAt, now))).orderBy(paymentAttempts.expiresAt).limit(100);
+    const candidates = await db.select().from(paymentAttempts).where(and(eq(paymentAttempts.provider, 'clink'), eq(paymentAttempts.providerStatus, 'pending'), lte(paymentAttempts.expiresAt, now), lt(paymentAttempts.expiryRetryCount, MAX_EXPIRY_ATTEMPTS), or(isNull(paymentAttempts.expiryNextAttemptAt), lte(paymentAttempts.expiryNextAttemptAt, now)))).orderBy(paymentAttempts.expiresAt).limit(100);
     let expired = 0;
     for (const attempt of candidates) {
       try {
@@ -201,15 +200,22 @@ export class PaymentController {
   }
 
   private async expireAttempt(attempt: typeof paymentAttempts.$inferSelect, force = false): Promise<typeof paymentAttempts.$inferSelect> {
-    if (attempt.providerStatus !== 'pending' || !attempt.providerReference || (!force && (!attempt.expiresAt || attempt.expiresAt > new Date()))) return attempt;
+    if (attempt.providerStatus !== 'pending' || !attempt.providerReference || (!force && (!attempt.expiresAt || attempt.expiresAt > new Date() || attempt.expiryRetryCount >= MAX_EXPIRY_ATTEMPTS || (attempt.expiryNextAttemptAt && attempt.expiryNextAttemptAt > new Date())))) return attempt;
     try {
       await referencePaymentProvider().expireReference({ clinkId: attempt.providerReference, diagnostics: { paymentAttemptId: attempt.id } });
       await this.releaseTarget(attempt);
       const now = new Date();
-      const [expired] = await db.update(paymentAttempts).set({ status: 'failed', providerStatus: 'expired', providerError: force ? 'Payment reported as failed' : 'Payment window expired', failedAt: now, updatedAt: now }).where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.providerStatus, 'pending'))).returning();
+      const [expired] = await db.update(paymentAttempts).set({ status: 'failed', providerStatus: 'expired', providerError: force ? 'Payment reported as failed' : 'Payment window expired', expiryNextAttemptAt: null, failedAt: now, updatedAt: now }).where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.providerStatus, 'pending'))).returning();
       return expired || (await db.select().from(paymentAttempts).where(eq(paymentAttempts.id, attempt.id)).limit(1))[0]!;
     } catch (error) {
-      await db.update(paymentAttempts).set({ reviewStatus: 'manual_review', providerError: getErrorMessage(error).slice(0, 240), updatedAt: new Date() }).where(eq(paymentAttempts.id, attempt.id));
+      await db.transaction(async (tx) => {
+        const nextCount = attempt.expiryRetryCount + 1;
+        const [updated] = await tx.update(paymentAttempts).set({ expiryRetryCount: expression`${paymentAttempts.expiryRetryCount} + 1`, expiryNextAttemptAt: new Date(Date.now() + expiryRetryDelayMs(nextCount)), reviewStatus: 'manual_review', providerError: getErrorMessage(error).slice(0, 240), updatedAt: new Date() }).where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.providerStatus, 'pending'))).returning({ retryCount: paymentAttempts.expiryRetryCount });
+        if (updated?.retryCount === MAX_EXPIRY_ATTEMPTS) {
+          const admins = await tx.select({ id: users.id }).from(users).where(eq(users.role, 'admin'));
+          if (admins.length) await tx.insert(notifications).values(admins.map((admin) => ({ userId: admin.id, type: 'payment_review', title: 'Bill expiry needs manual review', message: 'A Clink bill could not be expired after repeated attempts. Check the payment before releasing its slot.', data: { paymentId: attempt.id } })));
+        }
+      });
       throw error;
     }
   }
