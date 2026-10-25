@@ -1,12 +1,13 @@
-import { and, count, desc, eq, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, lt, or, sql } from 'drizzle-orm';
 import { Response } from 'express';
 import { createHash } from 'node:crypto';
 import { db } from '../database/client.js';
-import { adminAuditLogs, bookings, groundVerificationDocuments, groundVerifications, grounds, ledgerEntries, notifications, paymentAttempts, reviewReports, reviews, users, vendorVerificationDocuments, vendorVerifications, vendors } from '../database/schema.js';
+import { adminAuditLogs, bookingOrders, bookings, groundVerificationDocuments, groundVerifications, grounds, ledgerEntries, notificationOutbox, notifications, paymentAttempts, reviewReports, reviews, users, vendorVerificationDocuments, vendorVerifications, vendors } from '../database/schema.js';
 import { env } from '../configs/env.js';
 import { AppError } from '../helpers/errors.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { sendExpoPush } from '../services/expoPushService.js';
+import { nextPaginationCursor, parsePaginationCursor } from '../services/paginationCursor.js';
 
 type VerificationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -49,29 +50,23 @@ function privateDocumentUrl(key: string, contentType: string): string {
 
 export class AdminController {
   dashboard = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const [pendingVendors, pendingGrounds, openReports, suspendedUsers, totalUsers, activeGrounds, bookingRows] = await Promise.all([
+    const [pendingVendors, pendingGrounds, openReports, suspendedUsers, totalUsers, activeGrounds, paidTotals, revenueRows, cityRows, topGroundRows] = await Promise.all([
       db.select({ total: count() }).from(vendors).leftJoin(vendorVerifications, eq(vendorVerifications.vendorId, vendors.id)).where(or(eq(vendors.verificationStatus, 'under_review'), and(eq(vendors.verificationStatus, 'draft'), or(eq(vendorVerifications.identityStatus, 'changes_requested'), eq(vendorVerifications.businessStatus, 'changes_requested'), eq(vendorVerifications.payoutStatus, 'changes_requested'))))),
       db.select({ total: count() }).from(grounds).leftJoin(groundVerifications, eq(groundVerifications.groundId, grounds.id)).where(or(eq(grounds.verificationStatus, 'under_review'), and(eq(grounds.verificationStatus, 'draft'), eq(groundVerifications.authorityStatus, 'changes_requested')))),
       db.select({ total: count() }).from(reviewReports).where(eq(reviewReports.status, 'open')),
       db.select({ total: count() }).from(users).where(eq(users.isSuspended, true)),
       db.select({ total: count() }).from(users),
       db.select({ total: count() }).from(grounds).where(and(eq(grounds.isActive, true), eq(grounds.verificationStatus, 'approved'))),
-      db.select({ booking: bookings, ground: grounds }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).orderBy(desc(bookings.createdAt)).limit(5_000),
+      db.select({ amount: sql<number>`coalesce(sum(${bookings.totalAmount}), 0)::int`, bookings: count() }).from(bookings).where(eq(bookings.paymentStatus, 'paid')),
+      db.select({ date: sql<string>`(${bookings.createdAt} AT TIME ZONE 'Asia/Karachi')::date::text`, amount: sql<number>`coalesce(sum(${bookings.totalAmount}), 0)::int` }).from(bookings).where(and(eq(bookings.paymentStatus, 'paid'), sql`${bookings.createdAt} >= now() - interval '31 days'`)).groupBy(sql`(${bookings.createdAt} AT TIME ZONE 'Asia/Karachi')::date`),
+      db.select({ city: grounds.city, bookings: count() }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).where(eq(bookings.paymentStatus, 'paid')).groupBy(grounds.city).orderBy(desc(count())).limit(4),
+      db.select({ id: grounds.id, title: grounds.title, image: grounds.coverImage, images: grounds.images, amount: sql<number>`coalesce(sum(${bookings.totalAmount}), 0)::int`, bookings: count() }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).where(eq(bookings.paymentStatus, 'paid')).groupBy(grounds.id).orderBy(desc(sql`sum(${bookings.totalAmount})`)).limit(5),
     ]);
-    const now = new Date(); const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const now = new Date(Date.now() + 5 * 60 * 60 * 1000); const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     const days = Array.from({ length: 30 }, (_, index) => { const day = new Date(today); day.setUTCDate(day.getUTCDate() - (29 - index)); return day; });
     const key = (date: Date) => date.toISOString().slice(0, 10);
-    const daily = new Map(days.map((day) => [key(day), 0])); const cities = new Map<string, number>(); const groundTotals = new Map<string, { title: string; amount: number; bookings: number; image: string | null }>();
-    let paidGmv = 0;
-    for (const { booking, ground } of bookingRows) {
-      if (booking.paymentStatus !== 'paid') continue;
-      paidGmv += booking.totalAmount;
-      const bookingDay = key(booking.createdAt); if (daily.has(bookingDay)) daily.set(bookingDay, (daily.get(bookingDay) || 0) + booking.totalAmount);
-      cities.set(ground.city, (cities.get(ground.city) || 0) + 1);
-      const total = groundTotals.get(ground.id) || { title: ground.title, amount: 0, bookings: 0, image: ground.coverImage || ground.images[0] || null };
-      total.amount += booking.totalAmount; total.bookings += 1; groundTotals.set(ground.id, total);
-    }
-    response.json({ counts: { pending_vendors: pendingVendors[0]?.total ?? 0, pending_grounds: pendingGrounds[0]?.total ?? 0, open_review_reports: openReports[0]?.total ?? 0, suspended_users: suspendedUsers[0]?.total ?? 0, total_users: totalUsers[0]?.total ?? 0, active_verified_grounds: activeGrounds[0]?.total ?? 0 }, analytics: { paid_gmv: paidGmv, total_bookings: bookingRows.filter(({ booking }) => booking.paymentStatus === 'paid').length, revenue_trend: days.map((day) => ({ date: key(day), amount: daily.get(key(day)) || 0 })), bookings_by_city: [...cities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([city, count]) => ({ city, count })), top_grounds: [...groundTotals.entries()].sort(([, a], [, b]) => b.amount - a.amount).slice(0, 5).map(([id, value]) => ({ id, ...value })) } });
+    const daily = new Map(revenueRows.map((row) => [row.date, row.amount]));
+    response.json({ counts: { pending_vendors: pendingVendors[0]?.total ?? 0, pending_grounds: pendingGrounds[0]?.total ?? 0, open_review_reports: openReports[0]?.total ?? 0, suspended_users: suspendedUsers[0]?.total ?? 0, total_users: totalUsers[0]?.total ?? 0, active_verified_grounds: activeGrounds[0]?.total ?? 0 }, analytics: { paid_gmv: paidTotals[0]?.amount ?? 0, total_bookings: paidTotals[0]?.bookings ?? 0, revenue_trend: days.map((day) => ({ date: key(day), amount: daily.get(key(day)) || 0 })), bookings_by_city: cityRows.map(({ city, bookings }) => ({ city, count: bookings })), top_grounds: topGroundRows.map(({ id, title, image, images, amount, bookings }) => ({ id, title, image: image || images[0] || null, amount, bookings })) } });
   };
 
   listVendors = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -229,40 +224,62 @@ export class AdminController {
     const targetType = typeof request.query.target_type === 'string' ? request.query.target_type.trim().slice(0, 80) : '';
     const actorId = typeof request.query.actor_id === 'string' ? request.query.actor_id.trim() : '';
     const page = Number(request.query.page || 1); const limit = Number(request.query.limit || 50);
+    const cursor = parsePaginationCursor(request.query.cursor);
     if (!Number.isSafeInteger(page) || page < 1 || page > 10_000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new AppError('invalid_pagination', 'Use a valid page and limit', 422);
     const conditions = [action ? eq(adminAuditLogs.action, action) : undefined, targetType ? eq(adminAuditLogs.targetType, targetType) : undefined, actorId ? eq(adminAuditLogs.actorId, actorId) : undefined].filter(Boolean) as ReturnType<typeof eq>[];
-    const rows = await db.select({ log: adminAuditLogs, actor: users }).from(adminAuditLogs).innerJoin(users, eq(adminAuditLogs.actorId, users.id)).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(adminAuditLogs.createdAt), desc(adminAuditLogs.id)).limit(limit).offset((page - 1) * limit);
-    response.json({ logs: rows.map(({ log, actor }) => ({ id: log.id, action: log.action, target_type: log.targetType, target_id: log.targetId, reason: log.reason, metadata: log.metadata, created_at: log.createdAt.toISOString(), actor: { id: actor.id, full_name: actor.fullName, phone: actor.phone } })), pagination: { page, limit, has_more: rows.length === limit } });
+    const rows = await db.select({ log: adminAuditLogs, actor: users }).from(adminAuditLogs).innerJoin(users, eq(adminAuditLogs.actorId, users.id)).where(and(...conditions, cursor ? or(lt(adminAuditLogs.createdAt, cursor.createdAt), and(eq(adminAuditLogs.createdAt, cursor.createdAt), lt(adminAuditLogs.id, cursor.id))) : undefined)).orderBy(desc(adminAuditLogs.createdAt), desc(adminAuditLogs.id)).limit(limit + 1).offset(cursor ? 0 : (page - 1) * limit);
+    const pageRows = rows.slice(0, limit);
+    response.json({ logs: pageRows.map(({ log, actor }) => ({ id: log.id, action: log.action, target_type: log.targetType, target_id: log.targetId, reason: log.reason, metadata: log.metadata, created_at: log.createdAt.toISOString(), actor: { id: actor.id, full_name: actor.fullName, phone: actor.phone } })), pagination: { page, limit, has_more: rows.length > limit, next_cursor: rows.length > limit ? nextPaginationCursor(pageRows.at(-1)?.log) : null } });
   };
 
   listTransactions = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const status = typeof request.query.status === 'string' ? request.query.status : 'all';
-    if (!['all', 'pending', 'paid', 'failed', 'cancelled', 'refund_pending', 'refunded'].includes(status)) throw new AppError('invalid_status', 'Invalid payment status', 422);
+    if (!['all', 'pending', 'paid', 'failed', 'cancelled', 'refund_pending', 'refunded', 'expired', 'unknown', 'manual_review'].includes(status)) throw new AppError('invalid_status', 'Invalid payment status', 422);
     const query = typeof request.query.q === 'string' ? request.query.q.trim().slice(0, 100) : ''; const { page, limit, offset } = pagination(request);
-    const rows = await db.select({ attempt: paymentAttempts, booking: bookings, ground: grounds, player: users, vendor: vendors }).from(paymentAttempts)
-      .innerJoin(bookings, eq(paymentAttempts.bookingId, bookings.id)).innerJoin(grounds, eq(bookings.groundId, grounds.id)).innerJoin(users, eq(paymentAttempts.playerId, users.id)).innerJoin(vendors, eq(paymentAttempts.vendorId, vendors.id))
-      .where(and(status === 'all' ? undefined : eq(paymentAttempts.status, status as typeof paymentAttempts.status.enumValues[number]), query ? sql`(${bookings.bookingNumber} ILIKE ${`%${query}%`} OR ${grounds.title} ILIKE ${`%${query}%`} OR ${users.fullName} ILIKE ${`%${query}%`} OR ${vendors.businessName} ILIKE ${`%${query}%`})` : undefined)).orderBy(desc(paymentAttempts.createdAt)).limit(limit + 1).offset(offset);
-    response.json({ transactions: rows.slice(0, limit).map(({ attempt, booking, ground, player, vendor }) => ({ id: attempt.id, provider: attempt.provider, provider_reference: attempt.providerReference, amount: attempt.amount, status: attempt.status, booking_number: booking.bookingNumber, ground_title: ground.title, player_name: player.fullName, vendor_name: vendor.businessName, created_at: attempt.createdAt.toISOString(), paid_at: attempt.paidAt?.toISOString() || null })), pagination: { page, limit, has_more: rows.length > limit } });
+    const cursor = parsePaginationCursor(request.query.cursor);
+    const statusCondition = status === 'manual_review' ? eq(paymentAttempts.reviewStatus, 'manual_review') : status === 'unknown' ? eq(paymentAttempts.providerStatus, 'unknown') : status === 'expired' ? eq(paymentAttempts.providerStatus, 'expired') : status === 'all' ? undefined : eq(paymentAttempts.status, status as typeof paymentAttempts.status.enumValues[number]);
+    const rows = await db.select({ attempt: paymentAttempts, booking: bookings, order: bookingOrders, ground: grounds, player: users, vendor: vendors }).from(paymentAttempts)
+      .leftJoin(bookings, eq(paymentAttempts.bookingId, bookings.id)).leftJoin(bookingOrders, eq(paymentAttempts.orderId, bookingOrders.id)).leftJoin(grounds, eq(bookings.groundId, grounds.id)).innerJoin(users, eq(paymentAttempts.playerId, users.id)).innerJoin(vendors, eq(paymentAttempts.vendorId, vendors.id))
+      .where(and(statusCondition, query ? sql`(${bookings.bookingNumber} ILIKE ${`%${query}%`} OR ${bookingOrders.orderNumber} ILIKE ${`%${query}%`} OR ${paymentAttempts.providerReference} ILIKE ${`%${query}%`} OR ${paymentAttempts.consumerNumber} ILIKE ${`%${query}%`} OR ${grounds.title} ILIKE ${`%${query}%`} OR ${users.fullName} ILIKE ${`%${query}%`} OR ${vendors.businessName} ILIKE ${`%${query}%`})` : undefined, cursor ? or(lt(paymentAttempts.createdAt, cursor.createdAt), and(eq(paymentAttempts.createdAt, cursor.createdAt), lt(paymentAttempts.id, cursor.id))) : undefined)).orderBy(desc(paymentAttempts.createdAt), desc(paymentAttempts.id)).limit(limit + 1).offset(cursor ? 0 : offset);
+    const pageRows = rows.slice(0, limit);
+    response.json({ transactions: pageRows.map(({ attempt, booking, order, ground, player, vendor }) => ({ id: attempt.id, provider: attempt.provider, provider_reference: attempt.providerReference, clink_id: attempt.providerReference, consumer_number: attempt.consumerNumber, provider_status: attempt.providerStatus, review_status: attempt.reviewStatus, amount: attempt.amount, service_charge: attempt.serviceCharge, final_payable_amount: attempt.finalPayableAmount, status: attempt.status, booking_number: booking?.bookingNumber || order?.orderNumber || 'Payment attempt', ground_title: ground?.title || (order ? 'Multi-slot order' : 'Unknown ground'), player_name: player.fullName, vendor_name: vendor.businessName, created_at: attempt.createdAt.toISOString(), expires_at: attempt.expiresAt?.toISOString() || null, paid_at: attempt.paidAt?.toISOString() || null })), pagination: { page, limit, has_more: rows.length > limit, next_cursor: rows.length > limit ? nextPaginationCursor(pageRows.at(-1)?.attempt) : null } });
   };
 
   operations = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const [bookingRows, paymentRows, payoutRows] = await Promise.all([
-      db.select({ booking: bookings, city: grounds.city }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).limit(5_000),
-      db.select({ amount: paymentAttempts.amount, status: paymentAttempts.status }).from(paymentAttempts).limit(5_000),
+    const [bookingTotals, paymentTotals, cityRows, payoutRows, outboxRows] = await Promise.all([
+      db.select({ total: count(), refunded: sql<number>`coalesce(sum(${bookings.refundAmount}), 0)::int` }).from(bookings),
+      db.select({ amount: sql<number>`coalesce(sum(${paymentAttempts.amount}), 0)::int` }).from(paymentAttempts).where(eq(paymentAttempts.status, 'paid')),
+      db.select({ city: grounds.city, total: count() }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).groupBy(grounds.city).orderBy(desc(count())).limit(8),
       db.select({ amount: ledgerEntries.amount, status: ledgerEntries.status, createdAt: ledgerEntries.createdAt, vendorId: ledgerEntries.vendorId }).from(ledgerEntries).where(eq(ledgerEntries.type, 'payout')).orderBy(desc(ledgerEntries.createdAt)).limit(200),
+      db.select({ status: notificationOutbox.status, total: count() }).from(notificationOutbox).groupBy(notificationOutbox.status),
     ]);
-    const cities = new Map<string, number>();
-    for (const row of bookingRows) cities.set(row.city, (cities.get(row.city) || 0) + 1);
-    const paidAmount = paymentRows.filter((row) => row.status === 'paid').reduce((sum, row) => sum + row.amount, 0);
-    const refundedAmount = bookingRows.reduce((sum, row) => sum + row.booking.refundAmount, 0);
-    response.json({ analytics: { total_bookings: bookingRows.length, paid_gmv: paidAmount, refunded_amount: refundedAmount, commission_bps: env.platformCommissionBps, bookings_by_city: [...cities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([city, count]) => ({ city, count })) }, payouts: payoutRows.map((row) => ({ vendor_id: row.vendorId, amount: row.amount, status: row.status, created_at: row.createdAt.toISOString() })) });
+    response.json({ analytics: { total_bookings: bookingTotals[0]?.total ?? 0, paid_gmv: paymentTotals[0]?.amount ?? 0, refunded_amount: bookingTotals[0]?.refunded ?? 0, commission_bps: env.platformCommissionBps, bookings_by_city: cityRows.map(({ city, total }) => ({ city, count: total })) }, push_outbox: Object.fromEntries(outboxRows.map((row) => [row.status, row.total])), payouts: payoutRows.map((row) => ({ vendor_id: row.vendorId, amount: row.amount, status: row.status, created_at: row.createdAt.toISOString() })) });
+  };
+
+  deadPushes = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const rows = await db.select({ id: notificationOutbox.id, notificationId: notificationOutbox.notificationId, attempts: notificationOutbox.attempts, lastError: notificationOutbox.lastError, createdAt: notificationOutbox.createdAt, updatedAt: notificationOutbox.updatedAt })
+      .from(notificationOutbox).where(eq(notificationOutbox.status, 'dead')).orderBy(desc(notificationOutbox.updatedAt)).limit(100);
+    response.json({ pushes: rows.map((row) => ({ id: row.id, notification_id: row.notificationId, attempts: row.attempts, last_error: row.lastError, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() })) });
+  };
+
+  retryDeadPush = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const id = param(request.params.id, 'Outbox id');
+    const reason = typeof request.body?.reason === 'string' ? request.body.reason.trim().slice(0, 500) : '';
+    if (!reason) throw new AppError('reason_required', 'Explain why this push should be retried', 422);
+    const [row] = await db.update(notificationOutbox).set({ status: 'pending', attempts: 0, availableAt: new Date(), lockedUntil: null, lastError: null, updatedAt: new Date() })
+      .where(and(eq(notificationOutbox.id, id), eq(notificationOutbox.status, 'dead'))).returning({ id: notificationOutbox.id });
+    if (!row) throw new AppError('not_found', 'Dead push was not found', 404);
+    await audit(request.auth!.userId, 'push_outbox_manual_retry', 'notification_outbox', id, reason);
+    response.json({ id, status: 'pending' });
   };
 
   listRefunds = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const query = typeof request.query.q === 'string' ? request.query.q.trim().slice(0, 100) : ''; const status = typeof request.query.status === 'string' ? request.query.status : 'all'; const { page, limit, offset } = pagination(request);
-    const rows = await db.select({ booking: bookings, ground: grounds, player: users, vendor: vendors }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).innerJoin(users, eq(bookings.playerId, users.id)).innerJoin(vendors, eq(bookings.vendorId, vendors.id)).where(sql`${bookings.refundAmount} > 0`).orderBy(desc(bookings.cancelledAt)).limit(200);
-    const filtered = rows.filter(({ booking, ground, player, vendor }) => (status === 'all' || booking.paymentStatus === status) && (!query || `${booking.bookingNumber} ${ground.title} ${player.fullName} ${vendor.businessName}`.toLowerCase().includes(query.toLowerCase()))); const pageRows = filtered.slice(offset, offset + limit + 1);
-    response.json({ refunds: pageRows.slice(0, limit).map(({ booking, ground, player, vendor }) => ({ id: booking.id, booking_number: booking.bookingNumber, ground_title: ground.title, player_name: player.fullName, vendor_name: vendor.businessName, amount: booking.refundAmount, status: booking.paymentStatus, reason: booking.cancellationReason, cancelled_at: booking.cancelledAt?.toISOString() || null })), pagination: { page, limit, has_more: pageRows.length > limit } });
+    if (!['all', ...bookings.paymentStatus.enumValues].includes(status)) throw new AppError('invalid_status', 'Invalid refund status', 422);
+    const rows = await db.select({ booking: bookings, ground: grounds, player: users, vendor: vendors }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).innerJoin(users, eq(bookings.playerId, users.id)).innerJoin(vendors, eq(bookings.vendorId, vendors.id))
+      .where(and(sql`${bookings.refundAmount} > 0`, status === 'all' ? undefined : eq(bookings.paymentStatus, status as typeof bookings.paymentStatus.enumValues[number]), query ? sql`(${bookings.bookingNumber} ILIKE ${`%${query}%`} OR ${grounds.title} ILIKE ${`%${query}%`} OR ${users.fullName} ILIKE ${`%${query}%`} OR ${vendors.businessName} ILIKE ${`%${query}%`})` : undefined))
+      .orderBy(desc(bookings.cancelledAt), desc(bookings.id)).limit(limit + 1).offset(offset);
+    response.json({ refunds: rows.slice(0, limit).map(({ booking, ground, player, vendor }) => ({ id: booking.id, booking_number: booking.bookingNumber, ground_title: ground.title, player_name: player.fullName, vendor_name: vendor.businessName, amount: booking.refundAmount, status: booking.paymentStatus, reason: booking.cancellationReason, cancelled_at: booking.cancelledAt?.toISOString() || null })), pagination: { page, limit, has_more: rows.length > limit } });
   };
 
   setVendorVerification = async (request: AuthenticatedRequest, response: Response): Promise<void> => {

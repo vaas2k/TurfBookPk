@@ -79,3 +79,27 @@ This journal is intentionally separate from `TASK_JOURNAL.md`. It records visual
 ## Next design task
 
 - Complete the vendor ground creation/edit and slot-management references, then run an Android/iOS visual and safe-area pass before declaring the vendor visual phase complete.
+
+## 2026-10-22 - Interactive bottom sheets
+
+- Replaced the static/manual-pan global dialogs and player Search filters with `@gorhom/bottom-sheet` v5 modals.
+- Added real two-way dragging, bounded snap points, swipe-down dismissal, backdrop dismissal, coordinated scrolling, and interactive keyboard handling.
+- Added the required root Gesture Handler and bottom-sheet providers. Mobile TypeScript and ESLint checks pass; Expo's online dependency check was unavailable because the local environment blocked its network request.
+
+## 2026-10-22 - iOS transition background
+
+- Removed the brief white flash around the iPhone home-indicator/bottom-bar area during route transitions by giving the native appearance, React Navigation theme, app root, safe-area root, and startup loader the same dark canvas color.
+- Validation: mobile TypeScript and ESLint checks pass.
+
+## 2026-10-22 - Vendor registration responsiveness
+
+- Constrained all active vendor-verification fields, choices, headings, and document upload rows to the available mobile width, allowing long labels to wrap or shrink instead of pushing the screen horizontally.
+- Prevented empty document previews from rendering with an undefined image source and bounded selected previews inside their upload row.
+- Validation: mobile TypeScript and ESLint checks pass.
+- Applied the parent iOS safe-area top inset directly to the full-screen verification modal so its header stays below the notch, clock, signal, and battery area in Expo Go.
+
+## 2026-10-22 - Vendor navigation and transition audit
+
+- Removed vendor transition flashes by retaining mounted tab routes with `navigate`, enforcing a dark native-stack content surface, and replacing the remaining white vendor booking loading/error and modal surfaces.
+- Added the missing Notifications back action, normalized detail-screen back behavior, and extended bottom safe-area ownership to detail routes whose vendor tab bar is hidden.
+- Hardened ground verification headers and uploads for safe areas, long text, and empty image selections. Mobile TypeScript, ESLint, and diff validation pass.

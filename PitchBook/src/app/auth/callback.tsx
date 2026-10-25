@@ -16,14 +16,13 @@ export default function AuthCallback() {
         } else {
           router.replace('/(auth)/phone-input');
         }
-      } catch (error) {
-        console.error('[Callback] Error:', error);
+      } catch {
         router.replace('/(auth)/phone-input');
       }
     };
 
     handleCallback();
-  }, []);
+  }, [checkAuth]);
 
   return (
     <View className="flex-1 items-center justify-center bg-white">

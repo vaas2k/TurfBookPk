@@ -13,9 +13,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { formatDuration, formatTimeRange12 } from "@/lib/time";
 import {
   BookingProfile,
+  PaymentAttempt,
   cancelBooking,
-  confirmRecurringReservationBooking,
+  generateClinkReference,
   getBooking,
+  getBookingPaymentAttempt,
   getCancellationPreview,
   markBookingCompleted,
   markBookingNoShow,
@@ -42,6 +44,7 @@ export function BookingDetails({
   const theme = playerThemes[appearance];
   const insets = useSafeAreaInsets();
   const [booking, setBooking] = useState<BookingProfile | null>(null);
+  const [paymentAttempt, setPaymentAttempt] = useState<PaymentAttempt | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -54,13 +57,15 @@ export function BookingDetails({
 
   const load = useCallback(async () => {
     try {
-      setBooking(await getBooking(id));
+      const loadedBooking = await getBooking(id);
+      setBooking(loadedBooking);
+      if (!vendorView) setPaymentAttempt(await getBookingPaymentAttempt(id));
     } catch (error: any) {
       setToast(error?.message || "Unable to load this booking.");
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, vendorView]);
 
   useEffect(() => {
     load();
@@ -164,7 +169,12 @@ export function BookingDetails({
   const handleRecurringPayment = async () => {
     setActionLoading(true);
     try {
-      setBooking(await confirmRecurringReservationBooking(id));
+      const existing = await getBookingPaymentAttempt(id);
+      const payment = existing && ['pending', 'unknown', 'paid'].includes(existing.provider_status)
+        ? existing
+        : (await generateClinkReference({ booking_id: id })).payment;
+      setPaymentAttempt(payment);
+      router.push({ pathname: '/(player)/payment-instructions', params: { paymentId: payment.id } });
     } catch (error: any) {
       setToast(error?.message || "Unable to pay for this reserved slot.");
     } finally {
@@ -174,7 +184,7 @@ export function BookingDetails({
 
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-[#F8F9FA]">
+      <SafeAreaView className={`flex-1 items-center justify-center ${vendorView ? "bg-[#10120F]" : "bg-[#F8F9FA]"}`}>
         <ActivityIndicator size="large" color="#4CAF50" />
       </SafeAreaView>
     );
@@ -182,9 +192,9 @@ export function BookingDetails({
 
   if (!booking) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-[#F8F9FA] px-6">
+      <SafeAreaView className={`flex-1 items-center justify-center px-6 ${vendorView ? "bg-[#10120F]" : "bg-[#F8F9FA]"}`}>
         <Ionicons name="alert-circle-outline" size={56} color="#9CA3AF" />
-        <Text className="text-[#1A1A2E] text-xl font-bold mt-4">
+        <Text className={`${vendorView ? "text-[#F5F5F0]" : "text-[#1A1A2E]"} text-xl font-bold mt-4`}>
           Booking Not Found
         </Text>
         <TouchableOpacity
@@ -339,6 +349,14 @@ export function BookingDetails({
             </View>
           )}
 
+          {!vendorView && booking.status === "pending_payment" && !reservationActive && paymentAttempt && (
+            <View className="bg-[#17301B] border border-[#42B84F] rounded-[22px] p-5 mt-5">
+              <Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F8F7F0] text-base">Payment is still pending</Text>
+              <Text className="text-[#A8C9AC] text-xs leading-5 mt-2">Reopen your 1-Bill instructions to copy the consumer number or check the latest status.</Text>
+              <TouchableOpacity accessibilityRole="button" onPress={() => router.push({ pathname: '/(player)/payment-instructions', params: { paymentId: paymentAttempt.id } })} className="bg-[#42B84F] rounded-full py-4 items-center mt-4"><Text className="text-[#102110] font-bold">Open payment</Text></TouchableOpacity>
+            </View>
+          )}
+
           {isUpcoming && (
             <View className="bg-white rounded-[28px] mt-5 px-5 py-7 items-center">
               <Text
@@ -483,7 +501,7 @@ export function BookingDetails({
     const paymentLabel = booking.payment_status === "paid" ? "Paid online" : booking.payment_status.replaceAll("_", " ");
     const canComplete = booking.status === "confirmed" && hasEnded;
     const isOpen = booking.status === "confirmed" && !hasEnded;
-    return <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
+    return <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
       <StatusBar barStyle="light-content" backgroundColor="#10120F" />
       <View className="px-6 pt-4 pb-4 flex-row items-center"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace("/(vendor)/bookings")} className="w-8 h-10 items-center justify-center -ml-2"><Ionicons name="chevron-back" size={29} color="#F5F5F0" /></TouchableOpacity><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0] text-[21px] ml-2">BOOKING DETAILS</Text></View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 116 + Math.max(insets.bottom, 16) }} showsVerticalScrollIndicator={false}>

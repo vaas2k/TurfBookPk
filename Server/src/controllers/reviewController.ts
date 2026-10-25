@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Response } from 'express';
 import { db } from '../database/client.js';
 import { bookings, grounds, reviewReports, reviews, users, vendors } from '../database/schema.js';
@@ -8,8 +8,15 @@ import { AuthenticatedRequest } from '../middleware/auth.js';
 export class ReviewController {
   list = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const groundId = String(request.params.groundId || '');
-    const rows = await db.select({ review: reviews, player: users }).from(reviews).innerJoin(users, eq(reviews.playerId, users.id)).where(and(eq(reviews.groundId, groundId), eq(reviews.isHidden, false))).orderBy(desc(reviews.createdAt));
-    response.json({ reviews: rows.map(({ review, player }) => ({ id: review.id, rating: review.rating, comment: review.comment, player_name: player.fullName || 'Player', created_at: review.createdAt.toISOString() })) });
+    const page = Number(request.query.page ?? 1); const limit = Number(request.query.limit ?? 50);
+    if (!Number.isSafeInteger(page) || page < 1 || page > 10_000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new AppError('invalid_pagination', 'Use a valid page and limit', 422);
+    const condition = and(eq(reviews.groundId, groundId), eq(reviews.isHidden, false));
+    const [totalRow, rows] = await Promise.all([
+      db.select({ value: count() }).from(reviews).where(condition),
+      db.select({ review: reviews, player: users }).from(reviews).innerJoin(users, eq(reviews.playerId, users.id)).where(condition).orderBy(desc(reviews.createdAt), desc(reviews.id)).limit(limit).offset((page - 1) * limit),
+    ]);
+    const total = totalRow[0]?.value ?? 0;
+    response.json({ reviews: rows.map(({ review, player }) => ({ id: review.id, rating: review.rating, comment: review.comment, player_name: player.fullName || 'Player', created_at: review.createdAt.toISOString() })), pagination: { page, limit, total, has_more: page * limit < total } });
   };
   create = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);

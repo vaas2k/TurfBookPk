@@ -147,6 +147,7 @@ export default function PlayerLayout() {
         <Stack.Screen name="design-lab" />
         <Stack.Screen name="ground/[id]" />
         <Stack.Screen name="payment-method" />
+        <Stack.Screen name="payment-instructions" />
         <Stack.Screen name="payment-jazzcash" />
         <Stack.Screen name="payment-easypaisa" />
         <Stack.Screen name="payment-bank-transfer" />

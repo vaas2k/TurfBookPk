@@ -107,7 +107,7 @@ export default function SetupSchedule() {
     setStep((current) => Math.min(3, current + 1));
   };
   return (
-    <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
+    <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
       <StatusBar barStyle="light-content" backgroundColor="#10120F" />
       <ScrollView
         className="flex-1 px-6"

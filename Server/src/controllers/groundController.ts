@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { and, arrayContains, asc, desc, eq, gt, ilike, inArray, lt, ne, or, sql } from 'drizzle-orm';
+import { and, arrayContains, asc, count, desc, eq, gte, gt, ilike, inArray, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
@@ -7,6 +7,7 @@ import { bookings, favoriteGrounds, groundBlackoutDates, groundVerificationDocum
 import { env } from '../configs/env.js';
 import { CANCELLATION_POLICIES, cancellationPolicy } from '../services/cancellationPolicy.js';
 import { PeakWindow, effectiveSlotPrice } from '../services/peakPricing.js';
+import { materializeSchedules } from '../services/scheduleMaterialization.js';
 
 function textArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()) : [];
@@ -143,22 +144,6 @@ function isHeld(row: typeof slots.$inferSelect): boolean {
 
 function pakistanToday(): string { return new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10); }
 
-async function materializeSchedule(ground: typeof grounds.$inferSelect): Promise<void> {
-  const templates = await db.select().from(slotScheduleTemplates).where(and(eq(slotScheduleTemplates.groundId, ground.id), eq(slotScheduleTemplates.isActive, true)));
-  const blackouts = await db.select({ date: groundBlackoutDates.date }).from(groundBlackoutDates).where(eq(groundBlackoutDates.groundId, ground.id));
-  const blackoutDates = new Set(blackouts.map((item) => item.date));
-  const end = new Date(`${pakistanToday()}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + env.maxAdvanceBookingDays);
-  for (let cursor = new Date(`${pakistanToday()}T00:00:00Z`); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
-    const date = cursor.toISOString().slice(0, 10);
-    if (blackoutDates.has(date)) continue;
-    for (const template of templates.filter((item) => item.days.includes(cursor.getUTCDay()))) {
-      if (hasStarted(date, template.startTime)) continue;
-      const existing = await db.select({ id: slots.id }).from(slots).where(and(eq(slots.groundId, ground.id), eq(slots.date, date), eq(slots.startTime, template.startTime), eq(slots.endTime, template.endTime))).limit(1);
-      if (!existing[0]) await db.insert(slots).values({ groundId: ground.id, date, startTime: template.startTime, endTime: template.endTime, price: template.price, scheduleTemplateId: template.id });
-    }
-  }
-}
-
 export function toGround(row: typeof grounds.$inferSelect) {
   return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_percentage: row.peakPercentage, peak_windows: row.peakWindows.map((window) => ({ days: window.days, start_time: window.startTime, end_time: window.endTime })), is_active: row.isActive, is_verified: row.isVerified, verification_status: row.verificationStatus, verification_reason: row.verificationReason, rating: row.rating, total_reviews: row.totalReviews, operating_hours: row.operatingHours, scheduling_policy: { max_slot_duration_minutes: env.maxSlotDurationMinutes, max_advance_booking_days: env.maxAdvanceBookingDays }, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
@@ -209,50 +194,73 @@ export class GroundController {
       : sort === 'price_high'
         ? [desc(grounds.pricePerHour), asc(grounds.title), asc(grounds.id)]
         : [desc(grounds.rating), asc(grounds.title), asc(grounds.id)];
-    const rows = await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(...filters)).orderBy(...orderBy);
-    await Promise.all(rows.map(({ ground }) => materializeSchedule(ground)));
+    const condition = and(...filters);
+    const offset = (page - 1) * limit;
     if (!availabilityDate) {
-      const total = rows.length;
-      const start = (page - 1) * limit;
-      const pageRows = rows.slice(start, start + limit);
+      const [totalRow, pageRows] = await Promise.all([
+        db.select({ value: count() }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(condition),
+        db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(condition).orderBy(...orderBy).limit(limit).offset(offset),
+      ]);
+      const total = totalRow[0]?.value ?? 0;
       const allIds = pageRows.map(({ ground }) => ground.id);
-      const available = allIds.length ? await db.select().from(slots).where(and(inArray(slots.groundId, allIds), eq(slots.isBooked, false), eq(slots.isBlocked, false))).orderBy(asc(slots.date), asc(slots.startTime)) : [];
+      const available = allIds.length ? await db.select({ groundId: slots.groundId, availableCount: sql<number>`count(*)::int`, nextAvailableAt: sql<string>`min(${slots.date}::text || 'T' || to_char(${slots.startTime}, 'HH24:MI') || ':00+05:00')` })
+        .from(slots).where(and(inArray(slots.groundId, allIds), eq(slots.isBooked, false), eq(slots.isBlocked, false), gte(slots.date, pakistanToday()), sql`(${slots.holdBookingId} IS NULL OR ${slots.holdExpiresAt} <= now())`, sql`(${slots.date}::timestamp + ${slots.startTime}::time) > (now() AT TIME ZONE 'Asia/Karachi')`))
+        .groupBy(slots.groundId) : [];
       const summaries: Record<string, { available_count: number; next_available_at: string | null }> = {};
       for (const { ground } of pageRows) summaries[ground.id] = { available_count: 0, next_available_at: null };
-      for (const slot of available) {
-        if (hasStarted(slot.date, slot.startTime) || isHeld(slot)) continue;
-        const summary = summaries[slot.groundId];
-        if (summary) { summary.available_count++; summary.next_available_at ??= `${slot.date}T${slot.startTime.slice(0, 5)}:00+05:00`; }
-      }
-      response.json({ grounds: pageRows.map(({ ground }) => toGround(ground)), availability_by_ground: summaries, pagination: { page, limit, total, has_more: start + pageRows.length < total } });
+      for (const row of available) summaries[row.groundId] = { available_count: row.availableCount, next_available_at: row.nextAvailableAt };
+      response.json({ grounds: pageRows.map(({ ground }) => toGround(ground)), availability_by_ground: summaries, pagination: { page, limit, total, has_more: offset + pageRows.length < total } });
       return;
     }
 
-    const ids = rows.map(({ ground }) => ground.id);
-    const matchingSlots = ids.length ? await db.select().from(slots).where(and(inArray(slots.groundId, ids), eq(slots.date, availabilityDate), eq(slots.isBooked, false), eq(slots.isBlocked, false))) : [];
+    // Keep the price filter and price ordering at the database boundary. The
+    // correlated lookup is restricted to a ground and one date by the slot index.
+    const day = new Date(`${availabilityDate}T12:00:00+05:00`).getUTCDay();
+    const selectedDate = availabilityDate;
+    const displayPrice = sql<number>`coalesce((select min(case when ${grounds.peakPercentage} is not null and exists (
+      select 1 from jsonb_array_elements(${grounds.peakWindows}) as peak_window(value)
+      where (peak_window.value->'days') @> ${JSON.stringify([day])}::jsonb
+        and (peak_window.value->>'startTime') <= to_char(candidate.start_time, 'HH24:MI')
+        and (peak_window.value->>'endTime') >= to_char(candidate.end_time, 'HH24:MI')
+    ) then round(candidate.price * (100 + ${grounds.peakPercentage})::numeric / 100)::int else candidate.price end)
+      from slots candidate where candidate.ground_id = ${grounds.id}
+        and candidate.date = ${selectedDate}::date and candidate.is_booked = false and candidate.is_blocked = false
+        and (candidate.hold_booking_id is null or candidate.hold_expires_at <= now())
+        and (candidate.date::timestamp + candidate.start_time) > (now() at time zone 'Asia/Karachi')
+    ), ${grounds.pricePerHour})`;
+    const datedCondition = and(condition, lte(sql<number>`(${displayPrice})::bigint`, maxPrice));
+    const datedOrder = sort === 'price_low' ? [asc(displayPrice), asc(grounds.title), asc(grounds.id)]
+      : sort === 'price_high' ? [desc(displayPrice), asc(grounds.title), asc(grounds.id)] : orderBy;
+    const [totalRow, pageRows] = await Promise.all([
+      db.select({ value: count() }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(datedCondition),
+      db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(datedCondition).orderBy(...datedOrder).limit(limit).offset(offset),
+    ]);
+    const ids = pageRows.map(({ ground }) => ground.id);
+    const matchingSlots = ids.length ? await db.select().from(slots).where(and(inArray(slots.groundId, ids), eq(slots.date, selectedDate), eq(slots.isBooked, false), eq(slots.isBlocked, false))).orderBy(asc(slots.startTime)) : [];
+    const groundById = new Map(pageRows.map(({ ground }) => [ground.id, ground]));
     const slotsByGround = new Map<string, ReturnType<typeof toSlot>[]>();
     for (const slot of matchingSlots) {
       if (isHeld(slot) || hasStarted(slot.date, slot.startTime)) continue;
-      const ground = rows.find(({ ground: item }) => item.id === slot.groundId)?.ground;
+      const ground = groundById.get(slot.groundId);
       if (!ground) continue;
       const value = toSlot(slot, ground);
       if (value.price > maxPrice) continue;
-      slotsByGround.set(slot.groundId, [...(slotsByGround.get(slot.groundId) || []), value]);
+      const list = slotsByGround.get(slot.groundId) || [];
+      list.push(value);
+      slotsByGround.set(slot.groundId, list);
     }
-    let matches = rows.filter(({ ground }) => slotsByGround.has(ground.id));
-    if (sort === 'price_low') matches = matches.sort((a, b) => Math.min(...slotsByGround.get(a.ground.id)!.map((slot) => slot.price)) - Math.min(...slotsByGround.get(b.ground.id)!.map((slot) => slot.price)));
-    if (sort === 'price_high') matches = matches.sort((a, b) => Math.min(...slotsByGround.get(b.ground.id)!.map((slot) => slot.price)) - Math.min(...slotsByGround.get(a.ground.id)!.map((slot) => slot.price)));
-    const total = matches.length;
-    const start = (page - 1) * limit;
-    const pageRows = matches.slice(start, start + limit);
-    response.json({ grounds: pageRows.map(({ ground }) => toGround(ground)), slots_by_ground: Object.fromEntries(pageRows.map(({ ground }) => [ground.id, slotsByGround.get(ground.id) || []])), pagination: { page, limit, total, has_more: start + limit < total } });
+    // A selected date controls the availability shown on each card. It must
+    // not hide an otherwise discoverable ground once that day's slots end.
+    const total = totalRow[0]?.value ?? 0;
+    response.json({ grounds: pageRows.map(({ ground }) => toGround(ground)), slots_by_ground: Object.fromEntries(pageRows.map(({ ground }) => [ground.id, slotsByGround.get(ground.id) || []])), pagination: { page, limit, total, has_more: offset + pageRows.length < total } });
   };
 
   getPublic = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const row = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(grounds.isVerified, true), eq(grounds.verificationStatus, 'approved'), eq(vendors.isActive, true), eq(vendors.verificationStatus, 'approved'))).limit(1))[0];
     if (!row) throw new AppError('not_found', 'Ground was not found', 404);
-    await materializeSchedule(row.ground);
-    const groundSlots = await db.select().from(slots).where(eq(slots.groundId, row.ground.id));
+    const lastDate = new Date(`${pakistanToday()}T00:00:00Z`);
+    lastDate.setUTCDate(lastDate.getUTCDate() + env.maxAdvanceBookingDays);
+    const groundSlots = await db.select().from(slots).where(and(eq(slots.groundId, row.ground.id), gte(slots.date, pakistanToday()), sql`${slots.date} <= ${lastDate.toISOString().slice(0, 10)}`)).orderBy(asc(slots.date), asc(slots.startTime));
     response.json({ ground: toGround(row.ground), slots: groundSlots.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, row.ground)) });
   };
 
@@ -262,9 +270,12 @@ export class GroundController {
     const page = queryInteger(request.query.page, 'Page', 1, 1, 10_000);
     const limit = queryInteger(request.query.limit, 'Limit', 50, 1, 100);
     const offset = (page - 1) * limit;
-    const all = await db.select().from(grounds).where(eq(grounds.vendorId, vendorId)).orderBy(asc(grounds.title), asc(grounds.id));
-    const rows = all.slice(offset, offset + limit);
-    response.json({ grounds: rows.map(toGround), pagination: { page, limit, total: all.length, has_more: offset + rows.length < all.length } });
+    const [totalRow, rows] = await Promise.all([
+      db.select({ value: count() }).from(grounds).where(eq(grounds.vendorId, vendorId)),
+      db.select().from(grounds).where(eq(grounds.vendorId, vendorId)).orderBy(asc(grounds.title), asc(grounds.id)).limit(limit).offset(offset),
+    ]);
+    const total = totalRow[0]?.value ?? 0;
+    response.json({ grounds: rows.map(toGround), pagination: { page, limit, total, has_more: offset + rows.length < total } });
   };
 
   create = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -395,7 +406,6 @@ export class GroundController {
   listSlots = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const ground = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(grounds.isVerified, true), eq(grounds.verificationStatus, 'approved'), eq(vendors.isActive, true), eq(vendors.verificationStatus, 'approved'))).limit(1))[0];
     if (!ground) throw new AppError('not_found', 'Ground was not found', 404);
-    await materializeSchedule(ground.ground);
     const page = queryInteger(request.query.page, 'Page', 1, 1, 10_000);
     const limit = queryInteger(request.query.limit, 'Limit', 100, 1, 200);
     const offset = (page - 1) * limit;
@@ -480,7 +490,7 @@ export class GroundController {
       await tx.update(grounds).set({ operatingHours: { open, close }, pricePerHour: price, updatedAt: new Date() }).where(eq(grounds.id, groundId));
       await tx.insert(slotScheduleTemplates).values(starts.map((start) => ({ groundId, days, startTime: start, endTime: endFor(start), price })));
     });
-    const refreshed = (await db.select().from(grounds).where(eq(grounds.id, groundId)).limit(1))[0]!; await materializeSchedule(refreshed);
+    const refreshed = (await db.select().from(grounds).where(eq(grounds.id, groundId)).limit(1))[0]!; await materializeSchedules([refreshed]);
     const created = await db.select().from(slots).where(eq(slots.groundId, groundId)); response.status(201).json({ slots: created.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, refreshed)) });
   };
 

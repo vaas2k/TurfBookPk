@@ -78,7 +78,7 @@ export default function EditVendorProfile() {
   };
   const toggleActivation = () => { if (!vendorProfile || saving) return; const active = vendorProfile.is_active; appDialog.alert(active ? 'Pause business?' : 'Reactivate business?', active ? 'Players will no longer find or book your grounds. Existing bookings remain visible.' : 'Your active grounds will become visible and bookable again.', [{ text: 'Keep current setting', style: 'cancel' }, { text: active ? 'Pause business' : 'Reactivate', style: active ? 'destructive' : 'default', onPress: async () => { setSaving(true); try { const profile = await updateVendorProfile({ is_active: !active }); useVendorStore.setState({ vendorProfile: profile }); } catch (error: any) { setToast(error?.message || 'Unable to update business availability.'); } finally { setSaving(false); } } }]); };
   return (
-    <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
+    <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
       <StatusBar barStyle="light-content" backgroundColor="#10120F" />
       <ScrollView
         className="px-6"

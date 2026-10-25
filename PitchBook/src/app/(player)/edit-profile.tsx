@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -59,9 +61,11 @@ export default function EditPlayerProfile() {
   };
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1" style={{ backgroundColor: theme.canvas }}>
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={12}>
       <ScrollView
         className="px-6"
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{ paddingBottom: 48 }}
+        keyboardShouldPersistTaps="handled"
       >
         <View className="flex-row items-center py-4">
           <TouchableOpacity
@@ -116,6 +120,7 @@ export default function EditPlayerProfile() {
           )}
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
     </SafeAreaView>
   );

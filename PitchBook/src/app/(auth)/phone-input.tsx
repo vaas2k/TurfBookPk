@@ -85,6 +85,8 @@ export default function PhoneInputScreen() {
               </View>
               <View style={styles.divider} />
               <TextInput
+                accessibilityLabel="Pakistani phone number"
+                accessibilityHint="Enter your 10 digit mobile number without the country code"
                 style={styles.input}
                 placeholder="331 5139044"
                 placeholderTextColor="#64748B"
@@ -99,13 +101,16 @@ export default function PhoneInputScreen() {
             </View>
             
             {error && (
-              <View style={styles.errorBox}>
+              <View style={styles.errorBox} accessibilityRole="alert">
                 <Ionicons name="alert-circle-outline" size={16} color="#F43F5E" />
                 <Text style={styles.errorText}>{error.message}</Text>
               </View>
             )}
 
             <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Continue with phone number"
+              accessibilityState={{ disabled: isLoading, busy: isLoading }}
               style={styles.primaryButton}
               onPress={handleSendCode}
               disabled={isLoading}

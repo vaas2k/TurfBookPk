@@ -1,11 +1,11 @@
 import { randomUUID } from 'crypto';
 import { Response } from 'express';
-import { and, count, desc, eq, gte, isNull, lte, or, sql as expression } from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, lt, lte, or, sql as expression } from 'drizzle-orm';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
 import { bookingOrders, bookings, grounds, ledgerEntries, notifications, paymentAttempts, slots, users, vendors } from '../database/schema.js';
-import { canCancelBooking, HOLD_DURATION_MS, paymentStatusForCancellation } from '../services/bookingLifecycle.js';
+import { canCancelBooking, paymentStatusForCancellation } from '../services/bookingLifecycle.js';
 import { bookingStart, cancellationPolicy, cancellationQuote } from '../services/cancellationPolicy.js';
 import { MockPaymentProvider } from '../services/paymentProvider.js';
 import { BookingMaintenanceService } from '../services/bookingMaintenance.js';
@@ -13,6 +13,7 @@ import { calculateBookingPrice } from '../services/bookingPricing.js';
 import { effectiveSlotPrice } from '../services/peakPricing.js';
 import { env } from '../configs/env.js';
 import { sendExpoPush } from '../services/expoPushService.js';
+import { nextPaginationCursor, parsePaginationCursor } from '../services/paginationCursor.js';
 
 function param(value: string | string[] | undefined, name: string): string {
   if (typeof value !== 'string' || !value) throw new AppError('invalid_request', `${name} is required`, 422);
@@ -32,8 +33,11 @@ function pagination(request: AuthenticatedRequest): { page: number; limit: numbe
 }
 function bookingNumber(): string { return `BK-${Date.now()}-${randomUUID().slice(0, 8)}`; }
 function orderNumber(): string { return `ORD-${Date.now()}-${randomUUID().slice(0, 8)}`; }
+function assertMockPaymentsEnabled(): void {
+  if (env.paymentProvider !== 'mock' || env.nodeEnv === 'production') throw new AppError('mock_payment_disabled', 'Mock payment endpoints are disabled', 404);
+}
 function hasStarted(date: string, time: string): boolean {
-  return new Date(`${date}T${time.length === 5 ? `${time}:00` : time}+05:00`).getTime() <= Date.now();
+  return new Date(`${date}T${time.length === 5 ? `${time}:00` : time}+05:00`).getTime() <= Date.now() + env.minimumBookingLeadMinutes * 60_000;
 }
 function recurringPaymentWindow(date: string, startTime: string): { opensAt: Date; expiresAt: Date } {
   const start = bookingStart(date, startTime);
@@ -76,6 +80,7 @@ async function fetchBooking(id: string) {
 
 export class BookingController {
   confirmOrderMock = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    assertMockPaymentsEnabled();
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const id = param(request.params.id, 'Order id'); const now = new Date();
     const result = await db.transaction(async (tx) => {
@@ -129,7 +134,7 @@ export class BookingController {
     const slotIds = Array.isArray(request.body?.slot_ids) ? [...new Set(request.body.slot_ids.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0))] : [];
     const recurringReservation = request.body?.reserve_future_slots === true;
     if (slotIds.length < 2 || slotIds.length > 20) throw new AppError('invalid_order', 'Select between 2 and 20 different slots', 422);
-    const key = idempotencyKey(request); const now = new Date(); const holdExpiresAt = new Date(now.getTime() + HOLD_DURATION_MS);
+    const key = idempotencyKey(request); const now = new Date(); const holdExpiresAt = new Date(now.getTime() + env.paymentHoldMinutes * 60_000);
     const order = await db.transaction(async (tx) => {
       const existing = (await tx.select().from(bookingOrders).where(eq(bookingOrders.idempotencyKey, key)).limit(1))[0];
       if (existing) { if (existing.playerId !== request.auth!.userId) throw new AppError('idempotency_key_conflict', 'This idempotency key belongs to another order', 409); return existing; }
@@ -159,13 +164,13 @@ export class BookingController {
         const isFutureReservation = recurringReservation && item.slot.date !== payNowDate;
         const window = isFutureReservation ? recurringPaymentWindow(item.slot.date, item.slot.startTime) : null;
         const reservationHoldExpiresAt = window?.expiresAt ?? holdExpiresAt;
-        const [booking] = await tx.insert(bookings).values({ bookingNumber: bookingNumber(), orderId: created.id, playerId: request.auth!.userId, vendorId: item.ground.vendorId, groundId: item.slot.groundId, slotId: item.slot.id, date: item.slot.date, startTime: item.slot.startTime, endTime: item.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee, vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: 'mock', idempotencyKey: `${key}:${item.slot.id}`, holdExpiresAt: reservationHoldExpiresAt, isRecurringReservation: isFutureReservation, paymentWindowOpensAt: window?.opensAt ?? null, reservationExpiresAt: window?.expiresAt ?? null, cancellationPolicy: cancellationPolicy(item.ground.cancellationPolicy) }).returning();
+        const [booking] = await tx.insert(bookings).values({ bookingNumber: bookingNumber(), orderId: created.id, playerId: request.auth!.userId, vendorId: item.ground.vendorId, groundId: item.slot.groundId, slotId: item.slot.id, date: item.slot.date, startTime: item.slot.startTime, endTime: item.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee, vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: env.paymentProvider === 'clink' ? 'clink_1bill' : 'mock', idempotencyKey: `${key}:${item.slot.id}`, holdExpiresAt: reservationHoldExpiresAt, isRecurringReservation: isFutureReservation, paymentWindowOpensAt: window?.opensAt ?? null, reservationExpiresAt: window?.expiresAt ?? null, cancellationPolicy: cancellationPolicy(item.ground.cancellationPolicy) }).returning();
         if (!booking) throw new AppError('booking_failed', 'Unable to create order bookings', 500);
         const held = await tx.update(slots).set({ heldBy: request.auth!.userId, holdBookingId: booking.id, holdExpiresAt: reservationHoldExpiresAt, updatedAt: now }).where(and(eq(slots.id, item.slot.id), eq(slots.isBooked, false), eq(slots.isBlocked, false), or(isNull(slots.holdExpiresAt), lte(slots.holdExpiresAt, now)))).returning({ id: slots.id });
         if (!held[0]) throw new AppError('slot_unavailable', 'One or more selected slots are unavailable', 409);
         if (!isFutureReservation) dueNow += price.totalAmount;
       }
-      await tx.insert(paymentAttempts).values({ orderId: created.id, playerId: request.auth!.userId, vendorId: selected[0]!.ground.vendorId, provider: 'mock', amount: dueNow, status: 'pending', idempotencyKey: `payment:${created.id}:mock` });
+      await tx.insert(paymentAttempts).values({ orderId: created.id, playerId: request.auth!.userId, vendorId: selected[0]!.ground.vendorId, provider: env.paymentProvider, amount: dueNow, status: 'pending', idempotencyKey: `payment:${created.id}:${env.paymentProvider}` });
       return { ...created, dueNow };
     });
     response.status(201).json({ order: { id: order.id, order_number: order.orderNumber, total_amount: order.totalAmount, due_now_amount: 'dueNow' in order ? order.dueNow : order.totalAmount, platform_fee: order.platformFee, status: order.status, payment_status: order.paymentStatus } });
@@ -182,7 +187,7 @@ export class BookingController {
     if (!slotId) throw new AppError('invalid_booking', 'A slot is required', 422);
     const key = idempotencyKey(request);
     const now = new Date();
-    const holdExpiresAt = new Date(now.getTime() + HOLD_DURATION_MS);
+    const holdExpiresAt = new Date(now.getTime() + env.paymentHoldMinutes * 60_000);
     const bookingId = await db.transaction(async (tx) => {
       const duplicate = (await tx.select({ booking: bookings, ground: grounds, player: users }).from(bookings)
         .innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id))
@@ -212,13 +217,13 @@ export class BookingController {
         bookingNumber: bookingNumber(), playerId: request.auth!.userId,
         vendorId: selected.ground.vendorId, groundId: selected.slot.groundId, slotId: selected.slot.id, date: selected.slot.date,
         startTime: selected.slot.startTime, endTime: selected.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee,
-        vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: 'mock',
+        vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: env.paymentProvider === 'clink' ? 'clink_1bill' : 'mock',
         idempotencyKey: key, holdExpiresAt, cancellationPolicy: cancellationPolicy(selected.ground.cancellationPolicy)
       }).returning())[0];
       if (!booking) throw new AppError('booking_failed', 'Booking could not be created', 500);
       await tx.insert(paymentAttempts).values({
         bookingId: booking.id, playerId: booking.playerId, vendorId: booking.vendorId,
-        provider: 'mock', amount: booking.totalAmount, status: 'pending', idempotencyKey: `payment:${booking.id}:mock`,
+        provider: env.paymentProvider, amount: booking.totalAmount, status: 'pending', idempotencyKey: `payment:${booking.id}:${env.paymentProvider}`,
       });
       const held = await tx.update(slots).set({ heldBy: request.auth!.userId, holdBookingId: booking.id, holdExpiresAt, updatedAt: now })
         .where(and(eq(slots.id, selected.slot.id), eq(slots.isBooked, false), eq(slots.isBlocked, false),
@@ -231,6 +236,7 @@ export class BookingController {
   };
 
   confirmMock = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    assertMockPaymentsEnabled();
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const id = param(request.params.id, 'Booking id');
     const requestedReference = typeof request.body?.payment_reference === 'string' ? request.body.payment_reference : null;
@@ -277,12 +283,15 @@ export class BookingController {
   playerList = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const { page, limit, offset } = pagination(request);
+    const cursor = parsePaginationCursor(request.query.cursor);
     const condition = eq(bookings.playerId, request.auth.userId);
     const total = (await db.select({ total: count() }).from(bookings).where(condition))[0]?.total ?? 0;
-    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(condition).orderBy(desc(bookings.createdAt), desc(bookings.id)).limit(limit).offset(offset);
-    response.json({ bookings: rows.map(mapBooking), pagination: { page, limit, total, has_more: offset + rows.length < total } });
+    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(and(condition, cursor ? or(lt(bookings.createdAt, cursor.createdAt), and(eq(bookings.createdAt, cursor.createdAt), lt(bookings.id, cursor.id))) : undefined)).orderBy(desc(bookings.createdAt), desc(bookings.id)).limit(limit + 1).offset(cursor ? 0 : offset);
+    const pageRows = rows.slice(0, limit);
+    response.json({ bookings: pageRows.map(mapBooking), pagination: { page, limit, total, has_more: rows.length > limit, next_cursor: rows.length > limit ? nextPaginationCursor(pageRows.at(-1)?.booking) : null } });
   };
   confirmRecurringReservationMock = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    assertMockPaymentsEnabled();
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const id = param(request.params.id, 'Booking id'); const now = new Date();
     await db.transaction(async (tx) => {
@@ -314,10 +323,12 @@ export class BookingController {
     const vendor = (await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
     if (!vendor) throw new AppError('vendor_required', 'A vendor profile is required', 403);
     const { page, limit, offset } = pagination(request);
+    const cursor = parsePaginationCursor(request.query.cursor);
     const condition = eq(bookings.vendorId, vendor.id);
     const total = (await db.select({ total: count() }).from(bookings).where(condition))[0]?.total ?? 0;
-    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(condition).orderBy(desc(bookings.createdAt), desc(bookings.id)).limit(limit).offset(offset);
-    response.json({ bookings: rows.map(mapBooking), pagination: { page, limit, total, has_more: offset + rows.length < total } });
+    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(and(condition, cursor ? or(lt(bookings.createdAt, cursor.createdAt), and(eq(bookings.createdAt, cursor.createdAt), lt(bookings.id, cursor.id))) : undefined)).orderBy(desc(bookings.createdAt), desc(bookings.id)).limit(limit + 1).offset(cursor ? 0 : offset);
+    const pageRows = rows.slice(0, limit);
+    response.json({ bookings: pageRows.map(mapBooking), pagination: { page, limit, total, has_more: rows.length > limit, next_cursor: rows.length > limit ? nextPaginationCursor(pageRows.at(-1)?.booking) : null } });
   };
   detail = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);

@@ -430,13 +430,13 @@ export default function AddGround() {
   );
 
   if (step === 4 && completedGround) {
-    return <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
+    return <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
       <StatusBar barStyle="light-content" backgroundColor="#10120F" />
       <View className="flex-1 px-6 items-center justify-center"><View className="h-20 w-20 rounded-full bg-[#17301B] border border-[#42B84F] items-center justify-center"><Ionicons name="shield-checkmark" size={42} color="#57CC63" /></View><Text style={{ fontFamily: "BigShouldersDisplay_800ExtraBold", fontSize: 29 }} className="text-[#F5F5F0] mt-7 text-center">GROUND DETAILS SAVED</Text><Text className="text-[#AFAFA9] text-center text-[15px] leading-6 mt-3">One quick verification step remains before {completedGround.title} can be reviewed and listed to players.</Text><View className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 w-full mt-6"><Text className="text-[#57CC63] font-bold">Verification required</Text><Text className="text-[#A8C9AC] text-sm mt-1">Tell us your relationship to the ground and upload the relevant proof securely.</Text></View><TouchableOpacity accessibilityRole="button" onPress={() => router.replace({ pathname: "/(vendor)/ground-verification", params: { id: completedGround.id } })} className="w-full bg-[#42B84F] rounded-full py-4 items-center mt-6"><Text className="text-[#102110] font-bold">Continue to verification</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => router.replace("/(vendor)/grounds")} className="py-4 mt-2"><Text className="text-[#D5D8D1] font-semibold">Finish later</Text></TouchableOpacity></View><Toast message={toast} tone="error" onHide={() => setToast(null)} /></SafeAreaView>;
   }
 
   return (
-    <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#10120F]">
+    <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
       <StatusBar barStyle="light-content" backgroundColor="#10120F" />
       <ScrollView
         className="flex-1 px-6"

@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Modal, PanResponder, Pressable, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BottomSheetBackdrop, BottomSheetModal, BottomSheetView } from '@gorhom/bottom-sheet';
 import { useAppearanceStore } from '@/store/appearanceStore';
 import { playerThemes } from '@/theme/playerTheme';
 
@@ -27,39 +28,49 @@ export function AppDialogHost() {
   const theme = playerThemes[appearance];
   const [request, setRequest] = useState<DialogRequest | null>(null);
   const [busy, setBusy] = useState(false);
-  const sheetTranslateY = useRef(new Animated.Value(0)).current;
+  const sheetRef = useRef<BottomSheetModal>(null);
+  const snapPoints = useMemo(() => ['42%', '70%'], []);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     listener = setRequest;
     return () => { listener = null; };
   }, []);
 
+  useEffect(() => {
+    if (request) sheetRef.current?.present();
+  }, [request]);
+
   const actions = request?.actions?.length ? request.actions : [{ text: 'OK' }];
-  const dismiss = () => { if (!busy) { sheetTranslateY.setValue(0); setRequest(null); } };
   const select = async (action: AppDialogAction) => {
     if (busy) return;
     setBusy(true);
-    setRequest(null);
-    try { await action.onPress?.(); } finally { setBusy(false); }
+    sheetRef.current?.dismiss();
+    try { await action.onPress?.(); } finally { setBusy(false); setRequest(null); }
   };
   const destructive = actions.some((action) => action.style === 'destructive');
-  const sheetPan = PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
-    onMoveShouldSetPanResponderCapture: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
-    onPanResponderTerminationRequest: () => false,
-    onPanResponderMove: (_, gesture) => sheetTranslateY.setValue(Math.max(0, gesture.dy)),
-    onPanResponderRelease: (_, gesture) => {
-      if (gesture.dy > 110 || gesture.vy > 1.25) dismiss();
-      else Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true }).start();
-    },
-  });
+  const renderBackdrop = useCallback(
+    (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
+      <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} pressBehavior="close" opacity={0.65} />
+    ),
+    [],
+  );
 
-  return <Modal visible={Boolean(request)} transparent animationType="slide" onRequestClose={dismiss}>
-    <View className="flex-1 justify-end bg-black/65">
-      <Pressable className="absolute inset-0" onPress={dismiss} accessibilityLabel="Close dialog" />
-      <Animated.View {...sheetPan.panHandlers} style={{ transform: [{ translateY: sheetTranslateY }] }}>
-      <SafeAreaView edges={['bottom']} accessibilityRole="alert" className="w-full rounded-t-[32px] border-t px-6 pt-3" style={{ elevation: 14, backgroundColor: theme.surfaceRaised, borderTopColor: theme.border }}>
-        <View className="h-8 items-center justify-center -mt-3"><View className="h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.muted }} /></View>
+  return <BottomSheetModal
+    ref={sheetRef}
+    index={0}
+    snapPoints={snapPoints}
+    enableDynamicSizing={false}
+    enablePanDownToClose
+    keyboardBehavior="interactive"
+    keyboardBlurBehavior="restore"
+    backdropComponent={renderBackdrop}
+    onDismiss={() => { if (!busy) setRequest(null); }}
+    backgroundStyle={{ backgroundColor: theme.surfaceRaised }}
+    handleIndicatorStyle={{ backgroundColor: theme.muted, width: 48 }}
+    topInset={insets.top}
+  >
+    <BottomSheetView accessibilityRole="alert" className="flex-1 border-t px-6" style={{ paddingBottom: Math.max(insets.bottom, 16), borderTopColor: theme.border }}>
         <View className="mt-6 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: destructive ? (appearance === 'dark' ? '#3A211E' : '#FCE9E7') : theme.businessSurface }}>
           <Ionicons name={destructive ? 'warning-outline' : 'information-circle-outline'} size={27} color={destructive ? '#FF5A55' : '#3DB54A'} />
         </View>
@@ -74,8 +85,6 @@ export function AppDialogHost() {
             </Pressable>;
           })}
         </View>
-      </SafeAreaView>
-      </Animated.View>
-    </View>
-  </Modal>;
+    </BottomSheetView>
+  </BottomSheetModal>;
 }

@@ -349,30 +349,30 @@ export default function VendorEarnings() {
             });
             const status = selectedEntry.status === "posted" ? "Available" : selectedEntry.status === "reversed" ? "Reversed" : "Pending";
             return (
-              <View className="bg-white rounded-t-3xl px-6 pt-5 pb-9">
+              <View className="bg-[#1B1F19] border-t border-[#30372B] rounded-t-3xl px-6 pt-5 pb-9">
                 <View className="flex-row items-center justify-between">
-                  <Text className="text-xl font-bold text-[#1A1A2E]">Transaction details</Text>
+                  <Text className="text-xl font-bold text-[#F5F5F0]">Transaction details</Text>
                   <TouchableOpacity
                     accessibilityRole="button"
                     accessibilityLabel="Close transaction details"
                     onPress={() => setSelectedEntry(null)}
-                    className="h-11 w-11 items-center justify-center rounded-full bg-[#F5F5F5]"
+                    className="h-11 w-11 items-center justify-center rounded-full bg-[#252A22]"
                   >
-                    <Ionicons name="close" size={22} color="#1A1A2E" />
+                    <Ionicons name="close" size={22} color="#F5F5F0" />
                   </TouchableOpacity>
                 </View>
-                <View className="mt-5 rounded-2xl bg-[#F8F9FA] p-4">
+                <View className="mt-5 rounded-2xl bg-[#252A22] p-4">
                   <Text style={{ color: copy.color }} className="text-2xl font-bold">
                     {selectedEntry.amount < 0 ? "−" : "+"}{money(selectedEntry.amount)}
                   </Text>
-                  <Text className="mt-1 text-sm font-bold text-[#1A1A2E]">{copy.title}</Text>
-                  <Text className="mt-1 text-sm leading-5 text-[#5F6368]">{copy.detail}</Text>
+                  <Text className="mt-1 text-sm font-bold text-[#F5F5F0]">{copy.title}</Text>
+                  <Text className="mt-1 text-sm leading-5 text-[#AFAFA9]">{copy.detail}</Text>
                 </View>
                 <View className="mt-5 gap-4">
-                  <View><Text className="text-xs font-bold text-[#737373]">GROUND</Text><Text className="mt-1 text-base text-[#1A1A2E]">{selectedEntry.ground_title}</Text></View>
-                  <View><Text className="text-xs font-bold text-[#737373]">BOOKING</Text><Text className="mt-1 text-base text-[#1A1A2E]">#{selectedEntry.booking_number}</Text></View>
+                  <View><Text className="text-xs font-bold text-[#92978F]">GROUND</Text><Text className="mt-1 text-base text-[#F5F5F0]">{selectedEntry.ground_title}</Text></View>
+                  <View><Text className="text-xs font-bold text-[#92978F]">BOOKING</Text><Text className="mt-1 text-base text-[#F5F5F0]">#{selectedEntry.booking_number}</Text></View>
                   <View><Text className="text-xs font-bold text-[#737373]">STATUS</Text><Text style={{ color: copy.color }} className="mt-1 text-base font-bold">{status}</Text></View>
-                  <View><Text className="text-xs font-bold text-[#737373]">RECORDED</Text><Text className="mt-1 text-base text-[#1A1A2E]">{date}</Text></View>
+                  <View><Text className="text-xs font-bold text-[#92978F]">RECORDED</Text><Text className="mt-1 text-base text-[#F5F5F0]">{date}</Text></View>
                 </View>
               </View>
             );

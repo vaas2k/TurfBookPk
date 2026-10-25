@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BookingProfile } from '@/types/booking';
 
 export const isExpoGoRuntime = (Constants as any).executionEnvironment === 'storeClient' || (Constants as any).appOwnership === 'expo';
-export type NotificationNavigationData = { bookingId?: string; groundId?: string; ground_id?: string; destination?: 'vendor_verification' | 'ground_verification'; area?: string; action?: string };
+export type NotificationNavigationData = { bookingId?: string; paymentId?: string; groundId?: string; ground_id?: string; destination?: 'vendor_verification' | 'ground_verification'; area?: string; action?: string };
 
 if (!isExpoGoRuntime) {
   Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: true }) });
@@ -41,7 +41,7 @@ export function listenForNotificationResponses(onOpen: (data: NotificationNaviga
   if (isExpoGoRuntime) return () => undefined;
   const open = (response: Notifications.NotificationResponse) => {
     const data = response.notification.request.content.data as NotificationNavigationData | undefined;
-    if (data && (typeof data.bookingId === 'string' || data.destination === 'vendor_verification' || data.destination === 'ground_verification')) onOpen(data);
+    if (data && (typeof data.bookingId === 'string' || typeof data.paymentId === 'string' || data.destination === 'vendor_verification' || data.destination === 'ground_verification')) onOpen(data);
   };
   const subscription = Notifications.addNotificationResponseReceivedListener(open);
   void Notifications.getLastNotificationResponseAsync().then((response) => {

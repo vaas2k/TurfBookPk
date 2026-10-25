@@ -68,8 +68,7 @@ export default function NearbyGroundsScreen() {
                 ground,
               )
             : null,
-        }))
-        .filter((item) => item.slots > 0);
+        }));
       data.sort((a, b) =>
         a.distance === null
           ? 1
@@ -108,7 +107,7 @@ export default function NearbyGroundsScreen() {
             NEAR YOU
           </Text>
           <Text className="text-[#AFAFA9] text-[11px]">
-            Closest grounds with slots today
+            Closest grounds, sorted by distance
           </Text>
         </View>
       </View>
@@ -124,7 +123,7 @@ export default function NearbyGroundsScreen() {
             contentContainerStyle={{ padding: 20, paddingTop: 8 }}
             showsVerticalScrollIndicator={false}
             ListHeaderComponent={locationDenied ? <Text className="text-[#E5B85B] text-xs mb-3">Allow location to sort these grounds by distance.</Text> : null}
-            ListEmptyComponent={<Text className="text-[#AFAFA9] text-sm text-center py-16">No nearby grounds have slots today.</Text>}
+            ListEmptyComponent={<Text className="text-[#AFAFA9] text-sm text-center py-16">No approved grounds were found nearby.</Text>}
             renderItem={({ item: { ground, distance: km, slots } }) => (
             <TouchableOpacity
               accessibilityRole="button"
@@ -164,8 +163,12 @@ export default function NearbyGroundsScreen() {
                 </View>
                 <Text className="text-[#59C462] text-xs">
                   {km === null
-                    ? `${slots} slots today`
-                    : `${km.toFixed(1)} km away · ${slots} today`}
+                    ? slots > 0
+                      ? `${slots} slots today`
+                      : "No slots left today"
+                    : `${km.toFixed(1)} km away · ${
+                        slots > 0 ? `${slots} today` : "none left today"
+                      }`}
                 </Text>
               </View>
             </TouchableOpacity>

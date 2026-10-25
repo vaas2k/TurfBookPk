@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
-  Modal,
-  PanResponder,
-  Pressable,
   RefreshControl,
   ScrollView,
   Text,
@@ -22,6 +18,11 @@ import { Toast } from "@/components/ui/toast";
 import * as Location from "expo-location";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { playerThemes } from "@/theme/playerTheme";
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetScrollView,
+} from "@gorhom/bottom-sheet";
 
 type Sort = "recommended" | "price_low" | "price_high" | "rating";
 const MAX_PRICE = 20_000;
@@ -84,7 +85,8 @@ export default function SearchScreen() {
     longitude: number;
   } | null>(null);
   const [locating, setLocating] = useState(false);
-  const filterSheetTranslateY = useRef(new Animated.Value(0)).current;
+  const filterSheetRef = useRef<BottomSheetModal>(null);
+  const filterSnapPoints = useMemo(() => ["55%", "90%"], []);
 
   const load = useCallback(
     async (refresh = false, nextPage = 1) => {
@@ -170,29 +172,27 @@ export default function SearchScreen() {
             availableSlots,
             lowestPrice: availableSlots.length
               ? Math.min(...availableSlots.map((slot) => slot.price))
-              : null,
+              : ground.price_per_hour,
           };
         })
         .filter(
-          ({ ground, availableSlots, lowestPrice }) =>
+          ({ ground, lowestPrice }) =>
             queryMatches(ground, query) &&
             (pitchType === "All" || ground.pitch_type === pitchType) &&
             selectedAmenities.every((amenity) =>
               ground.amenities.includes(amenity),
             ) &&
-            availableSlots.length > 0 &&
-            lowestPrice !== null &&
             lowestPrice <= maxPrice,
         )
         .sort((a, b) =>
           sort === "price_low"
-            ? a.lowestPrice! - b.lowestPrice!
+            ? a.lowestPrice - b.lowestPrice
             : sort === "price_high"
-              ? b.lowestPrice! - a.lowestPrice!
+              ? b.lowestPrice - a.lowestPrice
               : sort === "rating"
                 ? b.ground.rating - a.ground.rating
                 : b.ground.rating - a.ground.rating ||
-                  a.lowestPrice! - b.lowestPrice!,
+                  a.lowestPrice - b.lowestPrice,
         ),
     [
       grounds,
@@ -276,22 +276,23 @@ export default function SearchScreen() {
       setLocating(false);
     }
   };
-  const closeFilters = () => {
-    Animated.timing(filterSheetTranslateY, { toValue: 500, duration: 180, useNativeDriver: true }).start(() => {
-      filterSheetTranslateY.setValue(0);
-      setShowFilters(false);
-    });
+  const openFilters = () => {
+    setShowFilters(true);
+    filterSheetRef.current?.present();
   };
-  const filterSheetPan = PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
-    onMoveShouldSetPanResponderCapture: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
-    onPanResponderTerminationRequest: () => false,
-    onPanResponderMove: (_, gesture) => filterSheetTranslateY.setValue(Math.max(0, gesture.dy)),
-    onPanResponderRelease: (_, gesture) => {
-      if (gesture.dy > 110 || gesture.vy > 1.25) closeFilters();
-      else Animated.spring(filterSheetTranslateY, { toValue: 0, useNativeDriver: true }).start();
-    },
-  });
+  const closeFilters = () => filterSheetRef.current?.dismiss();
+  const renderFilterBackdrop = useCallback(
+    (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        pressBehavior="close"
+        opacity={0.7}
+      />
+    ),
+    [],
+  );
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1" style={{ backgroundColor: theme.canvas }}>
@@ -348,7 +349,7 @@ export default function SearchScreen() {
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Open filters"
-            onPress={() => setShowFilters((value) => !value)}
+            onPress={showFilters ? closeFilters : openFilters}
             className={`ml-3 h-[50px] w-[50px] rounded-xl items-center justify-center ${showFilters || activeFilters ? "bg-[#3DB54A]" : "bg-[#181C16] border border-[#30372B]"}`}
             style={showFilters || activeFilters ? { backgroundColor: theme.green } : { backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
           >
@@ -363,13 +364,20 @@ export default function SearchScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      {showFilters && (
-        <Modal transparent animationType="slide" visible={showFilters} onRequestClose={closeFilters}>
-          <View className="flex-1 justify-end bg-black/70">
-            <Pressable className="absolute inset-0" onPress={closeFilters} accessibilityLabel="Close filters" />
-            <Animated.View {...filterSheetPan.panHandlers} style={{ transform: [{ translateY: filterSheetTranslateY }], backgroundColor: theme.surfaceRaised, borderTopColor: theme.border }} className="max-h-[82%] rounded-t-[30px] border-t pt-3">
-              <View className="h-8 items-center justify-center -mt-3 mb-1"><View className="h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.muted }} /></View>
-        <ScrollView className="px-5" contentContainerStyle={{ paddingBottom: 18 }} showsVerticalScrollIndicator={false}>
+      <BottomSheetModal
+        ref={filterSheetRef}
+        index={0}
+        snapPoints={filterSnapPoints}
+        enableDynamicSizing={false}
+        enablePanDownToClose
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        backdropComponent={renderFilterBackdrop}
+        onDismiss={() => setShowFilters(false)}
+        backgroundStyle={{ backgroundColor: theme.surfaceRaised }}
+        handleIndicatorStyle={{ backgroundColor: theme.muted, width: 48 }}
+      >
+        <BottomSheetScrollView className="px-5" contentContainerStyle={{ paddingBottom: 28 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View className="flex-row justify-between items-center">
             <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 23, color: theme.text }}>FILTERS</Text>
             <TouchableOpacity onPress={clear} className="px-2 py-2">
@@ -516,14 +524,11 @@ export default function SearchScreen() {
               </TouchableOpacity>
             ))}
           </View>
-        </ScrollView>
-        <View className="border-t px-5 py-4" style={{ borderTopColor: theme.border }}>
+        <View className="border-t pt-4 mt-2" style={{ borderTopColor: theme.border }}>
           <TouchableOpacity accessibilityRole="button" onPress={closeFilters} className="rounded-full py-4 items-center" style={{ backgroundColor: theme.green }}><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-white text-base">Show {results.length} ground{results.length === 1 ? '' : 's'}</Text></TouchableOpacity>
         </View>
-            </Animated.View>
-          </View>
-        </Modal>
-      )}
+        </BottomSheetScrollView>
+      </BottomSheetModal>
       <ScrollView
         className="flex-1 px-5 pt-4"
         removeClippedSubviews
@@ -540,7 +545,7 @@ export default function SearchScreen() {
         <Text style={{ color: theme.subtle }} className="text-sm mb-3">
           {loading
             ? "Finding grounds..."
-            : `${results.length} available ${results.length === 1 ? "ground" : "grounds"} on ${selectedDate}`}
+            : `${results.length} ${results.length === 1 ? "ground" : "grounds"} · availability for ${selectedDate}`}
         </Text>
         {loading ? (
           <ActivityIndicator className="mt-10" color={theme.green} />
@@ -550,7 +555,7 @@ export default function SearchScreen() {
           <View className="border rounded-2xl p-8 items-center mt-3" style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}>
             <Ionicons name="search-outline" size={40} color={theme.muted} />
             <Text style={{ color: theme.text }} className="font-bold text-lg mt-3">
-              No matching availability
+              No matching grounds
             </Text>
             <Text style={{ color: theme.subtle }} className="text-center text-sm mt-2">
               Try another date, remove a filter, or search a different city or
@@ -624,11 +629,13 @@ export default function SearchScreen() {
                 <View className="flex-row justify-between items-end mt-4 pt-3 border-t" style={{ borderTopColor: theme.border }}>
                   <View>
                     <Text style={{ color: theme.green }} className="font-bold">
-                      From PKR {lowestPrice!.toLocaleString()}
+                      From PKR {lowestPrice.toLocaleString()}
                     </Text>
                     <Text style={{ color: theme.subtle }} className="text-xs mt-1">
-                      {availableSlots.length} slots available ·{" "}
-                      {ground.pitch_type || "Turf"}
+                      {availableSlots.length > 0
+                        ? `${availableSlots.length} slots available`
+                        : "No slots on this date"}{" "}
+                      · {ground.pitch_type || "Turf"}
                     </Text>
                     {userLocation &&
                       distanceKm(userLocation, ground) !== null && (

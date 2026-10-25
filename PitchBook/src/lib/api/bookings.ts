@@ -90,3 +90,25 @@ export async function markBookingCompleted(id: string): Promise<BookingProfile> 
   const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}/complete`, { method: 'PATCH', data: {} });
   return result.booking;
 }
+
+export type PaymentBillingProfile = { full_name: string; masked_cnic: string; billing_address: string; email: string; phone: string; consented_at: string };
+export type PaymentAttempt = { id: string; booking_id: string | null; order_id: string | null; provider: string; status: string; provider_status: string; amount: number; service_charge: number | null; final_payable_amount: number | null; clink_id: string | null; consumer_number: string | null; provider_due_date: string | null; expires_at: string | null; paid_at: string | null; review_status: string; provider_error: string | null; manual_acknowledgment_test_enabled: boolean };
+
+export async function getPaymentBillingProfile(): Promise<PaymentBillingProfile | null> {
+  return (await apiRequest<{ billing_profile: PaymentBillingProfile | null }>('/payments/billing-profile')).billing_profile;
+}
+export async function savePaymentBillingProfile(input: { full_name: string; cnic: string; billing_address: string; email: string; phone: string }): Promise<PaymentBillingProfile> {
+  return (await apiRequest<{ billing_profile: PaymentBillingProfile }>('/payments/billing-profile', { method: 'PUT', data: { ...input, consent: true } })).billing_profile;
+}
+export async function generateClinkReference(target: { booking_id?: string; order_id?: string }): Promise<{ payment: PaymentAttempt; fee_notice?: string }> {
+  return apiRequest('/payments/references', { method: 'POST', data: target });
+}
+export async function getPaymentAttempt(id: string): Promise<PaymentAttempt> {
+  return (await apiRequest<{ payment: PaymentAttempt }>(`/payments/${id}`)).payment;
+}
+export async function getBookingPaymentAttempt(bookingId: string): Promise<PaymentAttempt | null> {
+  return (await apiRequest<{ payment: PaymentAttempt | null }>(`/payments/booking/${bookingId}`)).payment;
+}
+export async function getPaymentConfiguration(): Promise<{ provider: string; environment: string; available: boolean; manual_acknowledgment_test_enabled: boolean }> {
+  return apiRequest('/payments/configuration');
+}

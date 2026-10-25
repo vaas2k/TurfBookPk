@@ -156,6 +156,8 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 ## P2 - Marketplace functionality
 
 - [ ] Integrate real payment providers with verified server-side webhooks.
+- [x] Implement the sandbox-only Clink 1-Bill reference, encrypted billing-profile, local hold, acknowledgment, reconciliation-event, player instruction/status, and admin manual-review flow. Live mode remains hard-blocked pending the provider's signed callback/refund/settlement contract.
+- [ ] Complete real Clink sandbox testing through a public HTTPS callback URL and obtain written answers in `docs/payment-gateway/` before enabling production.
 - [ ] Add payment reconciliation, refund processing, and partial refunds.
 - [ ] Add vendor payout requests and payout history.
 - [ ] Implement map rendering, geolocation, distance calculation, and nearby-ground discovery.
@@ -190,11 +192,11 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 
 - [ ] Commit an ESLint configuration and make `npm run lint` deterministic/offline-capable after install.
 - [x] Add CI checks for TypeScript, lint, tests, migrations, and Expo configuration.
-- [ ] Add structured logs and request IDs with token, OTP, and phone-number redaction.
+- [x] Add structured logs and request IDs with token, OTP, and phone-number redaction.
 - [ ] Add production error monitoring, tracing, and operational metrics.
-- [ ] Add database backup, restore, and migration rollback procedures.
-- [ ] Document the canonical timezone as `Asia/Karachi` across API, database, and UI behavior.
-- [ ] Define privacy, data-retention, cancellation, refund, and vendor payout policies.
+- [x] Add database backup, restore, and migration rollback procedures.
+- [x] Document the canonical timezone as `Asia/Karachi` across API, database, and UI behavior.
+- [x] Define privacy, data-retention, cancellation, refund, and vendor payout policy boundaries. (Operational runbook documents implemented boundaries and explicitly records legal/provider decisions still required before public launch.)
 - [ ] Review vendor access to player phone numbers and apply masking/consent rules.
 - [ ] Remove stale Supabase configuration from Expo app config; the custom Express/PostgreSQL backend is authoritative.
 - [ ] Update `README.md` and `AGENTS.md` when implementation changes make documented limitations stale.

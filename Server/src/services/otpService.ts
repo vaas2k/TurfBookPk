@@ -2,6 +2,7 @@ import { createHash, randomInt } from 'node:crypto';
 import { env } from '../configs/env.js';
 import { AppError } from '../helpers/errors.js';
 import { AuthRepository } from '../database/authRepository.js';
+import { logEvent } from './operationalLogger.js';
 
 function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -50,7 +51,7 @@ export class OtpService {
     });
 
     if (env.nodeEnv !== 'production') {
-      console.info('[OTP][development] Verification code issued');
+      logEvent('info', 'otp_issued_development');
     }
   }
 

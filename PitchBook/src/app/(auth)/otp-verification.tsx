@@ -154,6 +154,7 @@ export default function OTPVerificationScreen() {
                 otp[index] ? 'border-[#3EAF4C]' : 'border-[#34382E]'
               }`}
               maxLength={1}
+              accessibilityLabel={`Verification code digit ${index + 1} of 6`}
               keyboardType="number-pad"
               value={otp[index]}
               onChangeText={text => handleChange(text, index)}
@@ -173,6 +174,9 @@ export default function OTPVerificationScreen() {
 
         {canResend && (
           <TouchableOpacity 
+            accessibilityRole="button"
+            accessibilityLabel="Resend verification code"
+            accessibilityState={{ disabled: isLoading || isVerifying, busy: isLoading }}
             className="mt-2" 
             onPress={handleResend}
             disabled={isLoading || isVerifying}
@@ -183,12 +187,15 @@ export default function OTPVerificationScreen() {
         )}
 
         {error && (
-          <View className="mt-4 bg-red-50 rounded-xl p-3 border border-red-200">
+          <View className="mt-4 bg-red-50 rounded-xl p-3 border border-red-200" accessibilityRole="alert">
             <Text className="text-red-500 text-center text-sm">{error.message}</Text>
           </View>
         )}
 
         <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Verify code"
+          accessibilityState={{ disabled: !isComplete || isVerifying, busy: isVerifying }}
           className={`py-4 rounded-full mt-6 ${isComplete ? 'bg-[#3EAF4C]' : 'bg-[#34382E]'}`}
           style={isComplete ? { 
             shadowColor: '#4CAF50', 

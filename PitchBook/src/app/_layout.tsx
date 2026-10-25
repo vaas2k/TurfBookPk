@@ -16,6 +16,9 @@ import { colorScheme } from 'nativewind';
 import { listenForNotificationResponses, registerForPushNotifications } from '@/lib/notifications';
 import { registerPushToken } from '@/lib/api/notifications';
 import { preloadHomeFeedCache } from '@/lib/home-feed-cache';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import { DarkTheme, ThemeProvider } from 'expo-router/react-navigation';
 
 //@ts-ignore
 import '../global.css';
@@ -24,6 +27,19 @@ const TextWithDefaults = Text as typeof Text & { defaultProps?: { style?: unknow
 TextWithDefaults.defaultProps = {
   ...TextWithDefaults.defaultProps,
   style: [{ fontFamily: 'SpaceGrotesk_400Regular' }, TextWithDefaults.defaultProps?.style],
+};
+
+const turfBookNavigationTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    primary: '#3DB54A',
+    background: '#10120F',
+    card: '#181C16',
+    text: '#F8F7F0',
+    border: '#30372B',
+    notification: '#DC2626',
+  },
 };
 
 export default function RootLayout() {
@@ -83,6 +99,10 @@ export default function RootLayout() {
       if (active && token) await registerPushToken(token, Platform.OS);
     }).catch(() => undefined);
     return listenForNotificationResponses((data) => {
+      if (data.paymentId && currentRole !== 'vendor') {
+        router.push({ pathname: '/(player)/payment-instructions', params: { paymentId: data.paymentId } } as never);
+        return;
+      }
       if (data.destination === 'vendor_verification') {
         router.push('/(player)/profile?openVendorVerification=1' as never);
         return;
@@ -111,17 +131,23 @@ export default function RootLayout() {
 
   if (!fontsLoaded || !isReady) {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
+      <View className="flex-1 items-center justify-center bg-[#10120F]">
         <ActivityIndicator size="large" color="#4CAF50" />
       </View>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style={appearance === 'dark' ? 'light' : 'dark'} />
-      <Slot />
-      <AppDialogHost />
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#10120F' }}>
+      <SafeAreaProvider style={{ flex: 1, backgroundColor: '#10120F' }}>
+        <ThemeProvider value={turfBookNavigationTheme}>
+          <BottomSheetModalProvider>
+            <StatusBar style="light" />
+            <Slot />
+            <AppDialogHost />
+          </BottomSheetModalProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

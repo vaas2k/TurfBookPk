@@ -1,6 +1,5 @@
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { appDialog } from '@/components/ui/app-dialog';

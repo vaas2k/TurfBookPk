@@ -11,3 +11,9 @@ test('slot overlap and invalid-state database constraints become client conflict
   assert.equal(invalidState?.statusCode, 409);
   assert.equal(invalidState?.code, 'invalid_slot_state');
 });
+
+test('wrapped billing CNIC conflicts return a safe client error', () => {
+  const result = databaseConstraintError({ cause: { code: '23505', constraint_name: 'payment_billing_profiles_cnic_hash_unique' } });
+  assert.equal(result?.code, 'billing_identity_in_use');
+  assert.equal(result?.statusCode, 409);
+});

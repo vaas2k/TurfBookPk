@@ -1,9 +1,10 @@
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, lt, or } from 'drizzle-orm';
 import { Response } from 'express';
 import { db } from '../database/client.js';
 import { notifications, pushTokens } from '../database/schema.js';
 import { AppError } from '../helpers/errors.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
+import { nextPaginationCursor, parsePaginationCursor } from '../services/paginationCursor.js';
 
 function notificationId(value: string | string[] | undefined): string {
   if (typeof value !== 'string' || !value) throw new AppError('invalid_request', 'Notification id is required', 422);
@@ -35,14 +36,16 @@ export class NotificationController {
   list = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const { page, limit, offset } = pagination(request);
+    const cursor = parsePaginationCursor(request.query.cursor);
     const condition = eq(notifications.userId, request.auth.userId);
     const total = (await db.select({ total: count() }).from(notifications).where(condition))[0]?.total ?? 0;
     const rows = await db.select().from(notifications)
-      .where(condition)
+      .where(and(condition, cursor ? or(lt(notifications.createdAt, cursor.createdAt), and(eq(notifications.createdAt, cursor.createdAt), lt(notifications.id, cursor.id))) : undefined))
       .orderBy(desc(notifications.createdAt), desc(notifications.id))
-      .limit(limit).offset(offset);
+      .limit(limit + 1).offset(cursor ? 0 : offset);
     const unreadCount = (await db.select({ unreadCount: count() }).from(notifications).where(and(condition, eq(notifications.isRead, false))))[0]?.unreadCount ?? 0;
-    response.json({ notifications: rows, unread_count: unreadCount, pagination: { page, limit, total, has_more: offset + rows.length < total } });
+    const pageRows = rows.slice(0, limit);
+    response.json({ notifications: pageRows, unread_count: unreadCount, pagination: { page, limit, total, has_more: rows.length > limit, next_cursor: rows.length > limit ? nextPaginationCursor(pageRows.at(-1)) : null } });
   };
 
   markRead = async (request: AuthenticatedRequest, response: Response): Promise<void> => {

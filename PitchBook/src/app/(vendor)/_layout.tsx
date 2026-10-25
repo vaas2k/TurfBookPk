@@ -52,7 +52,9 @@ function VendorTabBar() {
 
   const handlePress = (route: string) => {
     if (!isActive(route)) {
-      router.replace(route as any);
+      // Preserve mounted tab screens and avoid exposing the native transition
+      // surface while a tab is torn down and recreated.
+      router.navigate(route as any);
     }
   };
 
@@ -114,7 +116,7 @@ export default function VendorLayout() {
     void checkVendorStatus(user.id).then(({ isVendor: approved }) => {
       if (!approved) router.replace('/(player)/profile');
     });
-  }, [user?.id, checkVendorStatus]);
+  }, [user, checkVendorStatus]);
 
   if (!isVendor) {
     return <View className="flex-1 bg-[#10120F] items-center justify-center">{isLoading ? <Text className="text-[#E5E7E1]">Checking vendor verification…</Text> : null}</View>;
@@ -126,6 +128,9 @@ export default function VendorLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: "#10120F" },
+          animation: "slide_from_right",
+          animationMatchesGesture: true,
+          fullScreenGestureEnabled: true,
         }}
       >
         <Stack.Screen name="index" />

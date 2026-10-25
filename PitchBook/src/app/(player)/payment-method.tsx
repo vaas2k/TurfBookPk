@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { formatTimeRange12 } from '@/lib/time';
-import { confirmMockBooking, confirmMockBookingOrder, createBooking, createBookingOrder } from '@/lib/api/bookings';
+import { createBooking, createBookingOrder, generateClinkReference, getPaymentBillingProfile, getPaymentConfiguration, PaymentBillingProfile, savePaymentBillingProfile } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { goBackOrReplace } from '@/lib/navigation';
 
@@ -45,8 +45,9 @@ export default function PaymentMethodScreen() {
     cancellationPolicy?: 'lenient' | 'standard' | 'strict';
   }>();
 
-  const [reference, setReference] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'jazzcash' | 'easypaisa' | 'bank'>('jazzcash');
+  const [savedProfile, setSavedProfile] = useState<PaymentBillingProfile | null>(null);
+  const [editBilling, setEditBilling] = useState(false);
+  const [billing, setBilling] = useState({ full_name: '', cnic: '', billing_address: '', email: '', phone: '' });
   const [loading, setLoading] = useState(false);
   const [reserveFutureSlots, setReserveFutureSlots] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -76,36 +77,35 @@ export default function PaymentMethodScreen() {
     ? hoursUntilSlot >= 48 ? 100 : hoursUntilSlot >= 24 ? 70 : hoursUntilSlot >= 12 ? 50 : hoursUntilSlot >= 6 ? 30 : 0
     : hoursUntilSlot >= 24 ? 100 : hoursUntilSlot >= 12 ? 75 : hoursUntilSlot >= 6 ? 50 : cancellationPolicy === 'lenient' ? 25 : 0;
 
+  useEffect(() => { void getPaymentBillingProfile().then((profile) => { setSavedProfile(profile); if (profile) setBilling({ full_name: profile.full_name, cnic: '', billing_address: profile.billing_address, email: profile.email, phone: profile.phone }); else setEditBilling(true); }).catch(() => setEditBilling(true)); }, []);
+
   const handleConfirm = async () => {
     if (!slotIds.length) {
       setToast('The selected slots are missing. Please select them again.');
       return;
     }
+    if ((!savedProfile || editBilling) && !/^[1-9]\d{12}$/.test(billing.cnic.replace(/\D/g, ''))) {
+      setToast('Enter a valid 13-digit CNIC for 1-Bill.');
+      return;
+    }
+    if ((!savedProfile || editBilling) && !/^(?:\+?92|0)?3\d{9}$/.test(billing.phone.replace(/[\s-]/g, ''))) {
+      setToast('Enter a valid Pakistani mobile number for 1-Bill.');
+      return;
+    }
     setLoading(true);
     try {
+      const paymentConfiguration = await getPaymentConfiguration();
+      if (!paymentConfiguration.available) throw new Error('Clink sandbox is not configured on the server. No slot has been held.');
+      if (!savedProfile || editBilling) setSavedProfile(await savePaymentBillingProfile(billing));
       if (isMultiSlotOrder) {
         const order = await createBookingOrder(slotIds, idempotencyKey, reserveFutureSlots);
-        await confirmMockBookingOrder(order.id, reference.trim() || undefined);
-        router.replace('/(player)/bookings');
+        const { payment } = await generateClinkReference({ order_id: order.id });
+        router.replace({ pathname: '/(player)/payment-instructions', params: { paymentId: payment.id } });
         return;
       }
       const pendingBooking = await createBooking(slotIds[0]!, idempotencyKey);
-      const booking = await confirmMockBooking(pendingBooking.id, reference.trim() || undefined);
-
-      // 3. Navigate to booking confirmation screen with real persisted booking details
-      router.replace({
-        pathname: '/(player)/booking-confirmation',
-        params: {
-          bookingId: booking.id,
-          ground: booking.ground_title,
-          address: booking.ground_address,
-          date: booking.date,
-          startTime: booking.start_time,
-          endTime: booking.end_time,
-          amount: String(booking.total_amount),
-          bookingNumber: booking.booking_number,
-        },
-      });
+      const { payment } = await generateClinkReference({ booking_id: pendingBooking.id });
+      router.replace({ pathname: '/(player)/payment-instructions', params: { paymentId: payment.id } });
     } catch (error: any) {
       const msg = error?.message || 'This slot is no longer available. Please select another slot.';
       setToast(msg);
@@ -162,12 +162,13 @@ export default function PaymentMethodScreen() {
             </View>
           </View>
 
-          <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 20 }} className="text-[#BFC1B9] mb-4">SELECT PAYMENT METHOD</Text>
-          {[
-            { id: 'jazzcash' as const, title: 'JazzCash', subtitle: 'Mobile Wallet', initials: 'JC', color: '#F01E2C' },
-            { id: 'easypaisa' as const, title: 'Easypaisa', subtitle: 'Mobile Wallet', initials: 'EP', color: '#00AE5B' },
-            { id: 'bank' as const, title: 'Bank Transfer', subtitle: 'Direct bank payment', initials: '⌂', color: '#34382E' },
-          ].map((method) => <TouchableOpacity key={method.id} accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === method.id }} onPress={() => setPaymentMethod(method.id)} className={`rounded-[22px] p-4 mb-3 flex-row items-center border ${paymentMethod === method.id ? 'border-[#3DB54A] bg-[#1B2019]' : 'border-[#343A30] bg-[#181C16]'}`}><View style={{ backgroundColor: method.color }} className="w-14 h-14 rounded-full items-center justify-center"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-white text-lg">{method.initials}</Text></View><View className="flex-1 ml-4"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-[18px]">{method.title}</Text><Text className="text-[#AFAFA9] text-base mt-0.5">{method.subtitle}</Text></View><Ionicons name={paymentMethod === method.id ? 'radio-button-on' : 'radio-button-off'} size={31} color={paymentMethod === method.id ? '#3DB54A' : '#70766D'} /></TouchableOpacity>)}
+          <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 20 }} className="text-[#BFC1B9] mb-4">PAYMENT METHOD</Text>
+          <View className="rounded-[22px] p-4 mb-5 flex-row items-center border border-[#3DB54A] bg-[#181C16]"><View className="w-14 h-14 rounded-full items-center justify-center bg-[#19331D]"><Ionicons name="receipt-outline" size={26} color="#3DB54A" /></View><View className="flex-1 ml-4"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-[18px]">Pay through 1-Bill</Text><Text className="text-[#AFAFA9] text-sm mt-0.5">Use your supported bank or wallet app</Text></View><Ionicons name="checkmark-circle" size={30} color="#3DB54A" /></View>
+
+          <View className="rounded-[22px] p-4 mb-5 border border-[#343A30] bg-[#181C16]">
+            <View className="flex-row items-center justify-between mb-3"><View><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-base">Private payment profile</Text><Text className="text-[#AFAFA9] text-xs mt-1">Required by the payment provider</Text></View>{savedProfile && <TouchableOpacity onPress={() => setEditBilling((value) => !value)} accessibilityRole="button"><Text className="text-[#3DB54A] font-bold">{editBilling ? 'Use saved' : 'Edit'}</Text></TouchableOpacity>}</View>
+            {savedProfile && !editBilling ? <View className="bg-[#11150F] rounded-2xl p-4"><Text className="text-[#F8F7F0] font-semibold">{savedProfile.full_name}</Text><Text className="text-[#AFAFA9] text-sm mt-1">CNIC {savedProfile.masked_cnic}</Text><Text className="text-[#AFAFA9] text-sm mt-1">{savedProfile.phone} | {savedProfile.email}</Text></View> : <View className="gap-3">{([['full_name', 'Full payer name', 'default'], ['cnic', 'CNIC (13 digits)', 'number-pad'], ['phone', 'Mobile number', 'phone-pad'], ['email', 'Payment email', 'email-address'], ['billing_address', 'Billing address', 'default']] as const).map(([key, placeholder, keyboardType]) => <TextInput key={key} value={billing[key]} onChangeText={(value) => setBilling((current) => ({ ...current, [key]: value }))} placeholder={placeholder} placeholderTextColor="#747970" keyboardType={keyboardType} autoCapitalize={key === 'email' ? 'none' : 'sentences'} className="bg-[#11150F] border border-[#343A30] rounded-2xl px-4 py-3 text-[#F8F7F0]" />)}<Text className="text-[#8F948B] text-xs leading-5">Your CNIC and billing address are encrypted. Only payment processing can access their usable values.</Text></View>}
+          </View>
           <View className="mt-5"><View className="flex-row justify-between"><Text className="text-[#BFC1B9] text-lg">Slot Fee</Text><Text className="text-[#F8F7F0] text-lg">Rs {slotPrice.toLocaleString()}</Text></View><View className="flex-row justify-between mt-4"><Text className="text-[#BFC1B9] text-lg">Platform Fee</Text><Text className="text-[#F8F7F0] text-lg">Rs 0</Text></View><View className="flex-row justify-between mt-5 pt-5 border-t border-[#30372B]"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-xl">Total Amount</Text><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#3DB54A] text-[25px]">RS {dueNow.toLocaleString()}</Text></View></View>
           <View className="bg-[#1A2119] border border-[#315536] rounded-2xl p-4 mt-5"><View className="flex-row items-center"><Ionicons name="shield-checkmark-outline" size={19} color="#59C462" /><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F3F4EF] ml-2 text-sm">{cancellationPolicy[0].toUpperCase() + cancellationPolicy.slice(1)} cancellation policy</Text></View><Text className="text-[#AFAFA9] text-xs leading-5 mt-2">If you cancel after payment, the current estimate is {expectedRefundPercentage}% of the amount paid. You will have a {cancellationPolicy === 'lenient' ? 30 : cancellationPolicy === 'strict' ? 5 : 15}-minute full-refund grace window after booking.</Text></View>
 
@@ -177,24 +178,6 @@ export default function PaymentMethodScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Mock Payment Mode Card */}
-          <View className="hidden">
-            <View className="flex-row items-center">
-              <Ionicons name="card-outline" size={20} color="#B45309" />
-              <Text className="text-[#92400E] font-bold text-base ml-2">Mock Payment Mode</Text>
-            </View>
-            <Text className="text-[#92400E] text-xs mt-2 leading-4">
-              Development mode is currently active. Click confirm below to simulate instant payment and lock in your slot.
-            </Text>
-
-            <TextInput
-              className="bg-white rounded-xl px-4 py-3 mt-4 text-[#1A1A2E] text-sm border border-[#E5E5E5]"
-              placeholder="Optional payment reference or note"
-              placeholderTextColor="#A3A3A3"
-              value={reference}
-              onChangeText={setReference}
-            />
-          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -220,7 +203,7 @@ export default function PaymentMethodScreen() {
             <ActivityIndicator color="white" />
           ) : (
             <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-white text-xl">
-              {`Pay Rs ${dueNow.toLocaleString()}`}
+              Generate 1-Bill reference
             </Text>
           )}
         </TouchableOpacity>

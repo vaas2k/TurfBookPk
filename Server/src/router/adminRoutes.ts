@@ -23,6 +23,8 @@ export function createAdminRouter(controller: AdminController, tokenService: Tok
   router.get('/audit-logs', controller.auditLogs);
   router.get('/transactions', controller.listTransactions);
   router.get('/operations', controller.operations);
+  router.get('/operations/push-outbox/dead', controller.deadPushes);
+  router.post('/operations/push-outbox/:id/retry', controller.retryDeadPush);
   router.get('/refunds', controller.listRefunds);
   router.patch('/grounds/:id/activation', controller.setGroundActivation);
   router.get('/review-reports', controller.listReports);

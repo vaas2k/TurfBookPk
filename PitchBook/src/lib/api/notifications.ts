@@ -1,6 +1,6 @@
 import { apiRequest } from './client';
 
-export interface AppNotification { id: string; type: string; title: string; message: string; data?: { bookingId?: string; booking_id?: string; orderId?: string; order_id?: string; groundId?: string; ground_id?: string; destination?: 'vendor_verification' | 'ground_verification'; area?: string; action?: string } | null; isRead: boolean; createdAt: string; }
+export interface AppNotification { id: string; type: string; title: string; message: string; data?: { bookingId?: string; booking_id?: string; paymentId?: string; orderId?: string; order_id?: string; groundId?: string; ground_id?: string; destination?: 'vendor_verification' | 'ground_verification'; area?: string; action?: string } | null; isRead: boolean; createdAt: string; }
 
 export function notificationBookingId(item: AppNotification): string | null {
   const value = item.data?.bookingId ?? item.data?.booking_id;

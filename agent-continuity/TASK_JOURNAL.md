@@ -1719,3 +1719,35 @@
 ## 2026-10-05 - Booking start reminder
 
 - Added a third local booking reminder scheduled at the slot start time. It is stored with the existing 24-hour and one-hour reminder IDs, so the existing cancellation/rescheduling cleanup removes all three.
+
+## 2026-10-06 - Mobile cleanup, reliability, and accessibility pass
+
+- Removed the unreachable legacy player Home, vendor dashboard, duplicate ground-card, and outdated slot-editor implementations. Active screens now own the only rendered implementations, reducing startup parsing and duplicate network work.
+- Resolved all mobile lint warnings, including stale imports, duplicate imports, hook dependencies, and API-client Axios type checks.
+- Strengthened active first-run/error behavior with Home loading/retry states, and added screen-reader labels/states to OTP and phone authentication controls. Player profile editing now avoids the keyboard and preserves tap behavior while editing.
+## 2026-10-06 - Operations and security baseline
+
+- Added structured JSON server logging with per-request `X-Request-Id` correlation and safe redaction for sensitive field names, common bearer/JWT tokens, Expo tokens, Pakistani phone numbers, CNICs, and IBANs.
+- Replaced remaining server operational console output with structured events for database startup, development OTP issuance, and Expo push failures.
+- Added `Server/OPERATIONS.md` covering production log handling, alerting guidance, UTC/Pakistan-local time rules, PostgreSQL backup/restore drills, safe migration rollout, and privacy/access boundaries.
+- Deferred external error-monitoring delivery until a vetted provider and retention/access policy are selected; no arbitrary error webhook is enabled.
+
+## 2026-10-17 - Clink 1-Bill sandbox payment flow
+
+- Added a provider-neutral server payment path with a Clink sandbox adapter, fresh-token generation, unique TurfBookPK applicant references, 18-digit Clink IDs, derived 24-digit consumer numbers, and an explicit live-mode startup block.
+- Added encrypted private payer billing profiles, immutable acknowledgment events, 30-minute payment holds, 45-minute booking lead enforcement, safe regeneration, duplicate callback serialization, and paid-but-unallocated manual review for late acknowledgments.
+- Replaced the active player mock-payment checkout with 1-Bill profile/review and instruction screens containing QR/copy/countdown/status polling. Pending recurring reservations reuse the same flow, and payment notifications can deep-link to it.
+- Expanded admin transaction visibility to booking/order attempts, Clink references, provider states, expiry, and manual-review queues without exposing CNIC or billing addresses.
+- Added the provider-facing refund/cancellation and missing-technical-question documents under `docs/payment-gateway/`. Confidential provider files remain under ignored `credentials/`.
+- Added an authenticated, owner-scoped sandbox payment simulator because the provider's 1-Bill references cannot be paid from public bank applications before deployment. The mobile instruction screen exposes it only when the server explicitly enables unsigned Clink sandbox acknowledgments; it uses the same transactional confirmation, ledger, notification, and immutable-event path and is unavailable in live mode.
+- Applied migration `0023` locally and reran the complete server suite with PostgreSQL available: all 27 tests passed.
+- Added payment workflow observability: named structured events cover configuration, billing profile, token generation, reference generation, status checks, acknowledgment processing, duplicate callbacks, and sandbox simulation. Payment API responses now include a clear message, workflow stage, next action, and request ID; mobile errors surface these details. Provider payloads, tokens, credentials, CNICs, phone numbers, addresses, and full consumer references are not logged.
+- Manually contract-tested the live Clink sandbox URLs with deliberately invalid credentials: documented GET-with-form-body and POST token calls both return structured `invalid_grant`; generation without/with an invalid bearer returns structured HTTP 401. Updated the adapter to distinguish authentication failure and accept `Error_Msg`, `Error_detail`, and authorization `Message`. Results are documented in `docs/payment-gateway/API_CONTRACT_TEST_RESULTS.md` without confidential values.
+- Retested after Clink whitelisted the development IP: the issued credentials now return a bearer token successfully. A reference request with synthetic payer data is parsed but rejected because the document's Master Category and Challan Category are not valid for the issued client; Clink must activate those mappings or supply the assigned replacement identifiers.
+- Inspected the revised provider document and retested with its corrected fixed values, Client `1050` and Challan `105001`. The sandbox returned a valid 18-digit Clink ID, producing the expected 24-digit biller-prefixed consumer number. Updated server defaults and payload tests to the corrected mapping; no token, credentials, payer identity, or full reference was recorded.
+- Implemented the Clink v1.1 1-Bill expiration contract and reduced payment/slot holds to 15 minutes. Expired pending attempts are checked every 15 seconds; TurfBookPK obtains a fresh token, expires the provider bill, and only then releases the slot. The mobile shortcut no longer confirms payment: it waits for the public acknowledgment callback. Added sandbox-only failed-payment callback handling for terminal testing while retaining Clink's documented success payload. Live expiration verification remains pending renewed provider IP whitelisting.
+
+## 2026-10-22 - Discovery after today's slots end
+
+- Kept approved grounds visible on Home, Search, and Near You after their final slot for the selected day has passed. Cards now show a clear no-slots-left state while ground details continue to expose valid future dates and slots.
+- Corrected date-search pagination and retained price filtering/sorting by falling back to each ground's base hourly price when the selected date has no available slots.

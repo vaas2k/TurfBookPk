@@ -1,10 +1,8 @@
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { env } from '../configs/env.js';
+import { logEvent } from '../services/operationalLogger.js';
 import * as schema from './schema.js';
-
-
-// console.log('Database URL:', env.databaseUrl); // Log the database URL for debugging
 
 export const sql = postgres(env.databaseUrl, {
   max: env.nodeEnv === 'production' ? 10 : 3,
@@ -13,6 +11,6 @@ export const sql = postgres(env.databaseUrl, {
 
 export const db = drizzle(sql, { schema });
 
-console.log('Database connection established successfully.'); // Log successful connection
+logEvent('info', 'database_client_initialized');
 
 

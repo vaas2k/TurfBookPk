@@ -308,8 +308,8 @@ export default function VendorGrounds() {
               }
             >
               {ground.is_active
-                ? "LIVE — players can book"
-                : "HIDDEN — players cannot book"}
+                ? "LIVE â€” players can book"
+                : "HIDDEN â€” players cannot book"}
             </Text>
           </View>
         </View>
@@ -323,7 +323,7 @@ export default function VendorGrounds() {
           <View className="flex-1 bg-[#252A22] rounded-xl p-3">
             <Text className="text-[#92978F] text-xs">THIS WEEK</Text>
             <Text className="text-[#F5F5F0] font-bold mt-1">
-              {booked} bookings · PKR {earned.toLocaleString()}
+              {booked} bookings Â· PKR {earned.toLocaleString()}
             </Text>
           </View>
         </View>
@@ -400,191 +400,6 @@ export default function VendorGrounds() {
           <Text className="text-[#92978F] text-sm">More ground actions</Text>
         </TouchableOpacity>
       </View>
-    );
-    // eslint-disable-next-line no-unreachable -- retained only until the next legacy-screen cleanup commit.
-    return (
-      <View className="bg-[#1B1F19] border border-[#30372B] rounded-[18px] p-5 mb-4">
-        <View className="flex-row">
-          <Image
-            source={{
-              uri:
-                ground.cover_image ||
-                ground.images[0] ||
-                "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=300",
-            }}
-            className="h-16 w-16 rounded-xl"
-            resizeMode="cover"
-          />
-          <View className="flex-1 ml-3">
-            <Text
-              style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-              className="text-[#F5F5F0] text-[18px]"
-              numberOfLines={1}
-            >
-              {ground.title}
-            </Text>
-            <Text className="text-[#92978F] text-sm mt-0.5" numberOfLines={1}>
-              {ground.location || ground.city}
-            </Text>
-            <View
-              className={`self-start px-2 py-0.5 rounded mt-1 ${ground.is_active ? "bg-[#1B3B20]" : "bg-[#383B35]"}`}
-            >
-              <Text
-                className={`text-xs font-bold ${ground.is_active ? "text-[#55C561]" : "text-[#B0B4AD]"}`}
-              >
-                {ground.is_active ? "Live" : "Draft"}
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            onPress={() =>
-              router.push({
-                pathname: "/(vendor)/add-ground",
-                params: { id: ground.id },
-              })
-            }
-            className="h-10 w-10 rounded-full bg-[#30352C] items-center justify-center"
-          >
-            <Ionicons name="create-outline" size={21} color="#F5F5F0" />
-          </TouchableOpacity>
-        </View>
-        <View className="flex-row items-center mt-4">
-          <Ionicons name="star" size={17} color="#F5A623" />
-          <Text className="text-[#F5A623] text-lg">★★★★</Text>
-          <Ionicons name="star-outline" size={17} color="#8E938C" />
-          <Text
-            style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-            className="text-[#F5F5F0] text-sm ml-2"
-          >
-            {ground.rating.toFixed(1)}
-          </Text>
-          <Text className="text-[#92978F] text-sm ml-2">
-            ({ground.total_reviews} reviews)
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={() =>
-            router.push({
-              pathname: "/(vendor)/ground-reviews",
-              params: {
-                id: ground.id,
-                title: ground.title,
-                rating: String(ground.rating),
-                count: String(ground.total_reviews),
-              },
-            })
-          }
-          className="mt-3 self-start min-h-[36px] justify-center"
-        >
-          <Text
-            style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-            className="text-[#50C15B] text-sm"
-          >
-            View Reviews ›
-          </Text>
-        </TouchableOpacity>
-        <View className="h-px bg-[#30372B] mt-2" />
-        <TouchableOpacity
-          onPress={() =>
-            router.push({
-              pathname: "/(vendor)/ground-slots",
-              params: { id: ground.id, title: ground.title },
-            })
-          }
-          className="flex-row items-center justify-between pt-4"
-        >
-          <Text className="text-[#F5F5F0] text-sm">
-            {bookedToday} of {todaySlots.length} slots booked today
-          </Text>
-          <Ionicons name="chevron-forward" size={21} color="#50C15B" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() =>
-            appDialog.alert(ground.title, "Choose an action for this ground.", [
-              {
-                text: ground.is_active ? "Deactivate" : "Activate",
-                onPress: () => confirmGroundAvailability(ground),
-              },
-              {
-                text: "Delete",
-                style: "destructive",
-                onPress: () => setPendingDelete(ground),
-              },
-              { text: "Cancel", style: "cancel" },
-            ])
-          }
-          className="absolute bottom-3 right-12 h-8 w-8 items-center justify-center"
-        >
-          <Ionicons name="ellipsis-horizontal" size={17} color="#92978F" />
-        </TouchableOpacity>
-      </View>
-    );
-
-    return (
-      <TouchableOpacity
-        onPress={() =>
-          router.push({
-            pathname: "/(vendor)/ground-slots",
-            params: { id: ground.id, title: ground.title },
-          })
-        }
-        className="bg-[#1B1F19] border border-[#30372B] rounded-[20px] overflow-hidden mb-5"
-      >
-        {/* Image Section */}
-        <View className="relative">
-          <Image
-            source={{
-              uri:
-                ground.cover_image ||
-                ground.images[0] ||
-                "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800",
-            }}
-            className="w-full h-[160px]"
-            resizeMode="cover"
-          />
-          {/* Status Badge */}
-          <View
-            className={`absolute top-3 left-3 px-3 py-1.5 rounded-full flex-row items-center ${
-              ground.is_active ? "bg-[#1A261B]" : "bg-[#31342F]"
-            }`}
-          >
-            <View
-              className={`h-2 w-2 rounded-full mr-1.5 ${
-                ground.is_active ? "bg-[#3EAF4C]" : "bg-[#AFAFA9]"
-              }`}
-            />
-            <Text className="text-[#F5F5F0] text-[11px] font-bold">
-              {ground.is_active ? "Live" : "Draft"}
-            </Text>
-          </View>
-        </View>
-
-        {/* Content Section */}
-        <View className="p-4">
-          <Text
-            style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-            className="text-[#F5F5F0] text-[18px]"
-            numberOfLines={1}
-          >
-            {ground.title}
-          </Text>
-          <Text className="text-[#AFAFA9] text-[12px] mt-1">
-            {ground.location || `${ground.city}, Pakistan`}
-          </Text>
-
-          {/* Stats Row */}
-          <View className="flex-row items-center mt-3 pt-3 border-t border-[#30372B]">
-            <Ionicons name="stats-chart-outline" size={16} color="#4FD05B" />
-            <Text
-              style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-              className="text-[#E9EAE5] text-[13px] ml-2"
-            >
-              {booked} booking{booked === 1 ? "" : "s"} this week · Rs{" "}
-              {earned.toLocaleString()} earned
-            </Text>
-          </View>
-        </View>
-      </TouchableOpacity>
     );
   };
 

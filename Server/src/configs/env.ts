@@ -28,6 +28,14 @@ function integerInRange(name: string, fallback: number, minimum: number, maximum
   return value;
 }
 
+function booleanValue(name: string, fallback = false): boolean {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  throw new Error(`${name} must be true or false`);
+}
+
 const accessTokenTtl = process.env.JWT_ACCESS_TTL || '15m';
 
 export const env = {
@@ -35,6 +43,9 @@ export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT) || 5000,
   databaseUrl: process.env.DATABASE_URL || 'postgres://turfbookpk:turfbookpk@172.17.0.2:5432/turfbookpk',
+  redisUrl: process.env.REDIS_URL || '',
+  trustProxyHops: integerInRange('TRUST_PROXY_HOPS', 0, 0, 8),
+  loadTestRateLimitBypass: booleanValue('ALLOW_LOADTEST_RATE_LIMIT_BYPASS'),
   jwtAccessSecret: requiredSecret('JWT_ACCESS_SECRET', 'development-access-secret-change-me'),
   accessTokenTtl,
   accessTokenSeconds: durationSeconds(accessTokenTtl),
@@ -51,4 +62,40 @@ export const env = {
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || '',
   sensitiveDataHmacSecret: requiredSecret('SENSITIVE_DATA_HMAC_SECRET', 'development-sensitive-data-hmac-secret-change-me'),
   payoutEncryptionKey: requiredSecret('PAYOUT_ENCRYPTION_KEY', 'development-payout-encryption-key-change-me'),
+  paymentProvider: process.env.PAYMENT_PROVIDER || 'mock',
+  paymentEnvironment: process.env.PAYMENT_ENVIRONMENT || 'sandbox',
+  paymentPiiEncryptionKey: requiredSecret('PAYMENT_PII_ENCRYPTION_KEY', 'development-payment-pii-key-change-me'),
+  paymentPiiHmacSecret: requiredSecret('PAYMENT_PII_HMAC_SECRET', 'development-payment-pii-hmac-change-me'),
+  paymentHoldMinutes: integerInRange('PAYMENT_HOLD_MINUTES', 15, 5, 120),
+  minimumBookingLeadMinutes: integerInRange('MINIMUM_BOOKING_LEAD_MINUTES', 45, 0, 1_440),
+  clinkTokenUrl: process.env.CLINK_TOKEN_URL || 'https://kaizenhive.com/Sandboxapi/Token',
+  clinkGenerateUrl: process.env.CLINK_GENERATE_URL || 'https://kaizenhive.com/Sandboxapi/api/CLINK/CLIENT/Generate_ClinkID',
+  clinkExpireUrl: process.env.CLINK_EXPIRE_URL || 'https://kaizenhive.com/Sandboxapi/api/CLINK/CLIENT/Mark_1Bill_Expired',
+  clinkUsername: process.env.CLINK_USERNAME || '',
+  clinkPassword: process.env.CLINK_PASSWORD || '',
+  clinkClientId: integerInRange('CLINK_CLIENT_ID', 1050, 1, 2_147_483_647),
+  clinkChallanId: integerInRange('CLINK_CHALLAN_ID', 105001, 1, 2_147_483_647),
+  clinkMasterCategory: integerInRange('CLINK_MASTER_CATEGORY', 1050010101, 1, 2_147_483_647),
+  clinkChallanCategory: Number(process.env.CLINK_CHALLAN_CATEGORY || '105001010101'),
+  clinkAmountHeadId: integerInRange('CLINK_AMOUNT_HEAD_ID', 105001001, 1, 2_147_483_647),
+  clinkAmountHeadTitle: process.env.CLINK_AMOUNT_HEAD_TITLE || 'Turf Booking Fee',
+  clinkConsumerId: integerInRange('CLINK_CONSUMER_ID', 77, 1, 2_147_483_647),
+  clinkBillerPrefix: process.env.CLINK_BILLER_PREFIX || '100806',
+  clinkAllowUnverifiedSandboxAck: booleanValue('CLINK_ALLOW_UNVERIFIED_SANDBOX_ACK'),
 };
+
+if (isProduction && !env.redisUrl) throw new Error('REDIS_URL is required in production for shared rate limiting');
+if (env.redisUrl && !/^rediss?:\/\//.test(env.redisUrl)) throw new Error('REDIS_URL must start with redis:// or rediss://');
+if (env.loadTestRateLimitBypass && (isProduction || !/_loadtest(?:\?|$)/.test(env.databaseUrl))) throw new Error('Rate-limit bypass is allowed only on a non-production _loadtest database');
+
+if (!['mock', 'clink'].includes(env.paymentProvider)) throw new Error('PAYMENT_PROVIDER must be mock or clink');
+if (!['sandbox', 'live'].includes(env.paymentEnvironment)) throw new Error('PAYMENT_ENVIRONMENT must be sandbox or live');
+if (isProduction && env.paymentProvider === 'mock') throw new Error('Mock payments are forbidden in production');
+if (env.paymentProvider === 'clink') {
+  if (!env.clinkUsername || !env.clinkPassword) throw new Error('CLINK_USERNAME and CLINK_PASSWORD are required for Clink');
+  if (!/^\d{6}$/.test(env.clinkBillerPrefix)) throw new Error('CLINK_BILLER_PREFIX must contain exactly 6 digits');
+  if (!Number.isSafeInteger(env.clinkChallanCategory) || env.clinkChallanCategory <= 0) throw new Error('CLINK_CHALLAN_CATEGORY must be a positive whole number');
+  if (env.paymentEnvironment === 'live' && env.clinkAllowUnverifiedSandboxAck) throw new Error('Unsigned Clink acknowledgments are forbidden in live mode');
+  if (env.paymentEnvironment === 'live' && /sandbox/i.test(`${env.clinkTokenUrl} ${env.clinkGenerateUrl} ${env.clinkExpireUrl}`)) throw new Error('Sandbox Clink URLs are forbidden in live mode');
+  if (env.paymentEnvironment === 'live') throw new Error('Clink live payments are blocked until signed callbacks, expiry, fees, refunds, and settlement are documented');
+}

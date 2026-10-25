@@ -1,6 +1,7 @@
 import { and, inArray, isNull, lte } from 'drizzle-orm';
 import { db } from '../database/client.js';
 import { pushReceipts, pushTokens } from '../database/schema.js';
+import { errorMetadata, logEvent } from './operationalLogger.js';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const EXPO_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
@@ -17,26 +18,32 @@ async function removeInvalidTokens(tokens: string[]): Promise<void> {
   if (uniqueTokens.length) await db.delete(pushTokens).where(inArray(pushTokens.token, uniqueTokens));
 }
 
-export async function sendExpoPush(input: { userIds: string[]; title: string; body: string; data?: Record<string, string> }): Promise<void> {
+// Legacy call sites may invoke this after inserting an in-app notification.
+// The database trigger queues that notification transactionally; sending here
+// would duplicate it and could lose delivery if the API process exits.
+export async function sendExpoPush(_input: { userIds: string[]; title: string; body: string; data?: Record<string, string> }): Promise<void> {}
+
+export async function deliverExpoPush(input: { userIds: string[]; title: string; body: string; data?: Record<string, string> }): Promise<void> {
   const userIds = [...new Set(input.userIds.filter(Boolean))];
   if (!userIds.length) return;
   const tokens = await db.select().from(pushTokens).where(inArray(pushTokens.userId, userIds));
   for (const batch of chunks(tokens, MAX_BATCH_SIZE)) {
-    try {
       const response = await fetch(EXPO_PUSH_URL, {
         method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify(batch.map((row) => ({ to: row.token, sound: 'default', channelId: 'bookings', priority: 'high', title: input.title, body: input.body, data: input.data }))),
+        signal: AbortSignal.timeout(10_000),
       });
       if (!response.ok) throw new Error(`Expo push request failed with ${response.status}`);
       const payload = await response.json() as { data?: ExpoTicket[] };
       const tickets = payload.data ?? [];
+      if (tickets.length !== batch.length) throw new Error('Expo push ticket count mismatch');
       await removeInvalidTokens(batch.filter((_, index) => tickets[index]?.details?.error === 'DeviceNotRegistered').map((row) => row.token));
       const receiptRows = batch.flatMap((row, index) => {
         const ticket = tickets[index];
         return ticket?.status === 'ok' && ticket.id ? [{ token: row.token, ticketId: ticket.id }] : [];
       });
       if (receiptRows.length) await db.insert(pushReceipts).values(receiptRows).onConflictDoNothing();
-    } catch (error) { console.error('Expo push delivery failed', error); }
+      if (tickets.some((ticket) => ticket.status === 'error' && ticket.details?.error !== 'DeviceNotRegistered')) throw new Error('Expo rejected one or more push messages');
   }
 }
 
@@ -54,5 +61,8 @@ export async function processExpoPushReceipts(now = new Date()): Promise<number>
     await removeInvalidTokens(resolved.filter((item) => receipts[item.ticketId]?.details?.error === 'DeviceNotRegistered').map((item) => item.token));
     if (resolved.length) await db.update(pushReceipts).set({ checkedAt: now }).where(inArray(pushReceipts.id, resolved.map((item) => item.id)));
     return resolved.length;
-  } catch (error) { console.error('Expo push receipt processing failed', error); return 0; }
+  } catch (error) {
+    logEvent('error', 'expo_push_receipt_processing_failed', errorMetadata(error));
+    return 0;
+  }
 }

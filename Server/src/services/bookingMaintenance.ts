@@ -1,4 +1,4 @@
-import { and, eq, isNull, lte, sql as expression } from 'drizzle-orm';
+import { and, eq, isNull, lte, or, sql as expression } from 'drizzle-orm';
 import { db } from '../database/client.js';
 import { bookings, ledgerEntries, notifications, slots, vendors } from '../database/schema.js';
 import { bookingStart } from './cancellationPolicy.js';
@@ -6,7 +6,7 @@ import { sendExpoPush } from './expoPushService.js';
 
 export class BookingMaintenanceService {
   async processRecurringReservations(now = new Date()): Promise<{ opened: number; released: number }> {
-    const waiting = await db.select().from(bookings).where(and(eq(bookings.isRecurringReservation, true), eq(bookings.status, 'pending_payment')));
+    const waiting = await db.select().from(bookings).where(and(eq(bookings.isRecurringReservation, true), eq(bookings.status, 'pending_payment'), or(lte(bookings.reservationExpiresAt, now), and(lte(bookings.paymentWindowOpensAt, now), isNull(bookings.paymentWindowNotifiedAt))))).orderBy(bookings.reservationExpiresAt).limit(200);
     let opened = 0; let released = 0;
     for (const booking of waiting) {
       if (booking.reservationExpiresAt && booking.reservationExpiresAt <= now) {
@@ -59,7 +59,7 @@ export class BookingMaintenanceService {
 
   async completeEndedBookings(now = new Date()): Promise<number> {
     await this.processRecurringReservations(now);
-    const candidates = await db.select().from(bookings).where(eq(bookings.status, 'confirmed'));
+    const candidates = await db.select().from(bookings).where(and(eq(bookings.status, 'confirmed'), expression`((${bookings.date}::date + ${bookings.endTime}::time) AT TIME ZONE 'Asia/Karachi') <= ${now.toISOString()}::timestamptz`)).orderBy(bookings.date).limit(200);
     let completed = 0;
     for (const booking of candidates) {
       if (bookingStart(booking.date, booking.endTime) > now) continue;

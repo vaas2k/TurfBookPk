@@ -20,7 +20,7 @@ export type BookingStatus = typeof BOOKING_STATUSES[number];
 export type PaymentStatus = typeof PAYMENT_STATUSES[number];
 export type SlotState = 'available' | 'held' | 'booked' | 'blocked' | 'expired';
 
-export const HOLD_DURATION_MS = 10 * 60_000;
+export const HOLD_DURATION_MS = 30 * 60_000;
 
 export function canCancelBooking(status: BookingStatus): boolean {
   return status === 'pending_payment' || status === 'confirmed';

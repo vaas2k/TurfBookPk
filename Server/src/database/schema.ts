@@ -273,7 +273,18 @@ export const paymentAttempts = pgTable('payment_attempts', {
   playerId: uuid('player_id').notNull().references(() => users.id),
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
   provider: text('provider').notNull(),
-  providerReference: text('provider_reference'),
+  providerReference: text('provider_reference').unique(),
+  consumerNumber: text('consumer_number').unique(),
+  applicantReference: text('applicant_reference').unique(),
+  providerStatus: text('provider_status').notNull().default('pending'),
+  providerDueDate: date('provider_due_date'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  gatewayPaidAt: timestamp('gateway_paid_at', { withTimezone: true }),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+  serviceCharge: integer('service_charge'),
+  finalPayableAmount: integer('final_payable_amount'),
+  reviewStatus: text('review_status').notNull().default('none'),
+  providerError: text('provider_error'),
   amount: integer('amount').notNull(),
   status: paymentStatusEnum('status').notNull().default('pending'),
   idempotencyKey: text('idempotency_key').notNull().unique(),
@@ -281,6 +292,34 @@ export const paymentAttempts = pgTable('payment_attempts', {
   failedAt: timestamp('failed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const paymentBillingProfiles = pgTable('payment_billing_profiles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+  fullName: text('full_name').notNull(),
+  cnicCiphertext: text('cnic_ciphertext').notNull(),
+  cnicHash: text('cnic_hash').notNull().unique(),
+  cnicLastFour: text('cnic_last_four').notNull(),
+  billingAddressCiphertext: text('billing_address_ciphertext').notNull(),
+  email: text('email').notNull(),
+  phone: text('phone').notNull(),
+  consentedAt: timestamp('consented_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const paymentEvents = pgTable('payment_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  paymentAttemptId: uuid('payment_attempt_id').references(() => paymentAttempts.id, { onDelete: 'set null' }),
+  provider: text('provider').notNull(),
+  eventType: text('event_type').notNull(),
+  eventKey: text('event_key').notNull().unique(),
+  providerReference: text('provider_reference'),
+  payloadHash: text('payload_hash').notNull(),
+  processingResult: text('processing_result').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
 });
 
 export const ledgerEntries = pgTable('ledger_entries', {
@@ -307,6 +346,19 @@ export const notifications = pgTable('notifications', {
   data: jsonb('data'),
   isRead: boolean('is_read').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notificationOutbox = pgTable('notification_outbox', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  notificationId: uuid('notification_id').notNull().unique().references(() => notifications.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  availableAt: timestamp('available_at', { withTimezone: true }).notNull().defaultNow(),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }),
+  lastError: text('last_error'),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const pushTokens = pgTable('push_tokens', {

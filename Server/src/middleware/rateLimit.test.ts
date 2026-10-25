@@ -3,7 +3,7 @@ import test from 'node:test';
 import { NextFunction, Request, Response } from 'express';
 import { createRateLimiter } from './rateLimit.js';
 
-test('rate limiter rejects requests beyond the configured IP limit', () => {
+test('rate limiter rejects requests beyond the configured IP limit', async () => {
   const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 1, code: 'limited', message: 'Limited' });
   const request = { ip: '127.0.0.1', socket: {} } as Request;
   const response = { setHeader() {} } as unknown as Response;
@@ -11,6 +11,7 @@ test('rate limiter rejects requests beyond the configured IP limit', () => {
   const next = ((error?: unknown) => outcomes.push(error || null)) as NextFunction;
   limiter(request, response, next);
   limiter(request, response, next);
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(outcomes[0], null);
   assert.equal((outcomes[1] as { statusCode: number }).statusCode, 429);
 });

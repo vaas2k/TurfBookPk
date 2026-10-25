@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { and, eq } from 'drizzle-orm';
 import { db, sql } from '../database/client.js';
-import { bookings, grounds, notifications, slots, users, vendors } from '../database/schema.js';
+import { bookings, grounds, ledgerEntries, notifications, slots, users, vendors } from '../database/schema.js';
 import { BookingMaintenanceService } from './bookingMaintenance.js';
 
 after(async () => { await sql.end(); });
@@ -18,6 +18,7 @@ async function fixture() {
 
 async function cleanup(ids: { playerId: string; ownerId: string; vendorId: string; groundId: string }) {
   await db.delete(notifications).where(eq(notifications.userId, ids.playerId));
+  await db.delete(ledgerEntries).where(eq(ledgerEntries.vendorId, ids.vendorId));
   await db.update(slots).set({ heldBy: null, holdBookingId: null, holdExpiresAt: null, bookingId: null, bookedBy: null, isBooked: false }).where(eq(slots.groundId, ids.groundId));
   await db.delete(bookings).where(eq(bookings.playerId, ids.playerId));
   await db.delete(slots).where(eq(slots.groundId, ids.groundId));
@@ -26,6 +27,25 @@ async function cleanup(ids: { playerId: string; ownerId: string; vendorId: strin
   await db.delete(users).where(and(eq(users.id, ids.playerId)));
   await db.delete(users).where(eq(users.id, ids.ownerId));
 }
+
+test('parallel booking completion posts earnings only once', async () => {
+  const data = await fixture();
+  try {
+    const [slot] = await db.insert(slots).values({ groundId: data.ground.id, date: '2030-01-03', startTime: '10:00', endTime: '11:00', price: 1000 }).returning();
+    const [booking] = await db.insert(bookings).values({ bookingNumber: `complete-${slot!.id}`, playerId: data.player.id, vendorId: data.vendor.id, groundId: data.ground.id, slotId: slot!.id, date: slot!.date, startTime: slot!.startTime, endTime: slot!.endTime, totalAmount: 1000, vendorAmount: 900, status: 'confirmed', paymentStatus: 'paid' }).returning();
+    await db.update(slots).set({ isBooked: true, bookedBy: data.player.id, bookingId: booking!.id }).where(eq(slots.id, slot!.id));
+    await db.insert(ledgerEntries).values({ vendorId: data.vendor.id, bookingId: booking!.id, type: 'booking_earning', status: 'pending', amount: 900, description: 'Parallel completion test', idempotencyKey: `earning:${booking!.id}` });
+    await db.update(vendors).set({ pendingEarnings: 900 }).where(eq(vendors.id, data.vendor.id));
+    const service = new BookingMaintenanceService();
+    const results = await Promise.all([service.finalizeBooking(booking!.id, 'completed'), service.finalizeBooking(booking!.id, 'completed')]);
+    assert.deepEqual(results.sort(), [false, true]);
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.id, data.vendor.id));
+    const [entry] = await db.select().from(ledgerEntries).where(eq(ledgerEntries.bookingId, booking!.id));
+    assert.equal(vendor?.totalEarnings, 900);
+    assert.equal(vendor?.pendingEarnings, 0);
+    assert.equal(entry?.status, 'posted');
+  } finally { await cleanup({ playerId: data.player.id, ownerId: data.owner.id, vendorId: data.vendor.id, groundId: data.ground.id }); }
+});
 
 test('recurring expiry clears only the reservation hold it owns', async () => {
   const data = await fixture();

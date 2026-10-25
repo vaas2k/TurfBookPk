@@ -1,0 +1,10 @@
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS grounds_title_trgm_idx ON grounds USING gin (title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS grounds_city_trgm_idx ON grounds USING gin (city gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS grounds_location_trgm_idx ON grounds USING gin (location gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS grounds_address_trgm_idx ON grounds USING gin (address gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS grounds_pitch_type_trgm_idx ON grounds USING gin (pitch_type gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS users_full_name_trgm_idx ON users USING gin (full_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS vendors_business_name_trgm_idx ON vendors USING gin (business_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS payment_attempts_created_cursor_idx ON payment_attempts (created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS bookings_refund_queue_idx ON bookings (cancelled_at DESC, id DESC) WHERE refund_amount > 0;
