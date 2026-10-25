@@ -1,0 +1,17 @@
+; Example only for a self-hosted API-side PgBouncer. Managed providers may
+; supply their own transaction-pool endpoint instead. Keep credentials out of
+; this repository and configure SCRAM users in an access-controlled auth_file.
+[databases]
+turfbookpk = host=127.0.0.1 port=5432 dbname=turfbookpk
+
+[pgbouncer]
+listen_addr = 127.0.0.1
+listen_port = 6432
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+pool_mode = transaction
+max_client_conn = 200
+default_pool_size = 20
+reserve_pool_size = 5
+query_wait_timeout = 15
+server_connect_timeout = 5

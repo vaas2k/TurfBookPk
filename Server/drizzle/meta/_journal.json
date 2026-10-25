@@ -218,6 +218,13 @@
       "when": 1792800006000,
       "tag": "0030_unbooked_slot_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792800007000,
+      "tag": "0031_public_ground_catalog_revision",
+      "breakpoints": true
     }
   ]
 }

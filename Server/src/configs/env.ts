@@ -43,12 +43,14 @@ export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT) || 5000,
   databaseUrl: process.env.DATABASE_URL || 'postgres://turfbookpk:turfbookpk@172.17.0.2:5432/turfbookpk',
+  dbPoolMode: process.env.DB_POOL_MODE || 'direct',
   dbPoolMax: integerInRange('DB_POOL_MAX', isProduction ? 10 : 3, 1, 50),
   dbConnectTimeoutSeconds: integerInRange('DB_CONNECT_TIMEOUT_SECONDS', 5, 1, 60),
   dbIdleTimeoutSeconds: integerInRange('DB_IDLE_TIMEOUT_SECONDS', 30, 1, 600),
   dbStatementTimeoutMs: integerInRange('DB_STATEMENT_TIMEOUT_MS', 15_000, 1_000, 120_000),
   dbLockTimeoutMs: integerInRange('DB_LOCK_TIMEOUT_MS', 10_000, 1_000, 120_000),
   shutdownGraceMs: integerInRange('SHUTDOWN_GRACE_MS', 30_000, 5_000, 120_000),
+  apiCompression: booleanValue('API_COMPRESSION', true),
   redisUrl: process.env.REDIS_URL || '',
   trustProxyHops: integerInRange('TRUST_PROXY_HOPS', 0, 0, 8),
   loadTestRateLimitBypass: booleanValue('ALLOW_LOADTEST_RATE_LIMIT_BYPASS'),
@@ -93,6 +95,7 @@ export const env = {
 if (isProduction && !env.redisUrl) throw new Error('REDIS_URL is required in production for shared rate limiting');
 if (env.redisUrl && !/^rediss?:\/\//.test(env.redisUrl)) throw new Error('REDIS_URL must start with redis:// or rediss://');
 if (env.dbLockTimeoutMs > env.dbStatementTimeoutMs) throw new Error('DB_LOCK_TIMEOUT_MS must not exceed DB_STATEMENT_TIMEOUT_MS');
+if (!['direct', 'session', 'transaction'].includes(env.dbPoolMode)) throw new Error('DB_POOL_MODE must be direct, session, or transaction');
 if (env.loadTestRateLimitBypass && (isProduction || !/_loadtest(?:\?|$)/.test(env.databaseUrl))) throw new Error('Rate-limit bypass is allowed only on a non-production _loadtest database');
 
 if (!['mock', 'clink'].includes(env.paymentProvider)) throw new Error('PAYMENT_PROVIDER must be mock or clink');

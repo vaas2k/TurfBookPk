@@ -1,4 +1,9 @@
-import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, text, time, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, boolean, date, integer, jsonb, numeric, pgEnum, pgTable, text, time, timestamp, uuid } from 'drizzle-orm/pg-core';
+
+export const publicGroundCatalogRevision = pgTable('public_ground_catalog_revision', {
+  id: integer('id').primaryKey(),
+  revision: bigint('revision', { mode: 'number' }).notNull().default(1),
+});
 
 export const bookingStatusEnum = pgEnum('booking_status', [
   'pending_payment',

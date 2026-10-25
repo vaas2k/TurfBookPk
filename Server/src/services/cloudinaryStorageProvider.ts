@@ -21,17 +21,19 @@ export class CloudinaryStorageProvider implements ObjectStorageProvider {
     if (!Number.isSafeInteger(input.contentLength) || input.contentLength < 1 || input.contentLength > (privateDocument ? 12 : 8) * 1024 * 1024) throw new AppError('invalid_media_size', privateDocument ? 'Documents must be smaller than 12 MB' : 'Images must be smaller than 8 MB', 422);
     const timestamp = String(Math.floor(Date.now() / 1000));
     const assetId = randomUUID(); const folder = `turfbookpk/${input.ownerId}/${input.purpose}`; const publicId = `${folder}/${assetId}`;
-    const params = privateDocument ? { folder, public_id: assetId, timestamp, type: 'authenticated' } : { folder, public_id: assetId, timestamp };
+    // A signed target must never overwrite an existing asset. Each upload gets
+    // a new UUID-backed URL, so Cloudinary's long CDN cache is safe for photos.
+    const params = privateDocument ? { folder, public_id: assetId, overwrite: 'false', timestamp, type: 'authenticated' } : { folder, public_id: assetId, overwrite: 'false', timestamp };
     return {
       key: publicId,
       // `authenticated` is the delivery type sent as a signed form field.
       // The Upload API URL contains only the resource type (`auto` here so PDFs
       // and images are both accepted), not the delivery type.
       uploadUrl: `https://api.cloudinary.com/v1_1/${env.cloudinaryCloudName}/${privateDocument ? 'auto' : 'image'}/upload`,
-      publicUrl: privateDocument ? null : `https://res.cloudinary.com/${env.cloudinaryCloudName}/image/upload/f_auto,q_auto/${publicId}`,
+      publicUrl: privateDocument ? null : `https://res.cloudinary.com/${env.cloudinaryCloudName}/image/upload/f_auto,q_auto/v1/${publicId}`,
       expiresAt: new Date((Number(timestamp) + 3600) * 1000),
       method: 'POST',
-      fields: { api_key: env.cloudinaryApiKey, timestamp, folder, public_id: assetId, ...(privateDocument ? { type: 'authenticated' } : {}), signature: signature(params) },
+      fields: { api_key: env.cloudinaryApiKey, ...params, signature: signature(params) },
     };
   }
 

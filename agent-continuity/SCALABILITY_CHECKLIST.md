@@ -70,23 +70,23 @@ Day 1 implementation and local measurements are recorded in `Server/SCALABILITY_
   - [x] Materialize on schedule creation/change and through worker horizon-extension jobs.
   - [x] Make public discovery/detail endpoints read-only.
   - [x] Make materialization bulk/idempotent and enforce database uniqueness for generated slots.
-- [ ] Add cache-aside Redis caching only for stable public ground metadata and low-risk discovery fragments.
-  - [ ] Version cache keys and use short TTLs.
-  - [ ] Invalidate ground caches after vendor/admin ground edits, approval, suspension, activation, image, pricing, rules, and amenity changes.
-  - [ ] Never long-cache live slots, holds, bookings, payment attempts, earnings/balances, unread counts, or verification queues.
-  - [ ] Fetch/aggregate current slot availability from PostgreSQL separately from cached ground cards.
-  - [ ] Allow cache failure to degrade to PostgreSQL instead of failing requests.
-- [ ] Add HTTP caching headers/ETags for safe public metadata and immutable/versioned Cloudinary assets.
-- [ ] Add response compression at the reverse proxy or API layer after measuring CPU trade-offs.
+- [x] Add cache-aside Redis caching only for stable public ground metadata and low-risk discovery fragments. Ordinary discovery caches the static filtered page; current slot summaries remain separate PostgreSQL queries. Dated discovery stays uncached because effective price and availability are live.
+  - [x] Version cache keys and use a short TTL for public ground metadata.
+  - [x] Invalidate ground metadata cache by PostgreSQL row version and static discovery pages by transactional catalog revision after ground edits, approval, suspension, activation, image, pricing, rules, amenities, and vendor visibility changes.
+  - [x] Never long-cache live slots, holds, bookings, payment attempts, earnings/balances, unread counts, or verification queues; cache keys exist only for public ground metadata and static discovery pages.
+  - [x] Fetch current slot availability from PostgreSQL separately from cached ground metadata and discovery pages.
+  - [x] Allow metadata cache failure to degrade to PostgreSQL instead of failing requests.
+- [x] Add HTTP caching headers/ETags for safe public metadata and immutable Cloudinary assets. Metadata ETag and dynamic `no-store` are implemented. New signed public uploads cannot overwrite their UUID-backed `/v1/` URL; a public CDN sample returned a 30-day cache header and ETag. Recheck headers on the deployed account.
+- [x] Add response compression at the API layer after measuring CPU trade-offs. Public ground routes use gzip/Brotli above 1 KB; `API_COMPRESSION=false` disables it if proxy or staging measurements favor another setup.
 - [x] Make database pool size and timeouts configurable; the runbook documents the API/worker connection budget. Confirm the actual VPS/PostgreSQL limit before rollout.
-- [ ] Put PgBouncer in transaction-pooling mode for production and retain `prepare: false` compatibility.
+- [ ] Put only API replicas behind PgBouncer transaction pooling and retain `prepare: false` compatibility. Worker and migration session advisory locks require direct PostgreSQL or PgBouncer session pooling; a startup guard and separate-URL runbook are in place. Verify the actual host configuration before rollout.
 - [ ] Database statement, lock, connection, and idle timeouts are configured; enable and verify slow-query logging on deployed PostgreSQL.
 - [x] Add explicit timeouts and bounded response-size handling to Clink, Cloudinary deletion, and Expo push/receipt HTTP integrations.
 - [x] Add graceful shutdown for `SIGTERM`/`SIGINT`: API stops accepting requests and drains connections; worker waits for active jobs; both close PostgreSQL/Redis. Verify signal delivery and grace timing on hosted staging.
 - [x] Separate liveness from readiness.
   - [x] Liveness confirms the Node process is responsive.
   - [x] Readiness checks PostgreSQL connectivity, required schema objects, and configured Redis; it fails during shutdown.
-- [ ] Add migration locking/a single migration job so replicas never race migrations during rollout.
+- [x] Add migration locking/a single migration job so replicas never race migrations during rollout; `npm run db:migrate` takes a PostgreSQL advisory lock. Keep migration execution outside replica startup.
 
 ## Day 4 — P1 reliability, security, and verified capacity
 

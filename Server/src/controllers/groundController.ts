@@ -3,11 +3,12 @@ import { and, arrayContains, asc, count, desc, eq, gte, gt, ilike, inArray, lt, 
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
-import { bookings, favoriteGrounds, groundBlackoutDates, groundVerificationDocuments, groundVerifications, grounds, recentlyViewedGrounds, slots, slotScheduleTemplates, vendors } from '../database/schema.js';
+import { bookings, favoriteGrounds, groundBlackoutDates, groundVerificationDocuments, groundVerifications, grounds, publicGroundCatalogRevision, recentlyViewedGrounds, slots, slotScheduleTemplates, vendors } from '../database/schema.js';
 import { env } from '../configs/env.js';
 import { CANCELLATION_POLICIES, cancellationPolicy } from '../services/cancellationPolicy.js';
 import { PeakWindow, effectiveSlotPrice } from '../services/peakPricing.js';
 import { materializeSchedules } from '../services/scheduleMaterialization.js';
+import { cachedPublicDiscovery, cachedPublicGround, publicGroundEtag } from '../services/publicGroundCache.js';
 
 function textArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()) : [];
@@ -168,6 +169,7 @@ async function ownedGround(groundId: string, userId: string) {
 
 export class GroundController {
   listPublic = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    response.setHeader('Cache-Control', 'no-store');
     const q = optionalQueryText(request.query.q, 'Search query');
     const city = optionalQueryText(request.query.city, 'City');
     const pitchType = optionalQueryText(request.query.pitch_type, 'Pitch type', 60);
@@ -188,6 +190,7 @@ export class GroundController {
     if (city) filters.push(ilike(grounds.city, `%${city.replace(/[\\%_]/g, '\\$&')}%`));
     if (pitchType) filters.push(ilike(grounds.pitchType, pitchType));
     if (amenities.length) filters.push(arrayContains(grounds.amenities, amenities));
+    if (!availabilityDate && maxPrice < Number.MAX_SAFE_INTEGER) filters.push(lte(grounds.pricePerHour, maxPrice));
 
     const orderBy = sort === 'price_low'
       ? [asc(grounds.pricePerHour), asc(grounds.title), asc(grounds.id)]
@@ -197,19 +200,23 @@ export class GroundController {
     const condition = and(...filters);
     const offset = (page - 1) * limit;
     if (!availabilityDate) {
-      const [totalRow, pageRows] = await Promise.all([
-        db.select({ value: count() }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(condition),
-        db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(condition).orderBy(...orderBy).limit(limit).offset(offset),
-      ]);
-      const total = totalRow[0]?.value ?? 0;
-      const allIds = pageRows.map(({ ground }) => ground.id);
+      const revision = (await db.select({ revision: publicGroundCatalogRevision.revision }).from(publicGroundCatalogRevision).where(eq(publicGroundCatalogRevision.id, 1)).limit(1))[0]?.revision;
+      if (revision === undefined) throw new AppError('database_not_ready', 'Ground catalog migration is required', 503);
+      const staticPage = await cachedPublicDiscovery({ q, city, pitchType, amenities, maxPrice, sort, page, limit }, revision, async () => {
+        const [totalRow, pageRows] = await Promise.all([
+          db.select({ value: count() }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(condition),
+          db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(condition).orderBy(...orderBy).limit(limit).offset(offset),
+        ]);
+        return { total: totalRow[0]?.value ?? 0, grounds: pageRows.map(({ ground }) => toGround(ground)) };
+      });
+      const allIds = staticPage.grounds.map((ground) => ground.id);
       const available = allIds.length ? await db.select({ groundId: slots.groundId, availableCount: sql<number>`count(*)::int`, nextAvailableAt: sql<string>`min(${slots.date}::text || 'T' || to_char(${slots.startTime}, 'HH24:MI') || ':00+05:00')` })
         .from(slots).where(and(inArray(slots.groundId, allIds), eq(slots.isBooked, false), eq(slots.isBlocked, false), gte(slots.date, pakistanToday()), sql`(${slots.holdBookingId} IS NULL OR ${slots.holdExpiresAt} <= now())`, sql`(${slots.date}::timestamp + ${slots.startTime}::time) > (now() AT TIME ZONE 'Asia/Karachi')`))
         .groupBy(slots.groundId) : [];
       const summaries: Record<string, { available_count: number; next_available_at: string | null }> = {};
-      for (const { ground } of pageRows) summaries[ground.id] = { available_count: 0, next_available_at: null };
+      for (const ground of staticPage.grounds) summaries[ground.id] = { available_count: 0, next_available_at: null };
       for (const row of available) summaries[row.groundId] = { available_count: row.availableCount, next_available_at: row.nextAvailableAt };
-      response.json({ grounds: pageRows.map(({ ground }) => toGround(ground)), availability_by_ground: summaries, pagination: { page, limit, total, has_more: offset + pageRows.length < total } });
+      response.json({ grounds: staticPage.grounds, availability_by_ground: summaries, pagination: { page, limit, total: staticPage.total, has_more: offset + staticPage.grounds.length < staticPage.total } });
       return;
     }
 
@@ -256,12 +263,33 @@ export class GroundController {
   };
 
   getPublic = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const row = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(grounds.isVerified, true), eq(grounds.verificationStatus, 'approved'), eq(vendors.isActive, true), eq(vendors.verificationStatus, 'approved'))).limit(1))[0];
+    const row = (await db.select({ ground: grounds, version: sql<string>`grounds.xmin::text` }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(grounds.isVerified, true), eq(grounds.verificationStatus, 'approved'), eq(vendors.isActive, true), eq(vendors.verificationStatus, 'approved'))).limit(1))[0];
     if (!row) throw new AppError('not_found', 'Ground was not found', 404);
+    const ground = await cachedPublicGround(row.ground.id, row.version, async () => toGround(row.ground));
     const lastDate = new Date(`${pakistanToday()}T00:00:00Z`);
     lastDate.setUTCDate(lastDate.getUTCDate() + env.maxAdvanceBookingDays);
     const groundSlots = await db.select().from(slots).where(and(eq(slots.groundId, row.ground.id), gte(slots.date, pakistanToday()), sql`${slots.date} <= ${lastDate.toISOString().slice(0, 10)}`)).orderBy(asc(slots.date), asc(slots.startTime));
-    response.json({ ground: toGround(row.ground), slots: groundSlots.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, row.ground)) });
+    response.setHeader('Cache-Control', 'no-store');
+    response.json({ ground, slots: groundSlots.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, row.ground)) });
+  };
+
+  getPublicMetadata = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const groundId = routeParam(request.params.id, 'Ground id');
+    const row = (await db.select({ id: grounds.id, version: sql<string>`grounds.xmin::text` }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, groundId), eq(grounds.isActive, true), eq(grounds.isVerified, true), eq(grounds.verificationStatus, 'approved'), eq(vendors.isActive, true), eq(vendors.verificationStatus, 'approved'))).limit(1))[0];
+    if (!row) throw new AppError('not_found', 'Ground was not found', 404);
+    const ground = await cachedPublicGround(row.id, row.version, async () => {
+      const current = (await db.select().from(grounds).where(and(eq(grounds.id, groundId), eq(grounds.isActive, true), eq(grounds.isVerified, true), eq(grounds.verificationStatus, 'approved'))).limit(1))[0];
+      if (!current) throw new AppError('not_found', 'Ground was not found', 404);
+      return toGround(current);
+    });
+    const etag = publicGroundEtag(ground);
+    response.setHeader('ETag', etag);
+    response.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    if (request.headers['if-none-match'] === etag) {
+      response.status(304).end();
+      return;
+    }
+    response.json({ ground });
   };
 
   listMine = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -404,6 +432,7 @@ export class GroundController {
   };
 
   listSlots = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    response.setHeader('Cache-Control', 'no-store');
     const ground = (await db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(and(eq(grounds.id, routeParam(request.params.id, 'Ground id')), eq(grounds.isActive, true), eq(grounds.isVerified, true), eq(grounds.verificationStatus, 'approved'), eq(vendors.isActive, true), eq(vendors.verificationStatus, 'approved'))).limit(1))[0];
     if (!ground) throw new AppError('not_found', 'Ground was not found', 404);
     const page = queryInteger(request.query.page, 'Page', 1, 1, 10_000);

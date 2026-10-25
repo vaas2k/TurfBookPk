@@ -7,6 +7,7 @@ import { processNotificationOutbox } from './services/notificationOutbox.js';
 import { cleanupExpiredUnbookedSlots, extendAllScheduleHorizons } from './services/scheduleMaterialization.js';
 import { escalateStaleClinkGeneration } from './services/paymentEscalation.js';
 import { errorMetadata, logEvent } from './services/operationalLogger.js';
+import { env } from './configs/env.js';
 
 const maintenance = new BookingMaintenanceService();
 const payments = new PaymentController();
@@ -53,6 +54,7 @@ async function tick(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  if (env.dbPoolMode === 'transaction') throw new Error('Worker advisory locks require a direct PostgreSQL connection or session pooling');
   await connectRedis();
   const timers: NodeJS.Timeout[] = [];
   const shutdown = async () => {

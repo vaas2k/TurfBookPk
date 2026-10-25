@@ -7,6 +7,7 @@ export function createGroundRouter(controller: GroundController, tokenService: T
   const router = Router();
   router.get('/', controller.listPublic);
   router.get('/vendor/mine', requireAuth(tokenService), controller.listMine);
+  router.get('/:id/metadata', controller.getPublicMetadata);
   router.get('/:id', controller.getPublic);
   router.get('/:id/slots', controller.listSlots);
   router.use(requireAuth(tokenService));

@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from 'compression';
+import { constants as zlibConstants } from 'node:zlib';
 import { env } from "./configs/env.js";
 import { DrizzleAuthRepository } from "./database/drizzleAuthRepository.js";
 import { databaseConstraintError, getErrorMessage, requestParsingError } from "./helpers/errors.js";
@@ -43,6 +45,14 @@ if (env.trustProxyHops > 0) app.set('trust proxy', env.trustProxyHops);
 app.use(helmet());
 app.use(cors({
   origin: env.nodeEnv === 'production' ? env.frontendUrl : '*',
+}));
+if (env.apiCompression) app.use(compression({
+  level: 5,
+  threshold: 1024,
+  brotli: { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 2 } },
+  filter: (request, response) => request.method === 'GET'
+    && /^\/api\/grounds(?:\/[0-9a-f-]{36}(?:\/metadata|\/slots)?)?$/i.test(request.originalUrl.split('?')[0] || '')
+    && compression.filter(request, response),
 }));
 app.use(express.json({ limit: '32kb', strict: true }));
 
@@ -116,6 +126,8 @@ app.get('/api/ready', async (_req, res) => {
   try {
     await sql`SELECT expiry_retry_count FROM payment_attempts LIMIT 0`;
     await sql`SELECT id FROM notification_outbox LIMIT 0`;
+    const [catalogRevision] = await sql`SELECT revision FROM public_ground_catalog_revision WHERE id = 1`;
+    if (!catalogRevision) throw new Error('Ground catalog revision is missing');
     if (redis && !redis.isReady) throw new Error('Redis is not ready');
     res.json({ status: 'ready', postgres: 'ok', redis: redis ? 'ok' : 'local_only' });
   } catch { res.status(503).json({ status: 'not_ready' }); }

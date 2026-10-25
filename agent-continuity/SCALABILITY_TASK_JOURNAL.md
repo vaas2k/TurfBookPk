@@ -59,3 +59,30 @@
 - Chose authoritative, indexed, idempotent due scans instead of a duplicate per-item job table. External push delivery remains in the transactional outbox; Clink expiry retry/manual-review state is persisted.
 - Added configurable PostgreSQL pool, connection/idle/statement/lock timeouts, stronger readiness schema checks, API shutdown draining, and worker active-job draining. Added bounded/time-limited Clink, Cloudinary deletion, and Expo HTTP responses.
 - Backend build/typecheck and all 43 tests pass. Hosted staging signal/failure drills, real-device Expo retry/tap, cache design, PgBouncer, migration locking, and slow-query logging remain.
+
+## 2026-10-25 — Day 3 metadata cache and migration coordination
+
+- Added versioned, 60-second Redis cache-aside for public ground metadata. Public eligibility is checked in PostgreSQL on every read; cache failures fall back to PostgreSQL. Ground detail still reads slots from PostgreSQL and is marked `no-store`.
+- Added `GET /api/grounds/:id/metadata` with ETag/conditional 304 responses. Dynamic discovery and slot routes are `no-store` to avoid stale availability.
+- Replaced `db:migrate` with a single-job migrator guarded by a PostgreSQL session advisory lock; a local rerun completed successfully. Updated the runbook for reverse-proxy compression, CDN headers, and PgBouncer/slow-query rollout checks.
+- Day 3 still needs measured discovery-fragment caching, hosted PgBouncer and slow-query setup, asset cache headers, compression measurements, and staging lifecycle validation.
+- Follow-up: switched cache versioning to PostgreSQL row-version (`xmin`) so edits in the same millisecond cannot reuse old metadata. A 100 ms Redis operation budget prevents a stalled cache from delaying the database fallback. The metadata route fetches only eligibility/version on cache hits. A read-only API smoke passed ETag/304 and dynamic `no-store` checks. Added a JSON compression benchmark script for the eventual proxy measurement.
+- Local discovery compression sample (3,260-byte JSON): gzip level 5 produced 1,178 bytes in 0.066 ms mean local CPU time; Brotli produced 1,026 bytes in 4.513 ms. This small local response favors gzip for a first proxy configuration, but staging measurements are still required before enabling it.
+- A two-process migration-lock check passed on the isolated `_loadtest` database: the second migrator waited until the first connection released the advisory lock, then completed. The migration script now times out lock waits after 60 seconds and releases its connection on failure.
+- Added a deployment-ready Nginx API snippet with measured gzip level 5 and no proxy cache. It still requires real TLS host configuration, `nginx -t`, and p95/CPU comparison on staging before activation.
+
+## 2026-10-25 — Day 3 static discovery fragments
+
+- Added migration `0031_public_ground_catalog_revision`, applied to both local development and isolated `_loadtest` databases. Statement-level ground changes and vendor visibility updates bump a transactional catalog revision, invalidating Redis discovery page keys across API replicas.
+- Ordinary discovery caches only the filtered, sorted static ground page and count for 30 seconds. Every response still queries current slot availability from PostgreSQL; dated discovery remains uncached. Corrected the ordinary maximum-price filter to apply to the SQL ground page.
+- A rollback-only smoke verified both revision triggers and no persistent fixture change. The public API smoke passed metadata ETag/304 and dynamic `no-store` checks. Cache misses and Redis failures still use PostgreSQL.
+- Corrected the PgBouncer plan: API transaction pooling is compatible with booking transaction locks, but worker/migration session advisory locks require direct or session-pooled connections. Added `DB_POOL_MODE` validation and worker/migrator startup guards, and documented separate connection URLs for deployment.
+- Verified that both worker and migration job refuse `DB_POOL_MODE=transaction` at startup. Added an API-only PgBouncer example with SCRAM authentication and a bounded server pool; actual connection limits and slow-query logging must be validated on the host.
+
+## 2026-10-25 — Day 3 compression and asset cache completion
+
+- Added API-layer compression for public ground JSON above 1 KB, with gzip level 5, Brotli quality 2, and an `API_COMPRESSION` switch. A local smoke confirmed gzip, ETag/304, and `no-store` on dynamic ground responses. A route-relative `request.path` check initially skipped gzip; using the original URL fixed it.
+- Added `overwrite=false` to both the Cloudinary signature and signed upload form fields, and `/v1/` to new public URLs with slash-containing UUID paths. A focused test caught the missing form field before the fix. Existing approved public Cloudinary sample returned HTTP 200, ETag, and `Cache-Control: private, no-transform, max-age=2592000`.
+- Local PostgreSQL 16 reported `max_connections=100`; session-only slow-query settings logged a 303 ms test query at a 250 ms threshold. Added a parameter-free 500 ms staging configuration example. Hosted logging access, pool sizing, and signal drills remain.
+- The 10-client, 10-second synthetic mixed-read comparison had zero failures in both runs. Discovery p95 was 75 ms with API compression off and 70 ms with it on; ground detail p95 was 64 ms in both. This short local result shows no obvious regression but is not a VPS capacity claim. Production dependency audit reported zero vulnerabilities.
+- Added a read-only Day 3 staging check command and a VirtualBox rehearsal guide for the user's planned local VPS. There is no hosted staging/VPS yet, so PgBouncer behavior, proxy TLS/headers, real signal delivery, and slow-log configuration remain deployment gates.
