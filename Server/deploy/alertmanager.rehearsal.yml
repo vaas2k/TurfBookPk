@@ -1,0 +1,11 @@
+# Local/VM test receiver only. Replace with real protected on-call routing later.
+route:
+  receiver: rehearsal-sink
+  group_wait: 5s
+  group_interval: 10s
+  repeat_interval: 1h
+receivers:
+  - name: rehearsal-sink
+    webhook_configs:
+      - url: http://alert-sink:9099/alerts
+        send_resolved: true

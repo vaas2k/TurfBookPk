@@ -7,6 +7,9 @@ gzip_comp_level 5;
 gzip_min_length 1024;
 gzip_types application/json;
 
+# Scrape this path only over a private network directly from Prometheus.
+location = /api/internal/metrics { return 404; }
+
 location /api/ {
     proxy_pass http://127.0.0.1:5000;
     proxy_http_version 1.1;

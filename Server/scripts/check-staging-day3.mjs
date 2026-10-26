@@ -19,6 +19,7 @@ if (!discovery.ok || discovery.headers.get('cache-control') !== 'no-store') thro
 const compressed = discovery.headers.get('content-encoding') === 'gzip';
 const body = await discovery.json();
 if (!Array.isArray(body.grounds)) throw new Error('Staging discovery response is invalid');
+const bodyBytes = Buffer.byteLength(JSON.stringify(body));
 
 const groundId = process.env.STAGING_PUBLIC_GROUND_ID || body.grounds[0]?.id;
 let metadataChecked = false;
@@ -31,7 +32,7 @@ if (groundId) {
   metadataChecked = true;
 }
 
-const result = { api_ready: true, discovery_no_store: true, gzip: compressed, metadata_etag_304: metadataChecked, database: null };
+const result = { api_ready: true, discovery_no_store: true, gzip: compressed, gzip_required: bodyBytes >= 1024, metadata_etag_304: metadataChecked, database: null };
 if (process.env.STAGING_DIRECT_DATABASE_URL) {
   const db = postgres(process.env.STAGING_DIRECT_DATABASE_URL, { max: 1, prepare: false, connect_timeout: 5 });
   try {
@@ -43,4 +44,4 @@ if (process.env.STAGING_DIRECT_DATABASE_URL) {
   }
 }
 console.log(JSON.stringify(result, null, 2));
-if (!compressed) process.exitCode = 1;
+if (!compressed && bodyBytes >= 1024) process.exitCode = 1;

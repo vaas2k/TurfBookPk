@@ -1,0 +1,37 @@
+# Optional local/VM monitoring rehearsal; combine with compose.vm.yml.
+services:
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.path=/prometheus']
+    volumes:
+      - ./prometheus.example.yml:/etc/prometheus/prometheus.yml:ro
+      - ./turfbookpk-alerts.yml:/etc/prometheus/turfbookpk-alerts.yml:ro
+      - ./metrics-token:/etc/prometheus/metrics-token:ro
+      - prometheus_data:/prometheus
+    ports:
+      - '127.0.0.1:9090:9090'
+    depends_on:
+      - api
+      - alertmanager
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    command: ['--config.file=/etc/alertmanager/alertmanager.yml']
+    volumes:
+      - ./alertmanager.rehearsal.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - '127.0.0.1:9093:9093'
+    depends_on:
+      - alert-sink
+    restart: unless-stopped
+
+  alert-sink:
+    image: node:24-bookworm-slim
+    command: ['node', '/app/alert-sink.mjs']
+    volumes:
+      - ./alert-sink.mjs:/app/alert-sink.mjs:ro
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:

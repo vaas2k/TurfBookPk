@@ -7,15 +7,27 @@ const ibanPattern = /\bPK\d{2}[A-Z0-9]{20}\b/gi;
 const jwtPattern = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
 const bearerPattern = /Bearer\s+[^\s,;]+/gi;
 const expoTokenPattern = /(?:Expo|Exponent)PushToken\[[^\]]+\]/gi;
+const credentialAssignmentPattern = /\b(password|token|secret|api[_-]?key|signature)=([^\s&,;]+)/gi;
+const secretEnvironmentKeys = [
+  'DATABASE_URL', 'REDIS_URL', 'JWT_ACCESS_SECRET', 'CLINK_USERNAME', 'CLINK_PASSWORD',
+  'CLOUDINARY_API_SECRET', 'SENSITIVE_DATA_HMAC_SECRET', 'PAYOUT_ENCRYPTION_KEY',
+  'PAYMENT_PII_ENCRYPTION_KEY', 'PAYMENT_PII_HMAC_SECRET', 'METRICS_TOKEN',
+];
 
 function redactText(value: string): string {
-  return value
+  let result = value;
+  for (const key of secretEnvironmentKeys) {
+    const secret = process.env[key];
+    if (secret && secret.length >= 8) result = result.replaceAll(secret, '[redacted-secret]');
+  }
+  return result
     .replace(bearerPattern, 'Bearer [redacted]')
     .replace(jwtPattern, '[redacted-jwt]')
     .replace(expoTokenPattern, '[redacted-push-token]')
     .replace(cnicPattern, '[redacted-cnic]')
     .replace(ibanPattern, '[redacted-iban]')
-    .replace(phonePattern, '[redacted-phone]');
+    .replace(phonePattern, '[redacted-phone]')
+    .replace(credentialAssignmentPattern, '$1=[redacted]');
 }
 
 export function redactOperationalData(value: unknown, depth = 0): unknown {
@@ -51,7 +63,7 @@ export function errorMetadata(error: unknown): Record<string, unknown> {
       error_code: candidate.code,
       error_status: candidate.statusCode,
       error_message: candidate.message,
-      error_stack: candidate.stack,
+      ...(process.env.NODE_ENV !== 'production' || process.env.LOG_ERROR_STACKS === 'true' ? { error_stack: candidate.stack } : {}),
     };
   }
   return { error_name: "UnknownError" };

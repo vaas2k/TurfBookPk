@@ -1,0 +1,75 @@
+name: turfbookpk-vm
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: turfbookpk
+      POSTGRES_PASSWORD: ${REHEARSAL_DB_PASSWORD:?Set REHEARSAL_DB_PASSWORD in deploy/.env.vm}
+      POSTGRES_DB: turfbookpk
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U turfbookpk -d turfbookpk"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    image: turfbookpk-server:vm
+    build:
+      context: ..
+      dockerfile: Dockerfile.vm
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk
+      DB_POOL_MODE: direct
+    depends_on:
+      db:
+        condition: service_healthy
+    command: npm run db:migrate
+
+  api:
+    image: turfbookpk-server:vm
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk
+      REDIS_URL: redis://redis:6379
+      DB_POOL_MODE: direct
+      PORT: "5000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    ports:
+      - "${REHEARSAL_BIND_IP:-127.0.0.1}:${REHEARSAL_API_PORT:-5000}:5000"
+    restart: unless-stopped
+
+  worker:
+    image: turfbookpk-server:vm
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk
+      REDIS_URL: redis://redis:6379
+      DB_POOL_MODE: direct
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: npm run worker
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

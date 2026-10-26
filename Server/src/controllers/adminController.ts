@@ -134,6 +134,7 @@ export class AdminController {
   vendorDocumentDownload = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const id = param(request.params.id, 'Document id'); const document = (await db.select().from(vendorVerificationDocuments).where(eq(vendorVerificationDocuments.id, id)).limit(1))[0];
     if (!document) throw new AppError('not_found', 'Document was not found', 404);
+    response.setHeader('Cache-Control', 'no-store');
     response.json({ download_url: privateDocumentUrl(document.storageKey, document.contentType), expires_in_seconds: 300 });
   };
 
@@ -208,6 +209,7 @@ export class AdminController {
   groundDocumentDownload = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     const id = param(request.params.id, 'Document id'); const document = (await db.select().from(groundVerificationDocuments).where(eq(groundVerificationDocuments.id, id)).limit(1))[0];
     if (!document) throw new AppError('not_found', 'Document was not found', 404);
+    response.setHeader('Cache-Control', 'no-store');
     response.json({ download_url: privateDocumentUrl(document.storageKey, document.contentType), expires_in_seconds: 300 });
   };
 

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { redis } from './redisClient.js';
 import { logEvent } from './operationalLogger.js';
+import { cacheAccess } from './metrics.js';
 
 const CACHE_VERSION = 'v1';
 const TTL_SECONDS = 60;
@@ -28,11 +29,13 @@ export async function cachedPublicGround<T>(id: string, version: string, build: 
   if (redis?.isReady) {
     try {
       const cached = await withinBudget(redis.get(key));
-      if (cached) return JSON.parse(cached) as T;
+      if (cached) { cacheAccess('metadata', 'hit'); return JSON.parse(cached) as T; }
     } catch (error) {
+      cacheAccess('metadata', 'error');
       logEvent('warn', 'public_ground_cache_read_failed', { error_name: error instanceof Error ? error.name : 'unknown' });
     }
   }
+  cacheAccess('metadata', 'miss');
   const value = await build();
   if (redis?.isReady) {
     try {
@@ -50,11 +53,13 @@ export async function cachedPublicDiscovery<T>(query: unknown, revision: number,
   if (redis?.isReady) {
     try {
       const cached = await withinBudget(redis.get(key));
-      if (cached) return JSON.parse(cached) as T;
+      if (cached) { cacheAccess('discovery', 'hit'); return JSON.parse(cached) as T; }
     } catch (error) {
+      cacheAccess('discovery', 'error');
       logEvent('warn', 'public_discovery_cache_read_failed', { error_name: error instanceof Error ? error.name : 'unknown' });
     }
   }
+  cacheAccess('discovery', 'miss');
   const value = await build();
   if (redis?.isReady) {
     try {

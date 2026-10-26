@@ -90,15 +90,21 @@ Day 1 implementation and local measurements are recorded in `Server/SCALABILITY_
 
 ## Day 4 — P1 reliability, security, and verified capacity
 
+Local Day 4 preparation is documented in `Server/deploy/DAY4_OPERATIONS.md`. The VM/staging drill remains the acceptance gate for operational items; source files alone do not prove alerts, backups, or capacity.
+
 - [ ] Add structured metrics for request count, status, route latency, active requests, DB pool wait, query latency, queue depth/age, job retries/failures, payment states, and cache hit ratio.
+  - [x] Add token-protected Prometheus metrics for route response counts/latency, active requests, database connection count, outbox depth/age, payment states, worker heartbeat, job outcomes/retries, and cache access.
+  - [ ] Add measured DB pool wait/query latency on the chosen production telemetry stack.
 - [ ] Add centralized error reporting/APM with the existing sensitive-data redaction rules.
-- [ ] Add alerts for p95 latency, 5xx rate, database saturation, queue lag/dead letters, payment expiry failures, manual-review growth, and callback failures.
-- [ ] Avoid logging full error stacks in production unless the log destination is access-controlled; continue excluding request bodies and credentials.
+- [ ] Add alerts for p95 latency, 5xx rate, database saturation, queue lag/dead letters, payment expiry failures, manual-review growth, and callback failures. Eleven rules pass `promtool`; local Prometheus scrapes the API and a missing-worker alert fired, reached the rehearsal receiver, and resolved. Connect and verify a real on-call receiver before deployment.
+- [x] Avoid logging full error stacks in production unless explicitly enabled for an access-controlled log destination; continue excluding request bodies and credentials.
 - [ ] Harden CORS, proxy trust, security headers, request-body limits, admin export limits, and private-document delivery for the actual deployment domains/proxy.
-- [ ] Add a retention/cleanup worker for expired OTP challenges, revoked/expired refresh sessions, checked push receipts, old idempotency records where legally safe, and stale cache/job data.
-- [ ] Review access-token session lookup cost. Keep immediate revocation correctness, then optionally cache active session state briefly in Redis with revocation invalidation.
-- [ ] Add database backup automation, restore rehearsal, point-in-time recovery where supported, and documented rollback/forward-fix procedures.
-- [ ] Run failure tests: Redis unavailable, one API replica killed, worker killed mid-job, PostgreSQL failover, Clink timeout, Expo timeout, duplicate callback, and delayed callback after expiry.
+  - [x] Require explicit production HTTPS browser origins, validate request IDs, retain Helmet/body-size limits, mark private document URLs `no-store`, and bound/admin CSV exports to 100 current-page rows with spreadsheet-formula escaping.
+  - [ ] Verify proxy trust and private document behavior on the deployed domains.
+- [x] Add a bounded retention/cleanup worker for expired OTP challenges, revoked/expired refresh sessions, checked push receipts, and sent outbox rows. Payment idempotency/events and unresolved jobs remain retained; Redis cache keys already expire by TTL.
+- [x] Review access-token session lookup cost. Current lookup is one primary-key PostgreSQL read per authenticated request, preserving immediate logout/suspension behavior. Do not cache it until the VM load test shows a material bottleneck and revocation invalidation is designed.
+- [ ] Add database backup automation, restore rehearsal, point-in-time recovery where supported, and documented rollback/forward-fix procedures. A local `pg_dump` archive restored with its fixture into a separate disposable database; VM scripts passed Bash syntax. Scheduled encrypted off-host backups/PITR and restore-time measurement require the VM or hosted database.
+- [ ] Run failure tests: Redis unavailable, one API replica killed, worker killed mid-job, PostgreSQL failover, Clink timeout, Expo timeout, duplicate callback, and delayed callback after expiry. Local isolated drills passed for Redis/PostgreSQL outage and recovery, surviving API replica, worker lease reclaim, duplicate callback, and late callback. Actual database failover and external-provider timeout drills remain.
 - [ ] Run the final load test against staging with production-like networking and data volume.
   - [ ] No double bookings or duplicate ledger/notification effects.
   - [ ] Error rate below 1% excluding deliberate validation/rate-limit responses.

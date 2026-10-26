@@ -36,15 +36,17 @@ import { createPaymentRouter, createPublicPaymentRouter } from './router/payment
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { connectRedis, closeRedis, redis } from './services/redisClient.js';
 import { sql } from './database/client.js';
+import { metricsTokenValid, renderMetrics, requestFinished, requestStarted } from './services/metrics.js';
 
 const app = express();
+app.disable('x-powered-by');
 let shuttingDown = false;
 if (env.trustProxyHops > 0) app.set('trust proxy', env.trustProxyHops);
 
 
 app.use(helmet());
 app.use(cors({
-  origin: env.nodeEnv === 'production' ? env.frontendUrl : '*',
+  origin: env.nodeEnv === 'production' ? env.frontendOrigins : '*',
 }));
 if (env.apiCompression) app.use(compression({
   level: 5,
@@ -54,17 +56,21 @@ if (env.apiCompression) app.use(compression({
     && /^\/api\/grounds(?:\/[0-9a-f-]{36}(?:\/metadata|\/slots)?)?$/i.test(request.originalUrl.split('?')[0] || '')
     && compression.filter(request, response),
 }));
-app.use(express.json({ limit: '32kb', strict: true }));
-
 app.use((request, response, next) => {
-  const requestId = typeof request.headers['x-request-id'] === 'string' && request.headers['x-request-id'].length <= 128
+  const requestId = typeof request.headers['x-request-id'] === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(request.headers['x-request-id'])
     ? request.headers['x-request-id']
     : randomUUID();
   const startedAt = Date.now();
+  requestStarted();
+  let finished = false;
   response.locals.requestId = requestId;
   response.setHeader('X-Request-Id', requestId);
-  response.on('finish', () => {
-    const status = response.statusCode;
+  const record = (aborted: boolean) => {
+    if (finished) return;
+    finished = true;
+    const status = aborted ? 499 : response.statusCode;
+    const route = request.route && typeof request.route.path === 'string' ? `${request.baseUrl}${request.route.path}` : 'unmatched';
+    requestFinished(request.method, route, status, (Date.now() - startedAt) / 1000);
     logEvent(status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info', 'http_request', {
       request_id: requestId,
       method: request.method,
@@ -72,8 +78,49 @@ app.use((request, response, next) => {
       status_code: status,
       duration_ms: Date.now() - startedAt,
     });
-  });
+  };
+  response.on('finish', () => record(false));
+  response.on('close', () => record(!response.writableFinished));
   next();
+});
+app.use(express.json({ limit: '32kb', strict: true }));
+
+app.get('/api/internal/metrics', async (request, response, next) => {
+  if (!env.metricsToken) return void response.sendStatus(404);
+  const provided = /^Bearer (.+)$/.exec(request.headers.authorization || '')?.[1];
+  if (!metricsTokenValid(provided, env.metricsToken)) return void response.sendStatus(403);
+  try {
+    const [snapshot] = await sql<[{
+      outbox_pending: number; outbox_dead: number; outbox_oldest_seconds: number;
+      payment_pending: number; payment_manual_review: number; payment_expiry_retry: number;
+      db_connections: number; db_max_connections: number;
+    }]>`
+      SELECT
+        (SELECT count(*)::int FROM notification_outbox WHERE status = 'pending') AS outbox_pending,
+        (SELECT count(*)::int FROM notification_outbox WHERE status = 'dead') AS outbox_dead,
+        (SELECT coalesce(extract(epoch FROM now() - min(available_at)), 0)::int FROM notification_outbox WHERE status = 'pending' AND available_at <= now()) AS outbox_oldest_seconds,
+        (SELECT count(*)::int FROM payment_attempts WHERE status = 'pending') AS payment_pending,
+        (SELECT count(*)::int FROM payment_attempts WHERE review_status = 'manual_review') AS payment_manual_review,
+        (SELECT count(*)::int FROM payment_attempts WHERE provider_status = 'pending' AND expiry_retry_count > 0) AS payment_expiry_retry,
+        (SELECT count(*)::int FROM pg_stat_activity WHERE datname = current_database()) AS db_connections,
+        current_setting('max_connections')::int AS db_max_connections`;
+    if (!snapshot) throw new Error('Metrics query returned no row');
+    let workerHeartbeatAgeSeconds = -1;
+    let workerJobs: Record<string, string> = {};
+    if (redis?.isReady) {
+      try {
+        const [timestamp, jobs] = await Promise.all([redis.get('turfbookpk:worker:heartbeat'), redis.hGetAll('turfbookpk:worker:job_results')]);
+        if (timestamp && /^\d+$/.test(timestamp)) workerHeartbeatAgeSeconds = Math.max(0, Math.floor((Date.now() - Number(timestamp)) / 1000));
+        workerJobs = jobs;
+      } catch { /* Redis readiness is reported by /api/ready. */ }
+    }
+    response.setHeader('Cache-Control', 'no-store');
+    response.type('text/plain; version=0.0.4; charset=utf-8').send(renderMetrics({
+      outboxPending: snapshot.outbox_pending, outboxDead: snapshot.outbox_dead, outboxOldestSeconds: snapshot.outbox_oldest_seconds,
+      paymentPending: snapshot.payment_pending, paymentManualReview: snapshot.payment_manual_review, paymentExpiryRetry: snapshot.payment_expiry_retry,
+      dbConnections: snapshot.db_connections, dbMaxConnections: snapshot.db_max_connections, workerHeartbeatAgeSeconds,
+    }, workerJobs));
+  } catch (error) { next(error); }
 });
 
 const paymentController = new PaymentController();

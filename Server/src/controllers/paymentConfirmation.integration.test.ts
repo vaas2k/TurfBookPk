@@ -57,3 +57,47 @@ test('concurrent Clink acknowledgments confirm one booking and emit effects once
     await db.delete(users).where(eq(users.id, owner.id));
   }
 });
+
+test('late Clink acknowledgment records manual review without allocating or earning', async () => {
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
+  const player = (await db.insert(users).values({ phone: `+92340${suffix}`, fullName: 'Late Payment Player' }).returning())[0]!;
+  const owner = (await db.insert(users).values({ phone: `+92341${suffix}`, fullName: 'Late Payment Vendor', role: 'vendor' }).returning())[0]!;
+  const vendor = (await db.insert(vendors).values({ userId: owner.id, businessName: 'Late Payment Vendor', businessPhone: `+92342${suffix}`, businessCity: 'Karachi' }).returning())[0]!;
+  const ground = (await db.insert(grounds).values({ vendorId: vendor.id, title: 'Late Payment Ground', location: 'Karachi', city: 'Karachi', address: 'Test address', pricePerHour: 1000 }).returning())[0]!;
+  const slot = (await db.insert(slots).values({ groundId: ground.id, date: '2030-01-02', startTime: '10:00', endTime: '11:00', price: 1000 }).returning())[0]!;
+  const holdExpiresAt = new Date(Date.now() - 60_000);
+  const booking = (await db.insert(bookings).values({ bookingNumber: `late-${suffix}`, playerId: player.id, vendorId: vendor.id, groundId: ground.id, slotId: slot.id, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, totalAmount: 1000, vendorAmount: 900, holdExpiresAt }).returning())[0]!;
+  await db.update(slots).set({ heldBy: player.id, holdBookingId: booking.id, holdExpiresAt }).where(eq(slots.id, slot.id));
+  const attempt = (await db.insert(paymentAttempts).values({ bookingId: booking.id, playerId: player.id, vendorId: vendor.id, provider: 'clink', providerStatus: 'pending', providerReference: `${Date.now()}${Math.floor(Math.random() * 100_000).toString().padStart(5, '0')}`, amount: 1000, expiresAt: holdExpiresAt, idempotencyKey: `late-${suffix}` }).returning())[0]!;
+  try {
+    const controller = new PaymentController() as unknown as { confirmAttempt: (id: string, paidAt: Date, eventKey: string, payloadHash: string) => Promise<'confirmed' | 'manual_review' | 'duplicate'> };
+    assert.equal(await controller.confirmAttempt(attempt.id, new Date(), `late:${suffix}`, suffix), 'manual_review');
+    assert.equal(await controller.confirmAttempt(attempt.id, new Date(), `late:${suffix}`, suffix), 'duplicate');
+    const [currentBooking] = await db.select().from(bookings).where(eq(bookings.id, booking.id));
+    const [currentSlot] = await db.select().from(slots).where(eq(slots.id, slot.id));
+    const [currentAttempt] = await db.select().from(paymentAttempts).where(eq(paymentAttempts.id, attempt.id));
+    const [currentVendor] = await db.select().from(vendors).where(eq(vendors.id, vendor.id));
+    assert.equal(currentBooking?.status, 'pending_payment');
+    assert.equal(currentSlot?.isBooked, false);
+    assert.equal(currentSlot?.bookingId, null);
+    assert.equal(currentAttempt?.providerStatus, 'paid_unallocated');
+    assert.equal(currentAttempt?.reviewStatus, 'manual_review');
+    assert.equal(currentVendor?.pendingEarnings, 0);
+    assert.equal((await db.select().from(ledgerEntries).where(eq(ledgerEntries.bookingId, booking.id))).length, 0);
+    assert.equal((await db.select().from(paymentEvents).where(eq(paymentEvents.paymentAttemptId, attempt.id))).length, 1);
+    assert.equal((await db.select().from(notifications).where(eq(notifications.userId, player.id))).length, 1);
+  } finally {
+    await db.delete(notifications).where(eq(notifications.userId, player.id));
+    await db.delete(notifications).where(eq(notifications.userId, owner.id));
+    await db.delete(paymentEvents).where(eq(paymentEvents.paymentAttemptId, attempt.id));
+    await db.delete(ledgerEntries).where(eq(ledgerEntries.bookingId, booking.id));
+    await db.delete(paymentAttempts).where(eq(paymentAttempts.id, attempt.id));
+    await db.update(slots).set({ isBooked: false, bookedBy: null, bookingId: null, heldBy: null, holdBookingId: null, holdExpiresAt: null }).where(eq(slots.id, slot.id));
+    await db.delete(bookings).where(eq(bookings.id, booking.id));
+    await db.delete(slots).where(eq(slots.id, slot.id));
+    await db.delete(grounds).where(eq(grounds.id, ground.id));
+    await db.delete(vendors).where(eq(vendors.id, vendor.id));
+    await db.delete(users).where(eq(users.id, player.id));
+    await db.delete(users).where(eq(users.id, owner.id));
+  }
+});

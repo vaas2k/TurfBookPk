@@ -1,0 +1,57 @@
+groups:
+  - name: turfbookpk-api
+    rules:
+      - alert: TurfBookApiUnavailable
+        expr: up{job="turfbookpk-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: 'TurfBookPK API metrics are unavailable' }
+      - alert: TurfBookHighReadLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(turfbook_http_request_duration_seconds_bucket{method="GET",route!="unmatched"}[5m]))) > 0.5 and sum(rate(turfbook_http_request_duration_seconds_count{method="GET",route!="unmatched"}[5m])) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: 'API read p95 exceeded 500 ms' }
+      - alert: TurfBookHighServerErrorRate
+        expr: sum(rate(turfbook_http_requests_total{status="5xx"}[5m])) / clamp_min(sum(rate(turfbook_http_requests_total[5m])), 0.01) > 0.01
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: 'More than 1% of API responses are 5xx' }
+      - alert: TurfBookDatabaseConnectionsHigh
+        expr: turfbook_db_connections / turfbook_db_max_connections > 0.8
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: 'PostgreSQL connections exceed 80% of max_connections' }
+      - alert: TurfBookWorkerMissing
+        expr: turfbook_worker_heartbeat_age_seconds < 0 or turfbook_worker_heartbeat_age_seconds > 35
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: 'Background worker heartbeat is missing or stale' }
+      - alert: TurfBookOutboxLag
+        expr: turfbook_outbox_oldest_seconds > 120
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: 'Oldest due push job has waited over two minutes' }
+      - alert: TurfBookOutboxDeadLetters
+        expr: turfbook_outbox_dead > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: 'Push jobs need manual review' }
+      - alert: TurfBookWorkerJobFailures
+        expr: sum(increase(turfbook_worker_jobs_total{result="failure"}[5m])) > 0
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: 'A background job failed' }
+      - alert: TurfBookPaymentExpiryRetries
+        expr: turfbook_payment_expiry_retry > 0
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: 'Clink reference expiration is retrying' }
+      - alert: TurfBookManualPaymentsGrowing
+        expr: delta(turfbook_payment_manual_review[15m]) > 3
+        labels: { severity: warning }
+        annotations: { summary: 'Manual payment reviews increased by more than three' }
+      - alert: TurfBookCallbackServerErrors
+        expr: sum(rate(turfbook_http_requests_total{route="/api/payments/clink/acknowledgment",status="5xx"}[5m])) > 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: 'Clink acknowledgment endpoint is returning 5xx' }

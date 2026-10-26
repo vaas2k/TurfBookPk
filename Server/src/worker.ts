@@ -1,5 +1,5 @@
 import { sql } from './database/client.js';
-import { connectRedis, closeRedis } from './services/redisClient.js';
+import { connectRedis, closeRedis, redis } from './services/redisClient.js';
 import { BookingMaintenanceService } from './services/bookingMaintenance.js';
 import { PaymentController } from './controllers/paymentController.js';
 import { processExpoPushReceipts } from './services/expoPushService.js';
@@ -8,12 +8,19 @@ import { cleanupExpiredUnbookedSlots, extendAllScheduleHorizons } from './servic
 import { escalateStaleClinkGeneration } from './services/paymentEscalation.js';
 import { errorMetadata, logEvent } from './services/operationalLogger.js';
 import { env } from './configs/env.js';
+import { cleanupOperationalRecords } from './services/operationalRetention.js';
 
 const maintenance = new BookingMaintenanceService();
 const payments = new PaymentController();
 let stopping = false;
 let active: Promise<void> | null = null;
 const otherJobs = new Set<Promise<unknown>>();
+
+function recordJobMetric(name: string, result: 'success' | 'failure' | 'retry' | 'dead', count = 1): void {
+  if (!redis?.isReady || count <= 0) return;
+  void redis.hIncrBy('turfbookpk:worker:job_results', `${name}:${result}`, count)
+    .catch(() => { /* Metrics must not change job outcomes. */ });
+}
 
 function track<T>(job: Promise<T>): Promise<T> {
   otherJobs.add(job);
@@ -31,8 +38,15 @@ async function exclusiveJob(name: string, lockId: number, task: () => Promise<un
     if (!owned) return;
     const started = Date.now();
     const outcome = await task();
+    recordJobMetric(name, 'success');
+    if (outcome && typeof outcome === 'object') {
+      const result = outcome as Record<string, unknown>;
+      if (typeof result.retried === 'number') recordJobMetric(name, 'retry', result.retried);
+      if (typeof result.dead === 'number') recordJobMetric(name, 'dead', result.dead);
+    }
     logEvent('info', 'worker_job_completed', { job: name, duration_ms: Date.now() - started, outcome });
   } catch (error) {
+    recordJobMetric(name, 'failure');
     logEvent('error', 'worker_job_failed', { job: name, ...errorMetadata(error) });
   } finally {
     try {
@@ -57,6 +71,10 @@ async function main(): Promise<void> {
   if (env.dbPoolMode === 'transaction') throw new Error('Worker advisory locks require a direct PostgreSQL connection or session pooling');
   await connectRedis();
   const timers: NodeJS.Timeout[] = [];
+  const heartbeat = async () => {
+    if (!stopping && redis?.isReady) await redis.set('turfbookpk:worker:heartbeat', String(Date.now()), { EX: 45 });
+  };
+  await heartbeat();
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
@@ -77,11 +95,15 @@ async function main(): Promise<void> {
   if (stopping) return;
   await track(exclusiveJob('old_unbooked_slot_cleanup', 2026102407, cleanupExpiredUnbookedSlots));
   if (stopping) return;
+  await track(exclusiveJob('operational_retention', 2026102601, cleanupOperationalRecords));
+  if (stopping) return;
   timers.push(setInterval(() => { void tick().catch((error) => logEvent('error', 'worker_tick_failed', errorMetadata(error))); }, 15_000));
+  timers.push(setInterval(() => { void heartbeat().catch((error) => logEvent('error', 'worker_heartbeat_failed', errorMetadata(error))); }, 10_000));
   timers.push(setInterval(() => { void track(exclusiveJob('notification_outbox', 2026102404, processNotificationOutbox)).catch((error) => logEvent('error', 'worker_outbox_tick_failed', errorMetadata(error))); }, 2_000));
   timers.push(setInterval(() => { void track(exclusiveJob('push_receipts', 2026102403, processExpoPushReceipts)).catch((error) => logEvent('error', 'worker_receipt_tick_failed', errorMetadata(error))); }, 5 * 60_000));
   timers.push(setInterval(() => { void track(exclusiveJob('schedule_horizon', 2026102405, extendAllScheduleHorizons)).catch((error) => logEvent('error', 'worker_schedule_tick_failed', errorMetadata(error))); }, 10 * 60_000));
   timers.push(setInterval(() => { void track(exclusiveJob('old_unbooked_slot_cleanup', 2026102407, cleanupExpiredUnbookedSlots)).catch((error) => logEvent('error', 'worker_cleanup_tick_failed', errorMetadata(error))); }, 60 * 60_000));
+  timers.push(setInterval(() => { void track(exclusiveJob('operational_retention', 2026102601, cleanupOperationalRecords)).catch((error) => logEvent('error', 'worker_retention_tick_failed', errorMetadata(error))); }, 60 * 60_000));
 }
 
 main().catch((error) => { logEvent('error', 'worker_start_failed', errorMetadata(error)); process.exitCode = 1; });

@@ -1,0 +1,18 @@
+# Replace the target and mount a private file containing METRICS_TOKEN only.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+rule_files:
+  - /etc/prometheus/turfbookpk-alerts.yml
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+scrape_configs:
+  - job_name: turfbookpk-api
+    metrics_path: /api/internal/metrics
+    static_configs:
+      - targets: ['api:5000']
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/metrics-token

@@ -225,6 +225,20 @@
       "when": 1792800007000,
       "tag": "0031_public_ground_catalog_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792972800000,
+      "tag": "0032_operational_retention_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792972801000,
+      "tag": "0033_payment_observability_indexes",
+      "breakpoints": true
     }
   ]
 }

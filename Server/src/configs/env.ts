@@ -38,8 +38,21 @@ function booleanValue(name: string, fallback = false): boolean {
 
 const accessTokenTtl = process.env.JWT_ACCESS_TTL || '15m';
 
+function allowedFrontendOrigins(): string[] {
+  const raw = process.env.FRONTEND_ORIGINS || process.env.FRONTEND_URL || '';
+  if (!raw && isProduction) throw new Error('FRONTEND_ORIGINS is required in production');
+  return raw.split(',').map((value) => value.trim()).filter(Boolean).map((value) => {
+    const url = new URL(value);
+    if (url.origin !== value.replace(/\/$/, '') || (isProduction && url.protocol !== 'https:')) {
+      throw new Error('FRONTEND_ORIGINS must contain HTTPS origins without paths or wildcards');
+    }
+    return url.origin;
+  });
+}
+
 export const env = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:8081',
+  frontendOrigins: allowedFrontendOrigins(),
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT) || 5000,
   databaseUrl: process.env.DATABASE_URL || 'postgres://turfbookpk:turfbookpk@172.17.0.2:5432/turfbookpk',
@@ -53,6 +66,7 @@ export const env = {
   apiCompression: booleanValue('API_COMPRESSION', true),
   redisUrl: process.env.REDIS_URL || '',
   trustProxyHops: integerInRange('TRUST_PROXY_HOPS', 0, 0, 8),
+  metricsToken: process.env.METRICS_TOKEN || '',
   loadTestRateLimitBypass: booleanValue('ALLOW_LOADTEST_RATE_LIMIT_BYPASS'),
   jwtAccessSecret: requiredSecret('JWT_ACCESS_SECRET', 'development-access-secret-change-me'),
   accessTokenTtl,
@@ -93,6 +107,7 @@ export const env = {
 };
 
 if (isProduction && !env.redisUrl) throw new Error('REDIS_URL is required in production for shared rate limiting');
+if (env.metricsToken && env.metricsToken.length < 32) throw new Error('METRICS_TOKEN must contain at least 32 characters');
 if (env.redisUrl && !/^rediss?:\/\//.test(env.redisUrl)) throw new Error('REDIS_URL must start with redis:// or rediss://');
 if (env.dbLockTimeoutMs > env.dbStatementTimeoutMs) throw new Error('DB_LOCK_TIMEOUT_MS must not exceed DB_STATEMENT_TIMEOUT_MS');
 if (!['direct', 'session', 'transaction'].includes(env.dbPoolMode)) throw new Error('DB_POOL_MODE must be direct, session, or transaction');

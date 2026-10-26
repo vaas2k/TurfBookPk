@@ -126,24 +126,26 @@ Current API groups:
 - `/api/reviews`: completed-booking reviews, reports, and vendor moderation.
 - `/api/media`: authenticated signed-upload targets and owner-scoped media deletion.
 - `/api/engagement`: favorites and recently viewed grounds.
-- `/api/health`: health check.
+- `/api/health` and `/api/ready`: process liveness and dependency readiness.
+- `/api/internal/metrics`: bearer-protected Prometheus metrics when `METRICS_TOKEN` is configured; keep private.
 
 ## Current Implemented Workflow
 
 1. User requests an OTP with a Pakistani phone number.
-2. Development mode uses `AUTH_OTP_FIXED_CODE` and logs the code.
+2. Development mode can use `AUTH_OTP_FIXED_CODE`; operational logs do not include the OTP.
 3. OTP verification creates or loads a user and returns access/refresh tokens.
 4. Vendors can register and create, edit, activate/deactivate, and delete grounds.
 5. Vendors can create, block, unblock, and remove flexible dated slots.
 6. Players see vendor-created grounds and real slot availability.
-7. Players can select a slot and confirm a mocked booking.
+7. Players can hold a slot and pay through the sandbox Clink 1-Bill reference flow; mock payment remains only for explicit local/test use.
 8. Booking creation atomically claims the slot to prevent double booking.
 9. Player and vendor booking lists are loaded from PostgreSQL.
 10. Cancellation uses the policy snapshot locked at booking and releases slots safely.
 11. Booking notifications are stored for both player and vendor, with remote Expo delivery in native builds.
 12. Players can view persisted notifications, add bookings to their calendar, save favorites, and revisit recent grounds.
 13. Vendors can configure peak day/time windows, a percentage uplift, selectable pitch sizes/amenities, recurring schedules, and blackout dates.
-14. Future recurring slots remain reserved until their payment window opens; a separate mock payment then confirms them.
+14. Future recurring slots remain reserved until their payment window opens; each future payment uses its own payment attempt.
+15. The API is stateless for durable state; a separate worker owns maintenance, push outbox delivery, retention, and Clink expiry. Redis provides shared rate limiting and stable public-metadata caching.
 
 ## Database Tables
 
@@ -158,8 +160,9 @@ The active backend schema currently includes:
 - `slots`
 - `bookings`
 - `notifications`
-- `payments`
-- `earnings_ledger`
+- `payment_attempts`, `payment_events`, and `payment_billing_profiles`
+- `ledger_entries`
+- `notification_outbox`
 - `push_tokens` and `push_receipts`
 - `reviews`, `review_reports`, `favorites`, and `recently_viewed_grounds`
 
@@ -181,9 +184,9 @@ Drizzle migrations are stored in `Server/drizzle/`. Run migrations against the c
 ## Known Limitations
 
 - Real SMS delivery is not implemented; development OTP is fixed/configured.
-- Payment gateway integration is not implemented; booking confirmation is mocked.
+- Clink sandbox reference generation, expiry, acknowledgment, and manual-review paths are implemented. Live mode remains blocked until signed callback/status verification, refunds, fees, and settlement are contracted.
 - Image storage uses a provider-neutral signed-upload API with a Cloudinary adapter. Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` on the server; R2/S3 can replace the adapter later without changing feature screens.
-- Real SMS delivery, payment-gateway webhooks/refunds/payouts, and map rendering remain deferred. Vendor KYC and separate per-ground authority verification are implemented; a ground must be approved before it can be public or booked.
+- Real SMS delivery, live payment refunds/payouts, and map rendering remain deferred. Vendor KYC and separate per-ground authority verification are implemented; a ground must be approved before it can be public or booked.
 - Android Expo push delivery is implemented and manually tested in a development build. iOS APNs/EAS setup and real-device verification remain.
 - Phone OTP is the sole active account sign-in method. Google Sign-In and Sign in with Apple are optional future work.
 - The custom Express/PostgreSQL backend is authoritative; stale Supabase config remains to be removed from Expo config.
@@ -192,6 +195,7 @@ Drizzle migrations are stored in `Server/drizzle/`. Run migrations against the c
 
 - Functional backlog and outcomes: `agent-continuity/CURRENT_CHECKLIST.md` and `agent-continuity/TASK_JOURNAL.md`.
 - UI-only backlog and outcomes: `agent-continuity/UI_CHECKLIST.md` and `agent-continuity/UI_TASK_JOURNAL.md`.
+- Backend scalability backlog and outcomes: `agent-continuity/SCALABILITY_CHECKLIST.md` and `agent-continuity/SCALABILITY_TASK_JOURNAL.md`. VM steps are in `Server/deploy/VIRTUALBOX_REHEARSAL.md`; operations details are in `Server/deploy/DAY4_OPERATIONS.md`.
 - Do not mix functional work with the UI journal. Update the relevant journal after meaningful changes.
 
 ## Testing Checklist
