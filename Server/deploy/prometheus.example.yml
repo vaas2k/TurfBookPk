@@ -1,4 +1,4 @@
-# Replace the target and mount a private file containing METRICS_TOKEN only.
+# Replace the target as needed. Compose mounts METRICS_TOKEN as a private secret.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -7,12 +7,12 @@ rule_files:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: ['alertmanager:9093']
+        - targets: ["alertmanager:9093"]
 scrape_configs:
   - job_name: turfbookpk-api
     metrics_path: /api/internal/metrics
     static_configs:
-      - targets: ['api:5000']
+      - targets: ["api:5000"]
     authorization:
       type: Bearer
-      credentials_file: /etc/prometheus/metrics-token
+      credentials_file: /run/secrets/metrics_token

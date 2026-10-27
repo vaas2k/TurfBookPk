@@ -117,3 +117,5 @@
 ## 2026-10-27 — VM backup transfer follow-up
 
 - On the user's VirtualBox VM, a direct `pg_dump -f` inside PostgreSQL completed successfully, while the original backup script stalled while streaming the archive through `docker compose exec` to host stdout. Revised backup and restore scripts to create/read archive files inside the database container and transfer them with `docker compose cp`, with visible progress messages and restricted host permissions. Bash syntax and Docker Compose CLI behavior were checked; the revised scripts still need a full run on the VM.
+- The revised backup and restore rehearsal passed on the VM, including checksum validation and restoring into a separate disposable database. The restored user count was zero because the new rehearsal database was empty.
+- Prometheus initially reported `TurfBookApiUnavailable`; its target diagnostics showed permission denied reading the mode-600 bind-mounted metrics token. Changed the monitoring overlay to mount the host token as a Compose secret at `/run/secrets/metrics_token`, retaining restrictive host permissions. VM recreation and alert retest remain.
