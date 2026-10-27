@@ -38,7 +38,7 @@ The Docker install script is convenient for a disposable practice VM. For a real
 
 ## 4. Start the app
 
-First ensure the Day 4 files have been committed and pushed: `Server/Dockerfile.vm`, `Server/deploy/compose.vm.yml`, and `Server/deploy/.env.vm.example` must exist in the GitHub checkout. The local Day 4 changes are currently uncommitted, so cloning the existing GitHub branch now will not include them. Once they are pushed, use your repository URL if it differs from the example:
+The Day 4 VM files are on `main`. Use your repository URL if it differs from the example:
 
 ```bash
 git clone https://github.com/vaas2k/TurfBookPk.git
@@ -54,7 +54,7 @@ For the VirtualBox NAT forwarding rule in step 2, also add `REHEARSAL_BIND_IP=0.
 Then run:
 
 ```bash
-sudo docker compose --env-file deploy/.env.vm -f deploy/compose.vm.yml up --build -d
+
 sudo docker compose --env-file deploy/.env.vm -f deploy/compose.vm.yml ps
 curl http://127.0.0.1:5000/api/ready
 ```
