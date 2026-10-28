@@ -80,6 +80,7 @@ Day 1 implementation and local measurements are recorded in `Server/SCALABILITY_
 - [x] Add response compression at the API layer after measuring CPU trade-offs. Public ground routes use gzip/Brotli above 1 KB; `API_COMPRESSION=false` disables it if proxy or staging measurements favor another setup.
 - [x] Make database pool size and timeouts configurable; the runbook documents the API/worker connection budget. Confirm the actual VPS/PostgreSQL limit before rollout.
 - [ ] Put only API replicas behind PgBouncer transaction pooling and retain `prepare: false` compatibility. Worker and migration session advisory locks require direct PostgreSQL or PgBouncer session pooling; a startup guard and separate-URL runbook are in place. Verify the actual host configuration before rollout.
+  - [x] Verify on VirtualBox that both APIs use transaction pooling while worker/migration stay direct; a 30-client rehearsal capped PgBouncer server connections at 10 and preserved API/worker health.
 - [ ] Database statement, lock, connection, and idle timeouts are configured; enable and verify slow-query logging on deployed PostgreSQL.
 - [x] Add explicit timeouts and bounded response-size handling to Clink, Cloudinary deletion, and Expo push/receipt HTTP integrations.
 - [x] Add graceful shutdown for `SIGTERM`/`SIGINT`: API stops accepting requests and drains connections; worker waits for active jobs; both close PostgreSQL/Redis. Verify signal delivery and grace timing on hosted staging.
