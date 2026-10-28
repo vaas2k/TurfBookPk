@@ -124,3 +124,6 @@
 
 - On the user's Ubuntu VirtualBox VM, the API remained ready with PostgreSQL and Redis OK while the worker was stopped. Prometheus changed the worker heartbeat from current to missing, held `TurfBookWorkerMissing` pending for its configured two minutes, then fired it. The Alertmanager rehearsal receiver logged `firing`.
 - Restarting the worker restored its heartbeat to zero seconds of age. Prometheus and Alertmanager both returned no active alerts, and the receiver logged `resolved`. The test worker was left running.
+- Stopping Redis kept liveness at 200 and changed readiness to 503. After Redis restarted, readiness recovered immediately and the worker re-established its heartbeat automatically within about 20 seconds.
+- Stopping PostgreSQL also kept liveness at 200 and changed readiness to 503. After restart, readiness returned to 200, a database-backed public grounds request returned 200, and the worker heartbeat remained current. The persisted database volume was preserved.
+- These deliberate readiness 503 checks exposed a noisy general 5xx alert in the low-traffic rehearsal. Updated it to exclude health/readiness/metrics routes and require at least 0.1 application requests per second; dedicated availability and callback alerts remain responsible for those failure modes.
