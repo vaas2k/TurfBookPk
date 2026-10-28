@@ -85,3 +85,53 @@ sudo docker compose --env-file deploy/.env.vm -f deploy/compose.vm.yml down
 ```
 
 When this basic setup works, continue with [the Day 3 scaling checks](ADVANCED_VM_CHECKS.md). This NAT setup serves your laptop; a physical phone needs a separate LAN or bridged-network setup.
+
+## 6. Run an isolated full-path load test
+
+This test uses a separate `turfbookpk_loadtest` database. It does not add fake
+users, grounds, or bookings to the normal rehearsal database. Requests follow
+the real path: Nginx -> two API replicas -> PgBouncer -> PostgreSQL.
+
+Set a short command alias first:
+
+```bash
+cd ~/TurfBookPk/Server
+files="-f deploy/compose.vm.yml -f deploy/compose.ha-rehearsal.yml -f deploy/compose.pgbouncer-rehearsal.yml -f deploy/compose.loadtest-rehearsal.yml"
+```
+
+Create the isolated database, apply migrations, and add the small VM dataset:
+
+```bash
+sudo docker compose --env-file deploy/.env.vm -f deploy/compose.vm.yml exec -T db \
+  createdb -U turfbookpk turfbookpk_loadtest
+sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools \
+  run --rm loadtest-migrate
+sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools \
+  run --rm loadtest-seed
+```
+
+If `createdb` reports that the database already exists, continue; the guarded
+seed is repeatable. Now temporarily point the APIs and PgBouncer at that data:
+
+```bash
+sudo docker compose --env-file deploy/.env.vm $files up -d pgbouncer api api-replica api-proxy
+curl http://127.0.0.1:5080/api/ready
+```
+
+Run 30 concurrent read clients for 30 seconds:
+
+```bash
+sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools \
+  run --rm loadtest-benchmark
+```
+
+Restore the APIs to the ordinary rehearsal database afterward:
+
+```bash
+base_files="-f deploy/compose.vm.yml -f deploy/compose.ha-rehearsal.yml -f deploy/compose.pgbouncer-rehearsal.yml"
+sudo docker compose --env-file deploy/.env.vm $base_files up -d --force-recreate pgbouncer api api-replica api-proxy
+curl http://127.0.0.1:5080/api/ready
+```
+
+The load-test database is intentionally retained for repeatable measurements.
+Do not drop it until the load-test work is complete.

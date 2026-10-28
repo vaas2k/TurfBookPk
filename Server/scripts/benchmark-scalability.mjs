@@ -16,7 +16,9 @@ const flag = (name) => process.argv.find((value) => value.startsWith(`--${name}=
 const concurrency = Number(flag('vus') || process.env.BENCHMARK_VUS || 10);
 const durationSeconds = Number(flag('seconds') || process.env.BENCHMARK_SECONDS || 15);
 if (!Number.isInteger(port) || port < 1024 || port > 65535 || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 100 || !Number.isInteger(durationSeconds) || durationSeconds < 5 || durationSeconds > 300) throw new Error('Invalid benchmark settings');
-const root = `http://127.0.0.1:${port}/api`;
+const externalTarget = process.env.BENCHMARK_TARGET_URL?.replace(/\/$/, '');
+if (externalTarget && !/^https?:\/\//.test(externalTarget)) throw new Error('BENCHMARK_TARGET_URL must be an http(s) URL');
+const root = externalTarget || `http://127.0.0.1:${port}/api`;
 const date = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
 const database = postgres(targetUrl.toString(), { max: 1, prepare: false });
 const benchmarkSessions = [];
@@ -44,7 +46,7 @@ const routes = [
   { name: 'notifications', path: '/notifications?page=1&limit=20', token: playerToken },
   { name: 'payment_status', path: `/payments/${payment.id}`, token: playerToken },
 ];
-const server = spawn(process.execPath, ['dist/server.js'], { cwd: new URL('..', import.meta.url), env: { ...process.env, DATABASE_URL: targetUrl.toString(), PORT: String(port), NODE_ENV: 'development', PAYMENT_PROVIDER: 'mock', MAX_ADVANCE_BOOKING_DAYS: '39', ALLOW_LOADTEST_RATE_LIMIT_BYPASS: 'true' }, stdio: 'ignore' });
+const server = externalTarget ? null : spawn(process.execPath, ['dist/server.js'], { cwd: new URL('..', import.meta.url), env: { ...process.env, DATABASE_URL: targetUrl.toString(), PORT: String(port), NODE_ENV: 'development', PAYMENT_PROVIDER: 'mock', MAX_ADVANCE_BOOKING_DAYS: '39', ALLOW_LOADTEST_RATE_LIMIT_BYPASS: 'true' }, stdio: 'ignore' });
 const samples = new Map();
 const failures = new Map();
 
@@ -55,7 +57,7 @@ function percentile(values, pct) {
 }
 async function ready() {
   for (let attempt = 0; attempt < 50; attempt++) {
-    if (server.exitCode !== null) throw new Error('Benchmark API exited during startup');
+    if (server && server.exitCode !== null) throw new Error('Benchmark API exited during startup');
     try { if ((await fetch(`${root}/health`, { signal: AbortSignal.timeout(1000) })).ok) return; } catch { /* startup */ }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
@@ -94,7 +96,7 @@ try {
   console.error('Benchmark failed:', error.message);
   process.exitCode = 1;
 } finally {
-  server.kill();
+  server?.kill();
   for (const id of benchmarkSessions) await database`delete from refresh_sessions where id = ${id}`;
   await database.end();
 }

@@ -1,0 +1,65 @@
+# Isolated read-load rehearsal. Combine with compose.vm.yml,
+# compose.ha-rehearsal.yml, and compose.pgbouncer-rehearsal.yml.
+#
+# This overlay points only PgBouncer and the two API replicas at the guarded
+# *_loadtest database. The worker remains connected directly to the ordinary
+# rehearsal database so synthetic rows cannot trigger background side effects.
+services:
+  loadtest-migrate:
+    image: turfbookpk-server:vm
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk_loadtest
+      DB_POOL_MODE: direct
+      NODE_ENV: development
+    depends_on:
+      db:
+        condition: service_healthy
+    command: npm run db:migrate
+    profiles: ["loadtest-tools"]
+
+  loadtest-seed:
+    image: turfbookpk-server:vm
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk_loadtest
+      NODE_ENV: development
+      ALLOW_SCALABILITY_SEED: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: node scripts/seed-scalability.mjs --small
+    profiles: ["loadtest-tools"]
+
+  loadtest-benchmark:
+    image: turfbookpk-server:vm
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk_loadtest
+      NODE_ENV: development
+      BENCHMARK_TARGET_URL: http://api-proxy:8080/api
+    depends_on:
+      api-proxy:
+        condition: service_started
+    command: node scripts/benchmark-scalability.mjs --vus=30 --seconds=30
+    profiles: ["loadtest-tools"]
+
+  pgbouncer:
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk_loadtest
+
+  api:
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@pgbouncer:5432/turfbookpk_loadtest
+      DB_POOL_MODE: transaction
+      NODE_ENV: development
+      PAYMENT_PROVIDER: mock
+      ALLOW_LOADTEST_RATE_LIMIT_BYPASS: "true"
+
+  api-replica:
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@pgbouncer:5432/turfbookpk_loadtest
+      DB_POOL_MODE: transaction
+      NODE_ENV: development
+      PAYMENT_PROVIDER: mock
+      ALLOW_LOADTEST_RATE_LIMIT_BYPASS: "true"

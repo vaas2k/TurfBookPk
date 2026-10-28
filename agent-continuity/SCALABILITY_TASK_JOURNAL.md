@@ -142,3 +142,10 @@
 - Transaction-pooled API clients now omit those session startup parameters. Direct/session clients still apply PostgreSQL statement and lock timeouts; the rehearsal PgBouncer applies a 15-second query timeout, 10-second pool-wait timeout, and 5-second server-connect timeout. VM recreation and pool verification remain.
 - After rebuild, both APIs became ready through PgBouncer and alternated normally through Nginx. `SHOW POOLS` reported the application database in transaction mode; API initialization logs reported pooler timeout enforcement while the worker remained healthy on its direct connection.
 - A read-only 30-client, three-second pool test showed 12 active clients and 20 waiting clients (including the two persistent API clients), exactly 10 active PgBouncer server connections, and 11 active PostgreSQL application-user connections. The eleventh PostgreSQL connection was the direct inspection query itself. Proxy readiness remained 200, worker heartbeat age returned zero, and no alerts remained.
+
+## 2026-10-28 — Isolated full-path VM load-test preparation
+
+- Added a guarded Compose overlay that points only the two API replicas and PgBouncer at `turfbookpk_loadtest`; the normal rehearsal database and direct-connected worker remain isolated from synthetic data.
+- Added one-shot migration, small realistic seed, and benchmark tool services. The initial VM seed contains 300 users, 30 grounds, 3,000 slots, about 300 bookings, payment/ledger rows, and player/vendor notifications.
+- Extended the existing read benchmark to target an already-running API URL, allowing measurements through Nginx, both API replicas, PgBouncer, and PostgreSQL instead of silently launching a separate local API.
+- Compose merge validation, benchmark syntax validation, and backend typecheck passed. The ordinary Windows build could not overwrite the pre-existing protected `dist` files; the clean VM image build and end-to-end benchmark remain the acceptance checks.
