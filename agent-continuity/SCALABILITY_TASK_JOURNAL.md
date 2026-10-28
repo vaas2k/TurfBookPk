@@ -135,3 +135,8 @@
 - Stopping API 1 made its direct port unavailable while every Nginx request remained 200 through API 2. After API 1 recovered, Nginx returned it to rotation following the five-second failure timeout.
 - Stopping API 2 also left the proxy available. One response recorded both upstream addresses, proving Nginx attempted the failed replica and retried the healthy primary before returning 200. Database-backed discovery remained available and proxy access to metrics stayed 404.
 - Final state: both APIs alternate through Nginx, proxy readiness is 200 with PostgreSQL/Redis OK, worker heartbeat age is zero, and Prometheus has no active alerts. This validates the stateless application path on the rehearsal VM; production TLS, PgBouncer, managed/host proxy configuration, and multi-target monitoring remain deployment work.
+
+## 2026-10-28 — PgBouncer rehearsal startup fix
+
+- The first API-only transaction-pool run correctly kept worker/migration connections direct, but both APIs became unready. PgBouncer logs identified PostgreSQL protocol error `08P01`: `statement_timeout` and `lock_timeout` were sent as unsupported startup parameters by `postgres-js`.
+- Transaction-pooled API clients now omit those session startup parameters. Direct/session clients still apply PostgreSQL statement and lock timeouts; the rehearsal PgBouncer applies a 15-second query timeout, 10-second pool-wait timeout, and 5-second server-connect timeout. VM recreation and pool verification remain.

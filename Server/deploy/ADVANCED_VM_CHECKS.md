@@ -32,7 +32,7 @@ sudo docker compose --env-file deploy/.env.vm \
   'PGPASSWORD="$DB_PASSWORD" psql -h 127.0.0.1 -p 5432 -U turfbookpk -d pgbouncer -c "SHOW POOLS;"'
 ```
 
-The pinned PgBouncer 1.26.1 image includes the October 2026 security fixes. PgBouncer is internal-only and publishes no host port. `SHOW POOLS` must report `transaction` for `turfbookpk`. Do not route the worker or migration job through this pool.
+The pinned PgBouncer 1.26.1 image includes the October 2026 security fixes. PgBouncer is internal-only and publishes no host port. `SHOW POOLS` must report `transaction` for `turfbookpk`. API clients omit PostgreSQL session startup timeouts because transaction pooling cannot preserve them; this rehearsal uses PgBouncer's 15-second query timeout and 10-second pool-wait timeout instead. Do not route the worker or migration job through this pool.
 
 Then check:
 

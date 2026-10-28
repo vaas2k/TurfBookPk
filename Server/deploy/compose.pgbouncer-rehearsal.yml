@@ -11,6 +11,9 @@ services:
       MAX_CLIENT_CONN: "100"
       DEFAULT_POOL_SIZE: "10"
       RESERVE_POOL_SIZE: "2"
+      QUERY_TIMEOUT: "15"
+      QUERY_WAIT_TIMEOUT: "10"
+      SERVER_CONNECT_TIMEOUT: "5"
       ADMIN_USERS: turfbookpk
       IGNORE_STARTUP_PARAMETERS: extra_float_digits
     depends_on:
