@@ -15,7 +15,7 @@ const port = Number(process.env.BENCHMARK_PORT || 5101);
 const flag = (name) => process.argv.find((value) => value.startsWith(`--${name}=`))?.split('=')[1];
 const concurrency = Number(flag('vus') || process.env.BENCHMARK_VUS || 10);
 const durationSeconds = Number(flag('seconds') || process.env.BENCHMARK_SECONDS || 15);
-const settleSeconds = Number(process.env.BENCHMARK_SETTLE_SECONDS ?? (process.env.BENCHMARK_TARGET_URL ? 20 : 0));
+const settleSeconds = Number(process.env.BENCHMARK_SETTLE_SECONDS ?? (process.env.BENCHMARK_TARGET_URL ? 45 : 0));
 if (!Number.isInteger(port) || port < 1024 || port > 65535 || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 100 || !Number.isInteger(durationSeconds) || durationSeconds < 5 || durationSeconds > 300 || !Number.isInteger(settleSeconds) || settleSeconds < 0 || settleSeconds > 60) throw new Error('Invalid benchmark settings');
 const externalTarget = process.env.BENCHMARK_TARGET_URL?.replace(/\/$/, '');
 if (externalTarget && !/^https?:\/\//.test(externalTarget)) throw new Error('BENCHMARK_TARGET_URL must be an http(s) URL');
@@ -72,6 +72,13 @@ async function ready() {
   }
   throw new Error('Benchmark API did not become ready');
 }
+async function warmup() {
+  for (const route of routes) {
+    const result = await fetch(root + route.path, { headers: route.token ? { Authorization: `Bearer ${route.token}` } : undefined, signal: AbortSignal.timeout(5000) });
+    await result.arrayBuffer();
+    if (!result.ok) throw new Error(`Warm-up failed for ${route.name}: HTTP ${result.status}`);
+  }
+}
 async function load(deadline, initialIndex) {
   let index = initialIndex;
   while (Date.now() < deadline) {
@@ -96,6 +103,7 @@ async function load(deadline, initialIndex) {
 
 try {
   await ready();
+  await warmup();
   const deadline = Date.now() + durationSeconds * 1000;
   await Promise.all(Array.from({ length: concurrency }, (_, index) => load(deadline, index)));
   const report = Object.fromEntries(routes.map(({ name }) => {
