@@ -34,6 +34,8 @@ sudo docker compose --env-file deploy/.env.vm \
 
 The pinned PgBouncer 1.26.1 image includes the October 2026 security fixes. PgBouncer is internal-only and publishes no host port. `SHOW POOLS` must report `transaction` for `turfbookpk`. API clients omit PostgreSQL session startup timeouts because transaction pooling cannot preserve them; this rehearsal uses PgBouncer's 15-second query timeout and 10-second pool-wait timeout instead. Do not route the worker or migration job through this pool.
 
+Run `bash deploy/test-pgbouncer-vm.sh` to create 30 read-only three-second clients. During the load, `SHOW POOLS` should show clients active/waiting while server connections remain bounded by `default_pool_size = 10`; the script also prints the direct PostgreSQL active-connection count and verifies proxy readiness afterward. It performs no writes.
+
 Then check:
 
 1. `/api/health` and `/api/ready` work through the proxy. Briefly interrupt PostgreSQL or Redis and confirm readiness becomes unavailable; restore the service.
