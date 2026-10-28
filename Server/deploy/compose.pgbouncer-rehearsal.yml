@@ -1,0 +1,52 @@
+# API-only transaction pooling; combine with compose.vm.yml and
+# compose.ha-rehearsal.yml. Worker and migration stay directly connected to
+# PostgreSQL because their session advisory locks must not cross transactions.
+services:
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.26.1-p0
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "100"
+      DEFAULT_POOL_SIZE: "10"
+      RESERVE_POOL_SIZE: "2"
+      ADMIN_USERS: turfbookpk
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-h",
+          "127.0.0.1",
+          "-p",
+          "5432",
+          "-U",
+          "turfbookpk",
+          "-d",
+          "turfbookpk",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@pgbouncer:5432/turfbookpk
+      DB_POOL_MODE: transaction
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+
+  api-replica:
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@pgbouncer:5432/turfbookpk
+      DB_POOL_MODE: transaction
+    depends_on:
+      pgbouncer:
+        condition: service_healthy

@@ -13,6 +13,27 @@ Stop `api`, call the same proxy URL again, and confirm it remains 200. Start `ap
 
 For a production-like rehearsal, run two API replicas behind an HTTPS reverse proxy and two workers sharing Redis. Route API database connections through PgBouncer transaction pooling (`DB_POOL_MODE=transaction`), and connect workers and a single migration job directly to PostgreSQL or through session pooling. Apply migrations once before starting replicas.
 
+The API-only PgBouncer rehearsal is provided by `compose.pgbouncer-rehearsal.yml`. Combine all three application files so only `api` and `api-replica` use the transaction pool; `worker` and `migrate` retain the direct database URL from `compose.vm.yml`.
+
+```bash
+sudo docker compose --env-file deploy/.env.vm \
+  -f deploy/compose.vm.yml \
+  -f deploy/compose.ha-rehearsal.yml \
+  -f deploy/compose.pgbouncer-rehearsal.yml \
+  up -d pgbouncer api api-replica api-proxy
+
+curl -i http://127.0.0.1:5080/api/ready
+
+sudo docker compose --env-file deploy/.env.vm \
+  -f deploy/compose.vm.yml \
+  -f deploy/compose.ha-rehearsal.yml \
+  -f deploy/compose.pgbouncer-rehearsal.yml \
+  exec -T pgbouncer sh -c \
+  'PGPASSWORD="$DB_PASSWORD" psql -h 127.0.0.1 -p 5432 -U turfbookpk -d pgbouncer -c "SHOW POOLS;"'
+```
+
+The pinned PgBouncer 1.26.1 image includes the October 2026 security fixes. PgBouncer is internal-only and publishes no host port. `SHOW POOLS` must report `transaction` for `turfbookpk`. Do not route the worker or migration job through this pool.
+
 Then check:
 
 1. `/api/health` and `/api/ready` work through the proxy. Briefly interrupt PostgreSQL or Redis and confirm readiness becomes unavailable; restore the service.
