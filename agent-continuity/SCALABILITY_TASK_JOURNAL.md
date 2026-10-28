@@ -118,4 +118,9 @@
 
 - On the user's VirtualBox VM, a direct `pg_dump -f` inside PostgreSQL completed successfully, while the original backup script stalled while streaming the archive through `docker compose exec` to host stdout. Revised backup and restore scripts to create/read archive files inside the database container and transfer them with `docker compose cp`, with visible progress messages and restricted host permissions. Bash syntax and Docker Compose CLI behavior were checked; the revised scripts still need a full run on the VM.
 - The revised backup and restore rehearsal passed on the VM, including checksum validation and restoring into a separate disposable database. The restored user count was zero because the new rehearsal database was empty.
-- Prometheus initially reported `TurfBookApiUnavailable`; its target diagnostics showed permission denied reading the mode-600 bind-mounted metrics token. Changed the monitoring overlay to mount the host token as a Compose secret at `/run/secrets/metrics_token`, retaining restrictive host permissions. VM recreation and alert retest remain.
+- Prometheus initially reported `TurfBookApiUnavailable`; its target diagnostics showed permission denied reading the mode-600 bind-mounted metrics token. The monitoring overlay now mounts a Compose secret at `/run/secrets/metrics_token`, and a helper installs the ignored host source at mode `400` for Prometheus UID/GID 65534. The target then became healthy and the false API alert cleared.
+
+## 2026-10-28 — VirtualBox monitoring rehearsal
+
+- On the user's Ubuntu VirtualBox VM, the API remained ready with PostgreSQL and Redis OK while the worker was stopped. Prometheus changed the worker heartbeat from current to missing, held `TurfBookWorkerMissing` pending for its configured two minutes, then fired it. The Alertmanager rehearsal receiver logged `firing`.
+- Restarting the worker restored its heartbeat to zero seconds of age. Prometheus and Alertmanager both returned no active alerts, and the receiver logged `resolved`. The test worker was left running.

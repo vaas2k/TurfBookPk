@@ -27,9 +27,10 @@
 
 ## Optional local monitoring rehearsal
 
-From `Server/`, copy the `METRICS_TOKEN` value in your ignored `deploy/.env.vm` into an ignored `deploy/metrics-token` file containing only the token, with no extra newline. Keep that host file at mode `600`; Compose exposes it to Prometheus as the `metrics_token` secret. Start the overlay:
+From `Server/`, prepare the ignored metrics-token file for Prometheus's non-root UID/GID 65534, then start the overlay. The helper validates the token length, never prints it, and installs it at mode `400`; standalone Compose otherwise preserves host ownership and Prometheus cannot read a user-owned mode-600 file.
 
 ```bash
+bash deploy/prepare-monitoring-token-vm.sh
 sudo docker compose --env-file deploy/.env.vm -f deploy/compose.vm.yml -f deploy/compose.monitoring.yml up -d prometheus alertmanager alert-sink
 sudo docker compose --env-file deploy/.env.vm -f deploy/compose.vm.yml -f deploy/compose.monitoring.yml exec -T prometheus promtool check rules /etc/prometheus/turfbookpk-alerts.yml
 ```
