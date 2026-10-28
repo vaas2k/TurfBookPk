@@ -1,0 +1,56 @@
+# Optional two-API/Nginx rehearsal; combine with compose.vm.yml.
+services:
+  api:
+    environment:
+      TRUST_PROXY_HOPS: "1"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:5000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api-replica:
+    image: turfbookpk-server:vm
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk
+      REDIS_URL: redis://redis:6379
+      DB_POOL_MODE: direct
+      PORT: "5000"
+      TRUST_PROXY_HOPS: "1"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:5000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  api-proxy:
+    image: nginx:1.30.6-alpine
+    volumes:
+      - ./nginx-ha-rehearsal.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:${REHEARSAL_PROXY_PORT:-5080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+      api-replica:
+        condition: service_healthy
+    restart: unless-stopped

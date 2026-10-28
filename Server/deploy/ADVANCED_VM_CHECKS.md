@@ -2,7 +2,16 @@
 
 First complete [the simple VirtualBox setup](VIRTUALBOX_REHEARSAL.md). That stack has one API, one worker, PostgreSQL, and Redis. It is a starting point for practice, not a capacity benchmark.
 
-For a multi-instance rehearsal, run two API replicas behind an HTTPS reverse proxy and two workers sharing Redis. Route API database connections through PgBouncer transaction pooling (`DB_POOL_MODE=transaction`), and connect workers and a single migration job directly to PostgreSQL or through session pooling. Apply migrations once before starting replicas.
+For the first multi-instance rehearsal, combine `compose.vm.yml` with `compose.ha-rehearsal.yml`. It starts a second API plus Nginx on VM localhost port `5080`; both APIs share PostgreSQL and Redis. Nginx uses passive failure detection and retries a safe request against the surviving upstream. It hides the private metrics path and adds `X-TurfBook-Rehearsal-Upstream` so the test can show which API responded.
+
+```bash
+sudo docker compose --env-file deploy/.env.vm -f deploy/compose.vm.yml -f deploy/compose.ha-rehearsal.yml up -d api api-replica api-proxy
+curl -i http://127.0.0.1:5080/api/ready
+```
+
+Stop `api`, call the same proxy URL again, and confirm it remains 200. Start `api`, then stop `api-replica` and repeat. Restore both services when finished. The proxy is HTTP-only and bound to VM localhost for rehearsal; production still requires TLS and a real on-call/monitoring configuration. To access it from Windows, add an optional VirtualBox NAT rule from host `127.0.0.1:5580` to guest port `5080`.
+
+For a production-like rehearsal, run two API replicas behind an HTTPS reverse proxy and two workers sharing Redis. Route API database connections through PgBouncer transaction pooling (`DB_POOL_MODE=transaction`), and connect workers and a single migration job directly to PostgreSQL or through session pooling. Apply migrations once before starting replicas.
 
 Then check:
 
