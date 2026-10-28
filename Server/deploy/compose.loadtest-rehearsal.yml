@@ -52,6 +52,9 @@ services:
     environment:
       DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@pgbouncer:5432/turfbookpk_loadtest
       DB_POOL_MODE: transaction
+      # Two replicas x five clients exactly match the rehearsal PgBouncer
+      # server pool. This is intentionally load-test-only capacity tuning.
+      DB_POOL_MAX: "5"
       NODE_ENV: development
       PAYMENT_PROVIDER: mock
       ALLOW_LOADTEST_RATE_LIMIT_BYPASS: "true"
@@ -60,6 +63,7 @@ services:
     environment:
       DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@pgbouncer:5432/turfbookpk_loadtest
       DB_POOL_MODE: transaction
+      DB_POOL_MAX: "5"
       NODE_ENV: development
       PAYMENT_PROVIDER: mock
       ALLOW_LOADTEST_RATE_LIMIT_BYPASS: "true"
