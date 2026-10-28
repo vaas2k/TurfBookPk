@@ -127,3 +127,11 @@
 - Stopping Redis kept liveness at 200 and changed readiness to 503. After Redis restarted, readiness recovered immediately and the worker re-established its heartbeat automatically within about 20 seconds.
 - Stopping PostgreSQL also kept liveness at 200 and changed readiness to 503. After restart, readiness returned to 200, a database-backed public grounds request returned 200, and the worker heartbeat remained current. The persisted database volume was preserved.
 - These deliberate readiness 503 checks exposed a noisy general 5xx alert in the low-traffic rehearsal. Updated it to exclude health/readiness/metrics routes and require at least 0.1 application requests per second; dedicated availability and callback alerts remain responsible for those failure modes.
+
+## 2026-10-28 — VirtualBox Nginx/API failover rehearsal
+
+- Added an optional `compose.ha-rehearsal.yml` overlay with a second stateless API and Nginx 1.30.6 on VM localhost port 5080. Nginx load-balances with passive failure detection, retries safe failed requests once, preserves forwarding headers, and returns 404 for the private metrics path.
+- With both APIs running, repeated proxy requests alternated between the two upstream container addresses. Both returned the same readiness and database-backed public-ground response while sharing PostgreSQL and Redis.
+- Stopping API 1 made its direct port unavailable while every Nginx request remained 200 through API 2. After API 1 recovered, Nginx returned it to rotation following the five-second failure timeout.
+- Stopping API 2 also left the proxy available. One response recorded both upstream addresses, proving Nginx attempted the failed replica and retried the healthy primary before returning 200. Database-backed discovery remained available and proxy access to metrics stayed 404.
+- Final state: both APIs alternate through Nginx, proxy readiness is 200 with PostgreSQL/Redis OK, worker heartbeat age is zero, and Prometheus has no active alerts. This validates the stateless application path on the rehearsal VM; production TLS, PgBouncer, managed/host proxy configuration, and multi-target monitoring remain deployment work.

@@ -104,7 +104,7 @@ Local Day 4 preparation is documented in `Server/deploy/DAY4_OPERATIONS.md`. The
 - [x] Add a bounded retention/cleanup worker for expired OTP challenges, revoked/expired refresh sessions, checked push receipts, and sent outbox rows. Payment idempotency/events and unresolved jobs remain retained; Redis cache keys already expire by TTL.
 - [x] Review access-token session lookup cost. Current lookup is one primary-key PostgreSQL read per authenticated request, preserving immediate logout/suspension behavior. Do not cache it until the VM load test shows a material bottleneck and revocation invalidation is designed.
 - [ ] Add database backup automation, restore rehearsal, point-in-time recovery where supported, and documented rollback/forward-fix procedures. A local `pg_dump` archive restored with its fixture into a separate disposable database; VM scripts passed Bash syntax. Scheduled encrypted off-host backups/PITR and restore-time measurement require the VM or hosted database.
-- [ ] Run failure tests: Redis unavailable, one API replica killed, worker killed mid-job, PostgreSQL failover, Clink timeout, Expo timeout, duplicate callback, and delayed callback after expiry. Local isolated drills passed for Redis/PostgreSQL outage and recovery, surviving API replica, worker lease reclaim, duplicate callback, and late callback. Actual database failover and external-provider timeout drills remain.
+- [ ] Run failure tests: Redis unavailable, one API replica killed, worker killed mid-job, PostgreSQL failover, Clink timeout, Expo timeout, duplicate callback, and delayed callback after expiry. Local and VirtualBox drills passed for Redis/PostgreSQL outage and recovery, Nginx failover in both API directions, worker heartbeat alert/recovery, worker lease reclaim, duplicate callback, and late callback. Actual database failover and external-provider timeout drills remain.
 - [ ] Run the final load test against staging with production-like networking and data volume.
   - [ ] No double bookings or duplicate ledger/notification effects.
   - [ ] Error rate below 1% excluding deliberate validation/rate-limit responses.
@@ -116,7 +116,9 @@ Local Day 4 preparation is documented in `Server/deploy/DAY4_OPERATIONS.md`. The
 ## Deployment shape after completion
 
 - [ ] Load balancer/reverse proxy terminating TLS.
+  - [x] Verify HTTP-only localhost Nginx rehearsal load balancing and failover across two API containers; production TLS and host routing remain.
 - [ ] At least two identical stateless API replicas when high availability is required.
+  - [x] Verify two VM API replicas share PostgreSQL/Redis and either replica can serve database-backed requests while the other is stopped.
 - [ ] One or more independently scaled worker replicas using distributed job ownership.
 - [ ] Managed PostgreSQL with backups/PITR and PgBouncer.
 - [ ] Managed Redis with authentication, TLS, persistence appropriate to the selected queue, and eviction rules that do not discard queue data.
