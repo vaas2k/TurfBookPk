@@ -1,4 +1,4 @@
-import { and, count, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
 import { Response } from 'express';
 import { db } from '../database/client.js';
 import { notifications, pushTokens } from '../database/schema.js';
@@ -38,14 +38,16 @@ export class NotificationController {
     const { page, limit, offset } = pagination(request);
     const cursor = parsePaginationCursor(request.query.cursor);
     const condition = eq(notifications.userId, request.auth.userId);
-    const total = (await db.select({ total: count() }).from(notifications).where(condition))[0]?.total ?? 0;
-    const rows = await db.select().from(notifications)
+    const totalForUser = sql<number>`(select count(*)::int from notifications totals where totals.user_id = ${request.auth.userId})`;
+    const unreadForUser = sql<number>`(select count(*)::int from notifications unread where unread.user_id = ${request.auth.userId} and unread.is_read = false)`;
+    const rows = await db.select({ notification: notifications, total: totalForUser, unreadCount: unreadForUser }).from(notifications)
       .where(and(condition, cursor ? or(lt(notifications.createdAt, cursor.createdAt), and(eq(notifications.createdAt, cursor.createdAt), lt(notifications.id, cursor.id))) : undefined))
       .orderBy(desc(notifications.createdAt), desc(notifications.id))
       .limit(limit + 1).offset(cursor ? 0 : offset);
-    const unreadCount = (await db.select({ unreadCount: count() }).from(notifications).where(and(condition, eq(notifications.isRead, false))))[0]?.unreadCount ?? 0;
     const pageRows = rows.slice(0, limit);
-    response.json({ notifications: pageRows, unread_count: unreadCount, pagination: { page, limit, total, has_more: rows.length > limit, next_cursor: rows.length > limit ? nextPaginationCursor(pageRows.at(-1)) : null } });
+    const total = Number(rows[0]?.total ?? 0);
+    const unreadCount = Number(rows[0]?.unreadCount ?? 0);
+    response.json({ notifications: pageRows.map((row) => row.notification), unread_count: unreadCount, pagination: { page, limit, total, has_more: rows.length > limit, next_cursor: rows.length > limit ? nextPaginationCursor(pageRows.at(-1)?.notification) : null } });
   };
 
   markRead = async (request: AuthenticatedRequest, response: Response): Promise<void> => {

@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { Response } from 'express';
-import { and, count, desc, eq, gte, isNull, lt, lte, or, sql as expression } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lt, lte, or, sql as expression } from 'drizzle-orm';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
@@ -285,8 +285,9 @@ export class BookingController {
     const { page, limit, offset } = pagination(request);
     const cursor = parsePaginationCursor(request.query.cursor);
     const condition = eq(bookings.playerId, request.auth.userId);
-    const total = (await db.select({ total: count() }).from(bookings).where(condition))[0]?.total ?? 0;
-    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(and(condition, cursor ? or(lt(bookings.createdAt, cursor.createdAt), and(eq(bookings.createdAt, cursor.createdAt), lt(bookings.id, cursor.id))) : undefined)).orderBy(desc(bookings.createdAt), desc(bookings.id)).limit(limit + 1).offset(cursor ? 0 : offset);
+    const totalForPlayer = expression<number>`(select count(*)::int from bookings total_bookings where total_bookings.player_id = ${request.auth.userId})`;
+    const rows = await db.select({ booking: bookings, ground: grounds, player: users, total: totalForPlayer }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(and(condition, cursor ? or(lt(bookings.createdAt, cursor.createdAt), and(eq(bookings.createdAt, cursor.createdAt), lt(bookings.id, cursor.id))) : undefined)).orderBy(desc(bookings.createdAt), desc(bookings.id)).limit(limit + 1).offset(cursor ? 0 : offset);
+    const total = Number(rows[0]?.total ?? 0);
     const pageRows = rows.slice(0, limit);
     response.json({ bookings: pageRows.map(mapBooking), pagination: { page, limit, total, has_more: rows.length > limit, next_cursor: rows.length > limit ? nextPaginationCursor(pageRows.at(-1)?.booking) : null } });
   };
@@ -325,8 +326,9 @@ export class BookingController {
     const { page, limit, offset } = pagination(request);
     const cursor = parsePaginationCursor(request.query.cursor);
     const condition = eq(bookings.vendorId, vendor.id);
-    const total = (await db.select({ total: count() }).from(bookings).where(condition))[0]?.total ?? 0;
-    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(and(condition, cursor ? or(lt(bookings.createdAt, cursor.createdAt), and(eq(bookings.createdAt, cursor.createdAt), lt(bookings.id, cursor.id))) : undefined)).orderBy(desc(bookings.createdAt), desc(bookings.id)).limit(limit + 1).offset(cursor ? 0 : offset);
+    const totalForVendor = expression<number>`(select count(*)::int from bookings total_bookings where total_bookings.vendor_id = ${vendor.id})`;
+    const rows = await db.select({ booking: bookings, ground: grounds, player: users, total: totalForVendor }).from(bookings).innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id)).where(and(condition, cursor ? or(lt(bookings.createdAt, cursor.createdAt), and(eq(bookings.createdAt, cursor.createdAt), lt(bookings.id, cursor.id))) : undefined)).orderBy(desc(bookings.createdAt), desc(bookings.id)).limit(limit + 1).offset(cursor ? 0 : offset);
+    const total = Number(rows[0]?.total ?? 0);
     const pageRows = rows.slice(0, limit);
     response.json({ bookings: pageRows.map(mapBooking), pagination: { page, limit, total, has_more: rows.length > limit, next_cursor: rows.length > limit ? nextPaginationCursor(pageRows.at(-1)?.booking) : null } });
   };

@@ -149,3 +149,11 @@
 - Added one-shot migration, small realistic seed, and benchmark tool services. The initial VM seed contains 300 users, 30 grounds, 3,000 slots, about 300 bookings, payment/ledger rows, and player/vendor notifications.
 - Extended the existing read benchmark to target an already-running API URL, allowing measurements through Nginx, both API replicas, PgBouncer, and PostgreSQL instead of silently launching a separate local API.
 - Compose merge validation, benchmark syntax validation, and backend typecheck passed. The ordinary Windows build could not overwrite the pre-existing protected `dist` files; the clean VM image build and end-to-end benchmark remain the acceptance checks.
+
+## 2026-10-28 — Full-path VM load baseline and first optimization
+
+- The small realistic VM dataset passed 30 concurrent read clients for 30 seconds with 4,168 successful requests, zero failures, and about 139 aggregate successful requests/second. Every route stayed below the initial 500 ms p95 read target; vendor bookings and notifications were closest at 480 ms and 474 ms.
+- A clean 50-client run produced 4,407 successes, zero failures, and about 147 aggregate RPS. Static/dynamic ground reads remained below 445 ms p95; player bookings reached 542 ms, vendor bookings 695 ms, and notifications 698 ms.
+- At 60 clients throughput plateaued near 141 aggregate RPS and 60 requests failed (about 1.4%). PgBouncer logs proved queries exceeded its 15-second limit after clients abandoned them. A 40-client run with about 94 RPS and the same 1.4% failure rate was contaminated by leftover timed-out work and is not accepted as a capacity result.
+- Reduced player/vendor booking list database round trips by folding the total count into the page query. Reduced notification list round trips from three to one by returning page rows, total count, and unread count from one query while preserving the response contract.
+- Benchmark reports now classify HTTP status, client-timeout, and network failures; include attempts/error percentages; and allow a 20-second external-target cooldown before deleting temporary sessions. Rebuild and repeat 30/50/60 runs on the VM to measure the improvement.

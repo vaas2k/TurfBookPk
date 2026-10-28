@@ -15,7 +15,8 @@ const port = Number(process.env.BENCHMARK_PORT || 5101);
 const flag = (name) => process.argv.find((value) => value.startsWith(`--${name}=`))?.split('=')[1];
 const concurrency = Number(flag('vus') || process.env.BENCHMARK_VUS || 10);
 const durationSeconds = Number(flag('seconds') || process.env.BENCHMARK_SECONDS || 15);
-if (!Number.isInteger(port) || port < 1024 || port > 65535 || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 100 || !Number.isInteger(durationSeconds) || durationSeconds < 5 || durationSeconds > 300) throw new Error('Invalid benchmark settings');
+const settleSeconds = Number(process.env.BENCHMARK_SETTLE_SECONDS ?? (process.env.BENCHMARK_TARGET_URL ? 20 : 0));
+if (!Number.isInteger(port) || port < 1024 || port > 65535 || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 100 || !Number.isInteger(durationSeconds) || durationSeconds < 5 || durationSeconds > 300 || !Number.isInteger(settleSeconds) || settleSeconds < 0 || settleSeconds > 60) throw new Error('Invalid benchmark settings');
 const externalTarget = process.env.BENCHMARK_TARGET_URL?.replace(/\/$/, '');
 if (externalTarget && !/^https?:\/\//.test(externalTarget)) throw new Error('BENCHMARK_TARGET_URL must be an http(s) URL');
 const root = externalTarget || `http://127.0.0.1:${port}/api`;
@@ -49,6 +50,14 @@ const routes = [
 const server = externalTarget ? null : spawn(process.execPath, ['dist/server.js'], { cwd: new URL('..', import.meta.url), env: { ...process.env, DATABASE_URL: targetUrl.toString(), PORT: String(port), NODE_ENV: 'development', PAYMENT_PROVIDER: 'mock', MAX_ADVANCE_BOOKING_DAYS: '39', ALLOW_LOADTEST_RATE_LIMIT_BYPASS: 'true' }, stdio: 'ignore' });
 const samples = new Map();
 const failures = new Map();
+const failureReasons = new Map();
+
+function recordFailure(name, reason) {
+  failures.set(name, (failures.get(name) || 0) + 1);
+  const reasons = failureReasons.get(name) || new Map();
+  reasons.set(reason, (reasons.get(reason) || 0) + 1);
+  failureReasons.set(name, reasons);
+}
 
 function percentile(values, pct) {
   if (!values.length) return null;
@@ -72,12 +81,15 @@ async function load(deadline, initialIndex) {
     try {
       const result = await fetch(root + route.path, { headers: route.token ? { Authorization: `Bearer ${route.token}` } : undefined, signal: AbortSignal.timeout(5000) });
       await result.arrayBuffer();
-      if (!result.ok) throw new Error(`HTTP ${result.status}`);
+      if (!result.ok) {
+        recordFailure(name, `http_${result.status}`);
+        continue;
+      }
       const list = samples.get(name) || [];
       list.push(performance.now() - started);
       samples.set(name, list);
-    } catch {
-      failures.set(name, (failures.get(name) || 0) + 1);
+    } catch (error) {
+      recordFailure(name, error?.name === 'TimeoutError' ? 'client_timeout' : 'network_error');
     }
   }
 }
@@ -88,7 +100,9 @@ try {
   await Promise.all(Array.from({ length: concurrency }, (_, index) => load(deadline, index)));
   const report = Object.fromEntries(routes.map(({ name }) => {
     const values = samples.get(name) || [];
-    return [name, { requests: values.length, failures: failures.get(name) || 0, rps: Number((values.length / durationSeconds).toFixed(1)), p50_ms: percentile(values, 0.5), p95_ms: percentile(values, 0.95), p99_ms: percentile(values, 0.99) }];
+    const failed = failures.get(name) || 0;
+    const attempted = values.length + failed;
+    return [name, { requests: values.length, failures: failed, attempts: attempted, error_rate_pct: attempted ? Number((failed * 100 / attempted).toFixed(2)) : 0, failure_reasons: Object.fromEntries(failureReasons.get(name) || []), rps: Number((values.length / durationSeconds).toFixed(1)), p50_ms: percentile(values, 0.5), p95_ms: percentile(values, 0.95), p99_ms: percentile(values, 0.99) }];
   }));
   console.log(JSON.stringify({ database: targetName, concurrency, duration_seconds: durationSeconds, routes: report }, null, 2));
   if (Object.values(report).some((item) => item.failures)) process.exitCode = 1;
@@ -97,6 +111,7 @@ try {
   process.exitCode = 1;
 } finally {
   server?.kill();
+  if (settleSeconds) await new Promise((resolve) => setTimeout(resolve, settleSeconds * 1000));
   for (const id of benchmarkSessions) await database`delete from refresh_sessions where id = ${id}`;
   await database.end();
 }
