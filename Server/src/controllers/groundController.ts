@@ -235,7 +235,12 @@ export class GroundController {
         and (candidate.hold_booking_id is null or candidate.hold_expires_at <= now())
         and (candidate.date::timestamp + candidate.start_time) > (now() at time zone 'Asia/Karachi')
     ), ${grounds.pricePerHour})`;
-    const datedCondition = and(condition, lte(sql<number>`(${displayPrice})::bigint`, maxPrice));
+    // Effective-price calculation is expensive because it inspects dated
+    // slots and peak windows per ground. Do not run it for the common
+    // recommended/rating search when no maximum-price filter was requested.
+    const datedCondition = maxPrice < Number.MAX_SAFE_INTEGER
+      ? and(condition, lte(sql<number>`(${displayPrice})::bigint`, maxPrice))
+      : condition;
     const datedOrder = sort === 'price_low' ? [asc(displayPrice), asc(grounds.title), asc(grounds.id)]
       : sort === 'price_high' ? [desc(displayPrice), asc(grounds.title), asc(grounds.id)] : orderBy;
     const [totalRow, pageRows] = await Promise.all([
