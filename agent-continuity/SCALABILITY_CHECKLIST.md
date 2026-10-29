@@ -93,6 +93,8 @@ Day 1 implementation and local measurements are recorded in `Server/SCALABILITY_
 
 Local Day 4 preparation is documented in `Server/deploy/DAY4_OPERATIONS.md`. The VM/staging drill remains the acceptance gate for operational items; source files alone do not prove alerts, backups, or capacity.
 
+The completed VirtualBox rehearsal and measured read-load results are summarized in `agent-continuity/VM_TESTING_SUMMARY.md`.
+
 - [ ] Add structured metrics for request count, status, route latency, active requests, DB pool wait, query latency, queue depth/age, job retries/failures, payment states, and cache hit ratio.
   - [x] Add token-protected Prometheus metrics for route response counts/latency, active requests, database connection count, outbox depth/age, payment states, worker heartbeat, job outcomes/retries, and cache access.
   - [ ] Add measured DB pool wait/query latency on the chosen production telemetry stack.
