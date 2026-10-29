@@ -3,4 +3,5 @@
 node_modules/
 dist/
 backups/
+external-benchmark-fixture.json
 deploy/metrics-token

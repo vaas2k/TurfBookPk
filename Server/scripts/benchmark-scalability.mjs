@@ -2,43 +2,47 @@
 import 'dotenv/config';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import jwt from 'jsonwebtoken';
 import postgres from 'postgres';
 
-const sourceUrl = new URL(process.env.DATABASE_URL || '');
-const sourceName = decodeURIComponent(sourceUrl.pathname.slice(1));
-const targetName = sourceName.endsWith('_loadtest') ? sourceName : `${sourceName}_loadtest`;
-if (process.env.NODE_ENV === 'production' || !targetName.endsWith('_loadtest')) throw new Error('Benchmark requires a load-test database');
-const targetUrl = new URL(sourceUrl);
-targetUrl.pathname = `/${targetName}`;
+const flag = (name) => process.argv.find((value) => value.startsWith(`--${name}=`))?.slice(name.length + 3);
+const fixturePath = flag('fixture');
+const fixture = fixturePath ? JSON.parse(await readFile(fixturePath, 'utf8')) : null;
+const sourceUrl = fixture ? null : new URL(process.env.DATABASE_URL || '');
+const sourceName = sourceUrl ? decodeURIComponent(sourceUrl.pathname.slice(1)) : '';
+const targetName = fixture?.database || (sourceName.endsWith('_loadtest') ? sourceName : `${sourceName}_loadtest`);
+if (process.env.NODE_ENV === 'production' || !/^[-a-zA-Z0-9_]+_loadtest$/.test(targetName)) throw new Error('Benchmark requires a load-test database');
+if (fixture && (!Array.isArray(fixture.routes) || fixture.routes.length !== 7 || !Number.isFinite(Date.parse(fixture.expires_at)) || Date.parse(fixture.expires_at) <= Date.now())) throw new Error('Fixture is invalid or expired; prepare a new VM fixture');
+const targetUrl = sourceUrl ? new URL(sourceUrl) : null;
+if (targetUrl) targetUrl.pathname = `/${targetName}`;
 const port = Number(process.env.BENCHMARK_PORT || 5101);
-const flag = (name) => process.argv.find((value) => value.startsWith(`--${name}=`))?.split('=')[1];
 const concurrency = Number(flag('vus') || process.env.BENCHMARK_VUS || 10);
 const durationSeconds = Number(flag('seconds') || process.env.BENCHMARK_SECONDS || 15);
-const settleSeconds = Number(process.env.BENCHMARK_SETTLE_SECONDS ?? (process.env.BENCHMARK_TARGET_URL ? 45 : 0));
+const settleSeconds = Number(process.env.BENCHMARK_SETTLE_SECONDS ?? (process.env.BENCHMARK_TARGET_URL || fixture ? 45 : 0));
 if (!Number.isInteger(port) || port < 1024 || port > 65535 || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 100 || !Number.isInteger(durationSeconds) || durationSeconds < 5 || durationSeconds > 300 || !Number.isInteger(settleSeconds) || settleSeconds < 0 || settleSeconds > 60) throw new Error('Invalid benchmark settings');
-const externalTarget = process.env.BENCHMARK_TARGET_URL?.replace(/\/$/, '');
+const externalTarget = (process.env.BENCHMARK_TARGET_URL || (fixture ? 'http://127.0.0.1:5080/api' : '')).replace(/\/$/, '');
 if (externalTarget && !/^https?:\/\//.test(externalTarget)) throw new Error('BENCHMARK_TARGET_URL must be an http(s) URL');
 const root = externalTarget || `http://127.0.0.1:${port}/api`;
 const date = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
-const database = postgres(targetUrl.toString(), { max: 1, prepare: false });
+const database = targetUrl ? postgres(targetUrl.toString(), { max: 1, prepare: false }) : null;
 const benchmarkSessions = [];
-const [ground] = await database`select id from grounds where is_active and is_verified order by rating desc limit 1`;
+const [ground] = fixture ? [null] : await database`select id from grounds where is_active and is_verified order by rating desc limit 1`;
 // Resolve synthetic IDs from the seed prefix so the harness does not depend
 // on a particular UUID string or record ordering.
-const [playerAccount] = await database`select md5('loadtest-user-101')::uuid as id`;
-const [vendorAccount] = await database`select md5('loadtest-user-1')::uuid as id`;
-const [payment] = await database`select id from payment_attempts where player_id = ${playerAccount.id} order by created_at desc limit 1`;
-if (!ground || !payment || !playerAccount || !vendorAccount) throw new Error('Run the full scalability seed before benchmarking');
+const [playerAccount] = fixture ? [null] : await database`select md5('loadtest-user-101')::uuid as id`;
+const [vendorAccount] = fixture ? [null] : await database`select md5('loadtest-user-1')::uuid as id`;
+const [payment] = fixture ? [null] : await database`select id from payment_attempts where player_id = ${playerAccount.id} order by created_at desc limit 1`;
+if (!fixture && (!ground || !payment || !playerAccount || !vendorAccount)) throw new Error('Run the full scalability seed before benchmarking');
 async function tokenFor(userId) {
   const id = randomUUID();
   benchmarkSessions.push(id);
   await database`insert into refresh_sessions (id, user_id, token_hash, expires_at) values (${id}, ${userId}, ${randomUUID()}, now() + interval '1 hour')`;
   return jwt.sign({ sub: userId, sid: id }, process.env.JWT_ACCESS_SECRET, { expiresIn: '1h' });
 }
-const playerToken = await tokenFor(playerAccount.id);
-const vendorToken = await tokenFor(vendorAccount.id);
-const routes = [
+const playerToken = fixture ? null : await tokenFor(playerAccount.id);
+const vendorToken = fixture ? null : await tokenFor(vendorAccount.id);
+const routes = fixture?.routes || [
   { name: 'discovery', path: '/grounds?page=1&limit=24' },
   { name: 'date_discovery', path: `/grounds?availability_date=${date}&page=1&limit=24` },
   { name: 'ground_detail', path: `/grounds/${ground.id}` },
@@ -120,6 +124,8 @@ try {
 } finally {
   server?.kill();
   if (settleSeconds) await new Promise((resolve) => setTimeout(resolve, settleSeconds * 1000));
-  for (const id of benchmarkSessions) await database`delete from refresh_sessions where id = ${id}`;
-  await database.end();
+  if (database) {
+    for (const id of benchmarkSessions) await database`delete from refresh_sessions where id = ${id}`;
+    await database.end();
+  }
 }

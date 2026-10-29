@@ -135,3 +135,59 @@ curl http://127.0.0.1:5080/api/ready
 
 The load-test database is intentionally retained for repeatable measurements.
 Do not drop it until the load-test work is complete.
+
+## 7. Generate load from Windows
+
+This keeps the load generator off the two-CPU VM. The Windows script uses the
+same seven read routes and temporary synthetic users as the container test.
+Keep the SSH tunnel from Windows port 5080 to VM port 5080 open throughout.
+
+In **Ubuntu**, update and build the server image, then point the two APIs at
+the isolated load-test database:
+
+```bash
+cd ~/TurfBookPk/Server
+git pull --ff-only
+files="-f deploy/compose.vm.yml -f deploy/compose.ha-rehearsal.yml -f deploy/compose.pgbouncer-rehearsal.yml -f deploy/compose.loadtest-rehearsal.yml"
+sudo docker compose --env-file deploy/.env.vm $files build migrate
+sudo docker compose --env-file deploy/.env.vm $files up -d --force-recreate pgbouncer api api-replica api-proxy
+curl -f http://127.0.0.1:5080/api/ready
+```
+
+Create a private fixture file with two temporary login sessions:
+
+```bash
+umask 077
+sudo docker compose --env-file deploy/.env.vm $files exec -T api \
+  node scripts/benchmark-external-fixture.mjs prepare \
+  > backups/external-benchmark-fixture.json
+```
+
+On **Windows PowerShell**, from the repository root, copy the fixture and run
+the benchmark while the SSH tunnel stays open:
+
+```powershell
+scp.exe -P 2222 turfbookpk@127.0.0.1:~/TurfBookPk/Server/backups/external-benchmark-fixture.json .\Server\external-benchmark-fixture.json
+cd Server
+node scripts/benchmark-scalability.mjs --fixture=external-benchmark-fixture.json --vus=30 --seconds=30
+node scripts/benchmark-scalability.mjs --fixture=external-benchmark-fixture.json --vus=60 --seconds=30
+```
+
+Each run waits 45 seconds after reporting so old upstream requests can drain.
+The fixture expires after 45 minutes. To remove the two temporary sessions
+immediately, read only its run ID on Windows:
+
+```powershell
+(Get-Content .\external-benchmark-fixture.json | ConvertFrom-Json).run_id
+```
+
+Back in **Ubuntu**, replace `RUN_ID` with that value:
+
+```bash
+sudo docker compose --env-file deploy/.env.vm $files exec -T api \
+  node scripts/benchmark-external-fixture.mjs cleanup RUN_ID
+```
+
+Then restore the normal rehearsal database with the `base_files` command in
+the preceding section. The fixture files contain short-lived test bearer
+tokens; they are ignored by Git and should not be pasted into chat.
