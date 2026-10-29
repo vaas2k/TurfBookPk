@@ -256,7 +256,15 @@ export class BookingController {
       }
       const booked = await tx.update(slots).set({ isBooked: true, bookedBy: request.auth!.userId, bookingId: id, heldBy: null, holdBookingId: null, holdExpiresAt: null, updatedAt: now })
         .where(and(eq(slots.id, current.booking.slotId), eq(slots.holdBookingId, id), eq(slots.heldBy, request.auth!.userId), gte(slots.holdExpiresAt, now))).returning({ id: slots.id });
-      if (!booked[0]) throw new AppError('slot_unavailable', 'This payment hold is no longer valid', 409);
+      if (!booked[0]) {
+        // A concurrent confirmation may have claimed this slot while this
+        // transaction waited on the row lock. PostgreSQL READ COMMITTED lets
+        // this statement observe the committed booking before deciding.
+        const [latest] = await tx.select({ status: bookings.status, paymentStatus: bookings.paymentStatus })
+          .from(bookings).where(eq(bookings.id, id)).limit(1);
+        if (latest?.status === 'confirmed' && latest.paymentStatus === 'paid') return { idempotent: true, bookingId: id };
+        throw new AppError('slot_unavailable', 'This payment hold is no longer valid', 409);
+      }
       const confirmation = await new MockPaymentProvider().confirm({ bookingId: id, amount: current.booking.totalAmount, requestedReference });
       const payment = (await tx.update(paymentAttempts).set({ status: confirmation.status, providerReference: confirmation.providerReference, paidAt: confirmation.paidAt, updatedAt: now })
         .where(and(eq(paymentAttempts.bookingId, id), eq(paymentAttempts.status, 'pending'))).returning())[0];
