@@ -50,7 +50,7 @@ async function ready() {
   throw new Error('Write benchmark API did not become ready');
 }
 async function worker() {
-  while (cursor < selected.length) {
+  while (cursor < requests) {
     const index = cursor++;
     const started = performance.now();
     try {
