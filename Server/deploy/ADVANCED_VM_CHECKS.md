@@ -46,3 +46,15 @@ Then check:
 6. Compare discovery p95 and CPU with `API_COMPRESSION=true` and `false`. Check response cache headers and run `node scripts/check-public-media-cache.mjs` for public images.
 
 Record VM CPU/RAM, request rate, p50/p95/p99, errors, database connections, and worker queue lag in `SCALABILITY_BASELINE.md`. Repeat the checks on hosted staging before using these numbers for production sizing.
+
+## Booking-write rehearsal
+
+Run this only after the isolated `turfbookpk_loadtest` seed and the load-test Compose overlay are active. It creates 50 temporary player sessions and submits 50 different booking holds through Nginx, both API replicas, and PgBouncer. It waits for in-flight requests, deletes only its own bookings/sessions, and verifies that no selected slot remains held. The normal rehearsal database is not a target.
+
+```bash
+files="-f deploy/compose.vm.yml -f deploy/compose.ha-rehearsal.yml -f deploy/compose.pgbouncer-rehearsal.yml -f deploy/compose.loadtest-rehearsal.yml"
+sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools run --rm loadtest-benchmark \
+  node scripts/benchmark-booking-writes.mjs --requests=50 --vus=10
+```
+
+Record successes, failure statuses, RPS, and p95. The first target is zero failures and booking-write p95 below 1 second on the VM. A 30- or 60-client read result does not predict write performance. Do not start another write run until the first command finishes its cleanup. Rebuild the VM image after changing this script, since the container executes the image copy.
