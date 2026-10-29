@@ -37,6 +37,7 @@ import { createRateLimiter } from './middleware/rateLimit.js';
 import { connectRedis, closeRedis, redis } from './services/redisClient.js';
 import { sql } from './database/client.js';
 import { metricsTokenValid, renderMetrics, requestFinished, requestStarted } from './services/metrics.js';
+import { shouldLogHttpRequest } from './services/requestLogging.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -70,14 +71,17 @@ app.use((request, response, next) => {
     finished = true;
     const status = aborted ? 499 : response.statusCode;
     const route = request.route && typeof request.route.path === 'string' ? `${request.baseUrl}${request.route.path}` : 'unmatched';
-    requestFinished(request.method, route, status, (Date.now() - startedAt) / 1000);
-    logEvent(status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info', 'http_request', {
-      request_id: requestId,
-      method: request.method,
-      path: request.path,
-      status_code: status,
-      duration_ms: Date.now() - startedAt,
-    });
+    const durationMs = Date.now() - startedAt;
+    requestFinished(request.method, route, status, durationMs / 1000);
+    if (shouldLogHttpRequest(status, durationMs, env.httpSuccessLogSampleRate)) {
+      logEvent(status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info', 'http_request', {
+        request_id: requestId,
+        method: request.method,
+        path: request.path,
+        status_code: status,
+        duration_ms: durationMs,
+      });
+    }
   };
   response.on('finish', () => record(false));
   response.on('close', () => record(!response.writableFinished));

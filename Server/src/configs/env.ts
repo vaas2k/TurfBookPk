@@ -28,6 +28,16 @@ function integerInRange(name: string, fallback: number, minimum: number, maximum
   return value;
 }
 
+function numberInRange(name: string, fallback: number, minimum: number, maximum: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be a number between ${minimum} and ${maximum}`);
+  }
+  return value;
+}
+
 function booleanValue(name: string, fallback = false): boolean {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
@@ -64,6 +74,7 @@ export const env = {
   dbLockTimeoutMs: integerInRange('DB_LOCK_TIMEOUT_MS', 10_000, 1_000, 120_000),
   shutdownGraceMs: integerInRange('SHUTDOWN_GRACE_MS', 30_000, 5_000, 120_000),
   apiCompression: booleanValue('API_COMPRESSION', true),
+  httpSuccessLogSampleRate: numberInRange('HTTP_SUCCESS_LOG_SAMPLE_RATE', 1, 0, 1),
   redisUrl: process.env.REDIS_URL || '',
   trustProxyHops: integerInRange('TRUST_PROXY_HOPS', 0, 0, 8),
   metricsToken: process.env.METRICS_TOKEN || '',

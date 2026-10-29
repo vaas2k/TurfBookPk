@@ -53,6 +53,7 @@ services:
       DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@pgbouncer:5432/turfbookpk_loadtest
       DB_POOL_MODE: transaction
       API_COMPRESSION: ${LOADTEST_API_COMPRESSION:-true}
+      HTTP_SUCCESS_LOG_SAMPLE_RATE: ${LOADTEST_HTTP_SUCCESS_LOG_SAMPLE_RATE:-1}
       NODE_ENV: development
       PAYMENT_PROVIDER: mock
       ALLOW_LOADTEST_RATE_LIMIT_BYPASS: "true"
@@ -62,6 +63,7 @@ services:
       DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@pgbouncer:5432/turfbookpk_loadtest
       DB_POOL_MODE: transaction
       API_COMPRESSION: ${LOADTEST_API_COMPRESSION:-true}
+      HTTP_SUCCESS_LOG_SAMPLE_RATE: ${LOADTEST_HTTP_SUCCESS_LOG_SAMPLE_RATE:-1}
       NODE_ENV: development
       PAYMENT_PROVIDER: mock
       ALLOW_LOADTEST_RATE_LIMIT_BYPASS: "true"
