@@ -20,7 +20,7 @@ Day 1 implementation and local measurements are recorded in `Server/SCALABILITY_
 
 - [ ] Capture a baseline before modifying code.
   - [x] Seed an isolated local load-test database with at least 10k users, 1k grounds, 500k slots, 50k bookings, and 100k notifications.
-  - [ ] Add a dedicated OTP-login scenario; the repeatable HTTP harness already covers home/discovery, ground detail, booking hold, payment status, and vendor booking lists.
+  - [ ] Run a dedicated OTP scenario. The request-only VM harness is prepared for 100 synthetic numbers; code verification, token creation, and Redis throttle behavior remain separate checks.
   - [ ] Record throughput, error rate, database CPU/connections, and p50/p95/p99 latency.
 - [x] Add initial PostgreSQL lookup indexes through migration `0024_scalability_query_indexes.sql`; migration validated and applied to the local development database.
   - [x] `slots (ground_id, date, start_time)` and partial indexes for available slots and expiring active holds.
@@ -109,7 +109,7 @@ The completed VirtualBox rehearsal and measured read-load results are summarized
 - [ ] Add database backup automation, restore rehearsal, point-in-time recovery where supported, and documented rollback/forward-fix procedures. A local `pg_dump` archive restored with its fixture into a separate disposable database; VM scripts passed Bash syntax. Scheduled encrypted off-host backups/PITR and restore-time measurement require the VM or hosted database.
 - [ ] Run failure tests: Redis unavailable, one API replica killed, worker killed mid-job, PostgreSQL failover, Clink timeout, Expo timeout, duplicate callback, and delayed callback after expiry. Local and VirtualBox drills passed for Redis/PostgreSQL outage and recovery, Nginx failover in both API directions, worker heartbeat alert/recovery, worker lease reclaim, duplicate callback, and late callback. Actual database failover and external-provider timeout drills remain.
 - [ ] Run the final load test against staging with production-like networking and data volume.
-  - [ ] No double bookings or duplicate ledger/notification effects. The full-path VM test passed 50 distinct booking holds (0 failures, p95 290 ms). Same-slot contention passed: 1 success, 9 conflicts, and exactly 1 matching persisted hold. A ten-request mock-confirmation race produced one ledger entry, two notifications, and one earnings increment, but two requests returned 409 after a concurrent confirmation; the idempotent retry fix awaits a VM rerun.
+  - [x] No double bookings or duplicate ledger/notification effects in the VM mock-payment race. The full-path VM test passed 50 distinct booking holds (0 failures, p95 290 ms). Same-slot contention passed: 1 success, 9 conflicts, and exactly 1 matching persisted hold. After the idempotent retry fix, ten concurrent mock confirmations returned ten HTTP 200 responses, with one first confirmation, nine duplicates, one ledger entry, two notifications, and one vendor-earnings increment. Real Clink acknowledgment remains a separate provider-dependent test.
   - [ ] Error rate below 1% excluding deliberate validation/rate-limit responses.
   - [ ] Define and meet an initial p95 target (recommended: under 500 ms for cached reads and under 1 s for booking writes excluding payment-provider latency).
   - [ ] PostgreSQL connections remain below 70–80% of the configured maximum.

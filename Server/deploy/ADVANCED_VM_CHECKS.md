@@ -75,3 +75,13 @@ sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools ru
   --volume "$PWD/scripts/check-booking-confirmation-race.mjs:/app/scripts/check-booking-confirmation-race.mjs:ro" \
   loadtest-benchmark node scripts/check-booking-confirmation-race.mjs
 ```
+
+## OTP request load
+
+This request-only scenario uses 100 unique synthetic Pakistani numbers. It checks for HTTP 202 and one persisted challenge per request, then deletes only those challenges. It does not verify a code or create users. The load-test overlay has `ALLOW_LOADTEST_RATE_LIMIT_BYPASS=true`, so this measures OTP generation/database work rather than the Redis IP throttle. Real SMS delivery is not configured in this VM rehearsal.
+
+```bash
+sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools run --rm \
+  --volume "$PWD/scripts/benchmark-otp-requests.mjs:/app/scripts/benchmark-otp-requests.mjs:ro" \
+  loadtest-benchmark node scripts/benchmark-otp-requests.mjs --requests=100 --vus=20
+```
