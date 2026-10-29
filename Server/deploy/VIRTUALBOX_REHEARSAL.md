@@ -158,8 +158,8 @@ Create a private fixture file with two temporary login sessions:
 
 ```bash
 umask 077
-sudo docker compose --env-file deploy/.env.vm $files exec -T api \
-  node scripts/benchmark-external-fixture.mjs prepare \
+sudo docker exec turfbookpk-vm-api-1 \
+  node /app/scripts/benchmark-external-fixture.mjs prepare \
   > backups/external-benchmark-fixture.json
 ```
 
@@ -184,8 +184,8 @@ immediately, read only its run ID on Windows:
 Back in **Ubuntu**, replace `RUN_ID` with that value:
 
 ```bash
-sudo docker compose --env-file deploy/.env.vm $files exec -T api \
-  node scripts/benchmark-external-fixture.mjs cleanup RUN_ID
+sudo docker exec turfbookpk-vm-api-1 \
+  node /app/scripts/benchmark-external-fixture.mjs cleanup RUN_ID
 ```
 
 Then restore the normal rehearsal database with the `base_files` command in
