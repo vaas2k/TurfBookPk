@@ -58,3 +58,12 @@ sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools ru
 ```
 
 Record successes, failure statuses, RPS, and p95. The first target is zero failures and booking-write p95 below 1 second on the VM. A 30- or 60-client read result does not predict write performance. Do not start another write run until the first command finishes its cleanup. Rebuild the VM image after changing this script, since the container executes the image copy.
+
+To check double-booking protection, race ten different players for **one** available slot. The expected result is one HTTP 201, nine HTTP 409 responses, one persisted booking, and a hold pointing to that booking. The report's `valid` field must be `true`. This command waits 45 seconds for any upstream requests to finish before checking and cleaning up.
+
+```bash
+sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools run --rm \
+  --volume "$PWD/scripts/benchmark-booking-writes.mjs:/app/scripts/benchmark-booking-writes.mjs:ro" \
+  loadtest-benchmark \
+  node scripts/benchmark-booking-writes.mjs --mode=contention --requests=10 --vus=10
+```

@@ -13,6 +13,8 @@ source.pathname = `/${targetName}`;
 const database = postgres(source.toString(), { max: 2, prepare: false });
 const runId = randomUUID();
 const flag = (name, fallback) => Number(process.argv.find((value) => value.startsWith(`--${name}=`))?.split('=')[1] ?? fallback);
+const mode = process.argv.find((value) => value.startsWith('--mode='))?.slice('--mode='.length) ?? 'unique';
+if (!['unique', 'contention'].includes(mode)) throw new Error('Use --mode=unique or --mode=contention');
 const requests = flag('requests', 50);
 const concurrency = flag('vus', 10);
 if (!Number.isInteger(requests) || requests < 1 || requests > 50 || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 50) throw new Error('Use 1-50 requests and 1-50 clients');
@@ -24,8 +26,8 @@ const base = externalTarget || `http://127.0.0.1:${port}/api`;
 const selected = await database`
   select id from slots where date >= ((now() at time zone 'Asia/Karachi')::date + 2)
     and not is_booked and not is_blocked and hold_booking_id is null
-  order by date, ground_id, start_time limit ${requests}`;
-if (selected.length < requests) throw new Error(`Seed ${requests} available future slots before running write benchmark`);
+  order by date, ground_id, start_time limit ${mode === 'contention' ? 1 : requests}`;
+if (selected.length < (mode === 'contention' ? 1 : requests)) throw new Error('Seed available future slots before running write benchmark');
 const sessions = [];
 const tokens = [];
 for (let index = 0; index < requests; index++) {
@@ -38,6 +40,7 @@ for (let index = 0; index < requests; index++) {
 const server = externalTarget ? null : spawn(process.execPath, ['dist/server.js'], { cwd: new URL('..', import.meta.url), env: { ...process.env, DATABASE_URL: source.toString(), PORT: String(port), NODE_ENV: 'development', PAYMENT_PROVIDER: 'mock', MAX_ADVANCE_BOOKING_DAYS: '39' }, stdio: 'ignore' });
 const results = [];
 let cursor = 0;
+let drained = false;
 async function ready() {
   for (let attempt = 0; attempt < 50; attempt++) {
     if (server && server.exitCode !== null) throw new Error('Write benchmark API exited during startup');
@@ -54,7 +57,7 @@ async function worker() {
       const response = await fetch(`${base}/bookings`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${tokens[index]}`, 'Content-Type': 'application/json', 'Idempotency-Key': `loadbench:${runId}:${index}` },
-        body: JSON.stringify({ slot_id: selected[index].id }),
+        body: JSON.stringify({ slot_id: selected[mode === 'contention' ? 0 : index].id }),
         signal: AbortSignal.timeout(10_000),
       });
       await response.arrayBuffer();
@@ -72,8 +75,16 @@ try {
   const times = results.map((row) => row.ms).sort((a, b) => a - b);
   const percentile = (fraction) => Math.round(times[Math.ceil(times.length * fraction) - 1]);
   const successes = results.filter((row) => row.status === 201).length;
-  console.log(JSON.stringify({ target: targetName, concurrency, requests: results.length, successes, failures: results.length - successes, failure_statuses: results.filter((row) => row.status !== 201).reduce((acc, row) => ({ ...acc, [row.status || 'network_error']: (acc[row.status || 'network_error'] || 0) + 1 }), {}), rps: Number((successes / elapsed).toFixed(1)), p50_ms: percentile(0.5), p95_ms: percentile(0.95), p99_ms: percentile(0.99) }, null, 2));
-  if (successes !== requests) process.exitCode = 1;
+  const statuses = results.reduce((acc, row) => ({ ...acc, [row.status || 'network_error']: (acc[row.status || 'network_error'] || 0) + 1 }), {});
+  if (externalTarget) await new Promise((resolve) => setTimeout(resolve, 45_000));
+  drained = true;
+  const keys = Array.from({ length: requests }, (_, index) => `loadbench:${runId}:${index}`);
+  const persistedRows = await database`select id from bookings where idempotency_key in ${database(keys)}`;
+  const [slot] = await database`select hold_booking_id from slots where id = ${selected[0].id}`;
+  const expectedSuccesses = mode === 'contention' ? 1 : requests;
+  const valid = successes === expectedSuccesses && persistedRows.length === expectedSuccesses && (mode !== 'contention' || (statuses[409] === requests - 1 && slot.hold_booking_id === persistedRows[0].id));
+  console.log(JSON.stringify({ target: targetName, mode, concurrency, requests: results.length, successes, failures: results.length - successes, status_counts: statuses, persisted_bookings: persistedRows.length, slot_held: slot.hold_booking_id !== null, valid, rps: Number((successes / elapsed).toFixed(1)), p50_ms: percentile(0.5), p95_ms: percentile(0.95), p99_ms: percentile(0.99) }, null, 2));
+  if (!valid) process.exitCode = 1;
 } catch (error) {
   console.error('Write benchmark failed:', error.message);
   process.exitCode = 1;
@@ -81,7 +92,7 @@ try {
   server?.kill();
   // A timed-out client request can still finish upstream. Wait past the proxy
   // timeout before removing its booking so it cannot recreate a hold afterward.
-  if (externalTarget) await new Promise((resolve) => setTimeout(resolve, 45_000));
+  if (externalTarget && !drained) await new Promise((resolve) => setTimeout(resolve, 45_000));
   const keys = Array.from({ length: requests }, (_, index) => `loadbench:${runId}:${index}`);
   await database.begin(async (tx) => {
     const rows = await tx`select id from bookings where idempotency_key in ${tx(keys)}`;
