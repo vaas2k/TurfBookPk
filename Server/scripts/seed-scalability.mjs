@@ -121,6 +121,10 @@ try {
       'New booking', 'A player booked a football slot.', jsonb_build_object('bookingId', b.id), b.created_at
     from bookings b join vendors v on v.id = b.vendor_id where b.booking_number like 'LOAD-%'
     on conflict (id) do nothing`);
+  // Bulk synthetic inserts can leave PostgreSQL's planner statistics far
+  // behind the actual table sizes. Refresh them before any benchmark so the
+  // first run does not use poor plans and contaminate the next run.
+  await run('planner statistics', 'analyze');
   console.log(`Seed complete: ${players} users, ${groundCount} grounds, ${groundCount * days * 10} slots, about ${groundCount * days} bookings.`);
 } catch (error) {
   console.error('Seed failed:', error.code || error.message, error.message);
