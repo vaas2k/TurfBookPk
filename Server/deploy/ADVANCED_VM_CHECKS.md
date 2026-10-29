@@ -67,3 +67,11 @@ sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools ru
   loadtest-benchmark \
   node scripts/benchmark-booking-writes.mjs --mode=contention --requests=10 --vus=10
 ```
+
+To check confirmation idempotency, create one synthetic hold and send ten concurrent mock-payment confirmations through the same proxy. Expected: one first confirmation, nine idempotent responses, one earning ledger entry, two in-app notifications, and one vendor-earnings increment. The script restores the synthetic booking, slot, and vendor balance after a 45-second drain; it runs only against `_loadtest`.
+
+```bash
+sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools run --rm \
+  --volume "$PWD/scripts/check-booking-confirmation-race.mjs:/app/scripts/check-booking-confirmation-race.mjs:ro" \
+  loadtest-benchmark node scripts/check-booking-confirmation-race.mjs
+```
