@@ -85,3 +85,11 @@ sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools ru
   --volume "$PWD/scripts/benchmark-otp-requests.mjs:/app/scripts/benchmark-otp-requests.mjs:ro" \
   loadtest-benchmark node scripts/benchmark-otp-requests.mjs --requests=100 --vus=20
 ```
+
+The second scenario seeds hashed test codes for 100 fresh synthetic numbers, then calls OTP verification and checks that 100 users and 100 refresh sessions were created, with no challenges left. It deletes those synthetic users and sessions afterward. It does not require a configured fixed development OTP or SMS service.
+
+```bash
+sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools run --rm \
+  --volume "$PWD/scripts/benchmark-otp-verifications.mjs:/app/scripts/benchmark-otp-verifications.mjs:ro" \
+  loadtest-benchmark node scripts/benchmark-otp-verifications.mjs --requests=100 --vus=20
+```
