@@ -1,5 +1,11 @@
 # Scalability Task Journal
 
+## 2026-10-30 - OTP and mixed-load VM results
+
+- OTP request load passed 100/100 HTTP 202 responses with 100 persisted challenges, p95 279 ms. OTP verification load passed 100/100 HTTP 200 responses, created 100 users and 100 sessions, left no challenges, p95 476 ms. Both used synthetic numbers in the isolated load-test database; Redis rate limiting was bypassed.
+- The first 20-reader/50-write mixed run failed the reliability gate: 36 booking holds succeeded, 14 returned HTTP 502, and read routes had 20 combined failures. Successful booking writes had p95 831 ms. Nginx logs show both API upstreams timed out, were temporarily ejected, and then produced `no live upstreams`; API logs show database query failures after very long waits. The VM still has about 2.2 GiB available RAM but high CPU pressure. PostgreSQL/PgBouncer logs are needed to distinguish database queueing from host CPU pauses. These measurements must not be used as a capacity ceiling.
+- API database error logs included full SQL and bound parameters while omitting the underlying database error code. The logger now emits only a safe database error class/code, so the next failure can be diagnosed without leaking query values.
+
 ## 2026-10-24 — Day 1 database/query pass
 
 - Added `0024_scalability_query_indexes.sql` and registered it in the Drizzle journal. The migration adds read, expiry, queue, and admin indexes.

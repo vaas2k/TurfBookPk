@@ -57,7 +57,21 @@ export function logEvent(level: LogLevel, event: string, fields: Record<string, 
 
 export function errorMetadata(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
-    const candidate = error as Error & { code?: string; statusCode?: number };
+    const candidate = error as Error & { code?: string; statusCode?: number; cause?: unknown };
+    // Drizzle includes complete SQL and bound values in its wrapper message
+    // and stack. Log only the underlying database error class/code.
+    if (candidate.message.startsWith('Failed query:')) {
+      const cause = candidate.cause && typeof candidate.cause === 'object'
+        ? candidate.cause as { name?: unknown; code?: unknown } : null;
+      const causeCode = typeof cause?.code === 'string' && /^[A-Z0-9_]{2,32}$/i.test(cause.code) ? cause.code : undefined;
+      const causeName = typeof cause?.name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(cause.name) ? cause.name : undefined;
+      return {
+        error_name: 'DatabaseQueryError',
+        error_code: causeCode || 'database_query_failed',
+        error_message: 'Database query failed',
+        database_cause_name: causeName,
+      };
+    }
     return {
       error_name: candidate.name,
       error_code: candidate.code,

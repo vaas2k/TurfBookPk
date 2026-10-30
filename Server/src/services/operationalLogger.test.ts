@@ -42,3 +42,13 @@ test('operational logs redact configured gateway credentials embedded in message
     if (original === undefined) delete process.env.CLINK_PASSWORD; else process.env.CLINK_PASSWORD = original;
   }
 });
+
+test('database errors expose cause code without SQL, parameters, or stack', () => {
+  const error = new Error('Failed query: select * from users where phone = $1\nparams: +923001234567', {
+    cause: Object.assign(new Error('query_wait_timeout'), { code: '57014' }),
+  });
+  const metadata = errorMetadata(error);
+  assert.equal(metadata.error_code, '57014');
+  assert.equal(metadata.error_message, 'Database query failed');
+  assert.doesNotMatch(JSON.stringify(metadata), /select|923001234567|params|error_stack/);
+});
