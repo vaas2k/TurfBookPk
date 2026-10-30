@@ -93,3 +93,13 @@ sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools ru
   --volume "$PWD/scripts/benchmark-otp-verifications.mjs:/app/scripts/benchmark-otp-verifications.mjs:ro" \
   loadtest-benchmark node scripts/benchmark-otp-verifications.mjs --requests=100 --vus=20
 ```
+
+## Mixed read/write load
+
+This 30-second run keeps 20 read clients active across the seven established routes while spreading 50 unique booking holds across the same interval. It checks read errors, write responses, and persisted holds, then drains and removes its own bookings and sessions. The VM's co-located generator consumes CPU, so compare this with the earlier VM-generator baseline rather than the Windows external-generator result.
+
+```bash
+sudo docker compose --env-file deploy/.env.vm $files --profile loadtest-tools run --rm \
+  --volume "$PWD/scripts/benchmark-mixed-traffic.mjs:/app/scripts/benchmark-mixed-traffic.mjs:ro" \
+  loadtest-benchmark node scripts/benchmark-mixed-traffic.mjs --readers=20 --writes=50 --seconds=30
+```

@@ -20,7 +20,7 @@ Day 1 implementation and local measurements are recorded in `Server/SCALABILITY_
 
 - [ ] Capture a baseline before modifying code.
   - [x] Seed an isolated local load-test database with at least 10k users, 1k grounds, 500k slots, 50k bookings, and 100k notifications.
-  - [ ] Complete dedicated OTP scenarios. The request-only VM run passed 100/100 HTTP 202 responses and 100 persisted challenges (p95 279 ms). A verification/session-creation harness is prepared; Redis throttle behavior remains a separate check.
+  - [x] Complete isolated OTP processing scenarios. Requests passed 100/100 HTTP 202 responses and 100 persisted challenges (p95 279 ms). Verification passed 100/100 HTTP 200 responses, created 100 users and 100 sessions, and left no challenges (p95 476 ms). Redis throttle behavior remains a separate security check.
   - [ ] Record throughput, error rate, database CPU/connections, and p50/p95/p99 latency.
 - [x] Add initial PostgreSQL lookup indexes through migration `0024_scalability_query_indexes.sql`; migration validated and applied to the local development database.
   - [x] `slots (ground_id, date, start_time)` and partial indexes for available slots and expiring active holds.
