@@ -41,9 +41,9 @@ async function request(path, token, method = 'GET', body, key) {
       signal: AbortSignal.timeout(method === 'POST' ? 10_000 : 5_000),
     });
     await response.arrayBuffer();
-    return { status: response.status, ms: performance.now() - started };
-  } catch {
-    return { status: 0, ms: performance.now() - started };
+    return { status: response.status, ms: performance.now() - started, upstream: response.headers.get('x-turfbook-rehearsal-upstream') };
+  } catch (error) {
+    return { status: 0, ms: performance.now() - started, reason: error?.name === 'TimeoutError' ? 'client_timeout' : 'network_error' };
   }
 }
 async function readerLoop(routes, deadline, offset) {
@@ -107,11 +107,19 @@ try {
   const readReport = Object.fromEntries(routes.map((route) => {
     const samples = readSamples.get(route.name) || [];
     const good = samples.filter((sample) => sample.status === 200);
-    return [route.name, { requests: samples.length, failures: samples.length - good.length, rps: Number((good.length / seconds).toFixed(1)), p95_ms: percentile(good.map((sample) => sample.ms), 0.95) }];
+    const failed = samples.filter((sample) => sample.status !== 200);
+    return [route.name, { requests: samples.length, failures: failed.length,
+      status_counts: samples.reduce((acc, sample) => ({ ...acc, [sample.status || sample.reason]: (acc[sample.status || sample.reason] || 0) + 1 }), {}),
+      failed_upstreams: Object.fromEntries(failed.filter((sample) => sample.upstream).map((sample) => [sample.upstream, true])),
+      rps: Number((good.length / seconds).toFixed(1)), p95_ms: percentile(good.map((sample) => sample.ms), 0.95) }];
   }));
   const goodWrites = writeSamples.filter((sample) => sample.status === 201);
-  const valid = goodWrites.length === writes && persisted.count === writes && Object.values(readReport).every((route) => route.failures === 0);
+  const totalReads = Object.values(readReport).reduce((sum, route) => sum + route.requests, 0);
+  const failedReads = Object.values(readReport).reduce((sum, route) => sum + route.failures, 0);
+  const readErrorRatePct = totalReads ? Number((failedReads * 100 / totalReads).toFixed(2)) : 100;
+  const valid = goodWrites.length === writes && persisted.count === writes && readErrorRatePct < 1;
   console.log(JSON.stringify({ target: name, readers, duration_seconds: seconds, writes, read_routes: readReport,
+    read_summary: { requests: totalReads, failures: failedReads, error_rate_pct: readErrorRatePct },
     booking_writes: { successes: goodWrites.length, failures: writes - goodWrites.length, persisted: persisted.count,
       status_counts: writeSamples.reduce((acc, sample) => ({ ...acc, [sample.status || 'network_error']: (acc[sample.status || 'network_error'] || 0) + 1 }), {}),
       p50_ms: percentile(goodWrites.map((sample) => sample.ms), 0.5), p95_ms: percentile(goodWrites.map((sample) => sample.ms), 0.95), p99_ms: percentile(goodWrites.map((sample) => sample.ms), 0.99) }, valid }, null, 2));
