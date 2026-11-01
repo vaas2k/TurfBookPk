@@ -10,7 +10,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { formatDuration, formatTimeRange12 } from "@/lib/time";
+import { formatDuration, formatTime12, formatTimeRange12 } from "@/lib/time";
 import {
   BookingProfile,
   PaymentAttempt,
@@ -21,6 +21,7 @@ import {
   getCancellationPreview,
   markBookingCompleted,
   markBookingNoShow,
+  recordDelayedStart,
 } from "@/lib/api/bookings";
 import { Toast } from "@/components/ui/toast";
 import { BookingStatusBadge } from "@/components/booking/BookingStatusBadge";
@@ -166,6 +167,24 @@ export function BookingDetails({
       ],
     );
   };
+  const handleDelayedStart = () => {
+    const save = async (reason: 'previous_team' | 'venue_delay' | 'other') => {
+      setActionLoading(true);
+      try {
+        setBooking(await recordDelayedStart(id, reason));
+      } catch (error: any) {
+        setToast(error?.message || 'Unable to record the delayed start.');
+      } finally {
+        setActionLoading(false);
+      }
+    };
+    appDialog.alert('Why did play start late?', 'Record the actual start now. This does not extend the booked end time.', [
+      { text: 'Previous team', onPress: () => { void save('previous_team'); } },
+      { text: 'Venue delay', onPress: () => { void save('venue_delay'); } },
+      { text: 'Other reason', onPress: () => { void save('other'); } },
+      { text: 'Back', style: 'cancel' },
+    ]);
+  };
   const handleRecurringPayment = async () => {
     setActionLoading(true);
     try {
@@ -261,8 +280,6 @@ export function BookingDetails({
       >
         <StatusBar
           barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'}
-          backgroundColor={theme.canvas}
-          translucent={false}
         />
         <View className="px-6 pt-4 pb-5 flex-row items-center">
           <TouchableOpacity
@@ -318,6 +335,8 @@ export function BookingDetails({
               {formatDuration(booking.start_time, booking.end_time)})
             </Text>
           </View>
+          {booking.turnaround_minutes > 0 && <Text style={{ color: theme.muted }} className="text-xs px-1 mt-3">Arrive early. Pitch access starts at the booked time; play ends at {formatTime12(booking.end_time)}. The {booking.turnaround_minutes}-minute changeover is for leaving the pitch.</Text>}
+          {booking.actual_start_at && <Text style={{ color: theme.muted }} className="text-xs px-1 mt-3">Venue recorded a delayed start at {new Date(booking.actual_start_at).toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Karachi' })}. The booked end time stays the same.</Text>}
           {isUpcoming && (
             <View className="border rounded-[22px] px-5 py-4 mt-5" style={{ backgroundColor: theme.businessSurface, borderColor: theme.businessBorder }}>
               <Text
@@ -328,7 +347,11 @@ export function BookingDetails({
                   booking.cancellation_policy.slice(1)}{" "}
                 cancellation policy
               </Text>
-              {graceRemainingMinutes > 0 ? (
+              {booking.status === "pending_payment" ? (
+                <Text className="text-[#AFAFA9] text-xs mt-1">
+                  No payment has been recorded yet. Refund terms apply after payment.
+                </Text>
+              ) : graceRemainingMinutes > 0 ? (
                 <Text className="text-[#77D481] text-xs mt-1">
                   Full refund grace window: {graceRemainingMinutes} minute
                   {graceRemainingMinutes === 1 ? "" : "s"} remaining.
@@ -357,7 +380,7 @@ export function BookingDetails({
             </View>
           )}
 
-          {isUpcoming && (
+          {booking.status === "confirmed" && (
             <View className="bg-white rounded-[28px] mt-5 px-5 py-7 items-center">
               <Text
                 style={{
@@ -502,7 +525,7 @@ export function BookingDetails({
     const canComplete = booking.status === "confirmed" && hasEnded;
     const isOpen = booking.status === "confirmed" && !hasEnded;
     return <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+      <StatusBar barStyle="light-content" />
       <View className="px-6 pt-4 pb-4 flex-row items-center"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace("/(vendor)/bookings")} className="w-8 h-10 items-center justify-center -ml-2"><Ionicons name="chevron-back" size={29} color="#F5F5F0" /></TouchableOpacity><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0] text-[21px] ml-2">BOOKING DETAILS</Text></View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 116 + Math.max(insets.bottom, 16) }} showsVerticalScrollIndicator={false}>
         <View className="bg-[#1B1F19] border border-[#30372B] rounded-[18px] p-5">
@@ -512,6 +535,9 @@ export function BookingDetails({
         </View>
         <View className="bg-[#1B1F19] border border-[#30372B] rounded-[18px] p-5 mt-5"><Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 16 }} className="text-[#9CA198]">PRICE BREAKDOWN</Text><View className="flex-row justify-between mt-5"><Text className="text-[#AEB2AA]">{formatDuration(booking.start_time, booking.end_time)} slot rate</Text><Text className="text-[#F5F5F0] font-bold">PKR {booking.total_amount.toLocaleString()}</Text></View><View className="flex-row justify-between mt-4"><Text className="text-[#AEB2AA]">Platform commission</Text><Text className="text-[#F26666]">- PKR {booking.platform_fee.toLocaleString()}</Text></View><View className="flex-row justify-between mt-4 pt-4 border-t border-[#30372B]"><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0]">Your payout</Text><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#42B84F] text-lg">PKR {booking.vendor_amount.toLocaleString()}</Text></View></View>
         {booking.status === "cancelled" && <View className="bg-[#38201E] border border-[#69332C] rounded-[18px] p-5 mt-5"><Text className="text-[#FFD1CB] font-bold">Booking cancelled</Text><Text className="text-[#E9A49B] text-sm mt-2">Refund due: PKR {booking.refund_amount.toLocaleString()}</Text>{booking.cancellation_reason && <Text className="text-[#E9A49B] text-xs mt-2">{booking.cancellation_reason}</Text>}</View>}
+        {booking.turnaround_minutes > 0 && <Text className="text-[#92978F] text-xs mt-4">Playing time ends at {formatTime12(booking.end_time)}. Allow {booking.turnaround_minutes} minutes for pitch changeover.</Text>}
+        {booking.actual_start_at && <Text className="text-[#F4B844] text-xs mt-2">Delayed start recorded at {new Date(booking.actual_start_at).toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Karachi' })} ({booking.start_delay_reason?.replaceAll('_', ' ')}).</Text>}
+        {booking.status === 'confirmed' && !booking.actual_start_at && !hasEnded && new Date(`${booking.date}T${booking.start_time}+05:00`).getTime() < clockNow && <TouchableOpacity accessibilityRole="button" disabled={actionLoading} onPress={handleDelayedStart} className="border border-[#F4B844] rounded-xl p-3 mt-4 items-center"><Text className="text-[#F4B844] font-bold">Record a delayed start</Text></TouchableOpacity>}
         {isOpen && <Text className="text-[#92978F] text-xs leading-5 text-center mt-5">Attendance can be marked once the booked slot has ended.</Text>}
       </ScrollView>
       {(isCancellable || canComplete) && <View className="absolute bottom-0 left-0 right-0 bg-[#10120F] border-t border-[#30372B] px-6 pt-5" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>

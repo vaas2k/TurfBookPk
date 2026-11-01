@@ -176,7 +176,7 @@ export default function BookingsScreen() {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1" style={{ backgroundColor: theme.canvas }}>
-      <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.canvas} translucent={false} />
+      <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} />
       {/* Top Header */}
       <View className="px-5 pt-5 pb-3" style={{ backgroundColor: theme.canvas }}>
         <View>
@@ -229,7 +229,7 @@ export default function BookingsScreen() {
           ListEmptyComponent={<View className="items-center pt-16"><Ionicons name="calendar-outline" size={34} color="#3DB54A" /><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F3F4EF] mt-3">No {bookingTab} bookings</Text><Text className="text-[#AFAFA9] text-sm mt-1">Your {bookingTab} reservations will appear here.</Text></View>}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          ListFooterComponent={loadingMore ? <ActivityIndicator className="py-4" color="#4CAF50" /> : null}
+          ListFooterComponent={loadingMore ? <ActivityIndicator className="py-4" color="#4CAF50" /> : undefined}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: Math.max(insets.bottom, 32), backgroundColor: theme.canvas }}
           showsVerticalScrollIndicator={false}
           refreshControl={

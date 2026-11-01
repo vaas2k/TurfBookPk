@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { formatTimeRange12 } from '@/lib/time';
-import * as Calendar from 'expo-calendar';
+import * as Calendar from 'expo-calendar/legacy';
 import { appDialog } from '@/components/ui/app-dialog';
 import { useAppearanceStore } from '@/store/appearanceStore';
 import { playerThemes } from '@/theme/playerTheme';
@@ -27,7 +27,7 @@ export default function BookingConfirmation() {
   if (!hasValidBooking) {
     return (
       <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 justify-center items-center px-6" style={{ backgroundColor: theme.canvas }}>
-        <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.canvas} />
+        <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} />
         <View className="w-20 h-20 rounded-full items-center justify-center mb-4" style={{ backgroundColor: theme.surface }}>
           <Ionicons name="alert-circle-outline" size={48} color={theme.muted} />
         </View>
@@ -103,7 +103,7 @@ export default function BookingConfirmation() {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1" style={{ backgroundColor: theme.canvas }}>
-      <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.canvas} />
+      <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} />
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {/* Success Header */}

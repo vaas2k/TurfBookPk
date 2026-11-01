@@ -43,7 +43,7 @@ export async function materializeSchedules(groundRows: (typeof grounds.$inferSel
         const identity = key(ground.id, date, template.startTime, template.endTime);
         if (known.has(identity)) continue;
         known.add(identity);
-        missing.push({ groundId: ground.id, date, startTime: template.startTime, endTime: template.endTime, price: template.price, scheduleTemplateId: template.id });
+        missing.push({ groundId: ground.id, date, startTime: template.startTime, endTime: template.endTime, turnaroundMinutes: template.turnaroundMinutes, price: template.price, scheduleTemplateId: template.id });
       }
     }
   }

@@ -1751,3 +1751,73 @@
 
 - Kept approved grounds visible on Home, Search, and Near You after their final slot for the selected day has passed. Cards now show a clear no-slots-left state while ground details continue to expose valid future dates and slots.
 - Corrected date-search pagination and retained price filtering/sorting by falling back to each ground's base hourly price when the selected date has no available slots.
+
+## 2026-10-30 — Local payment correctness and security test start
+
+- Added `docs/payment-gateway/CURRENT_PAYMENT_TEST_PLAN.md` and ran the first cases against a migrated, isolated local `turfbookpk_payment_loadtest` database. Existing concurrent paid-acknowledgment and late-payment tests passed; a new two-slot order test verified two bookings, two earnings totaling the vendor balance change, one payment event, and duplicate-confirmation idempotency.
+- Fixed acknowledgment date parsing so impossible Pakistan-local dates cannot silently roll forward. Unexpected callback errors now return a generic public response while operational logs retain diagnostics.
+- Production startup now rejects the unsigned sandbox acknowledgment flag even if `PAYMENT_ENVIRONMENT=sandbox`. A targeted subprocess test and payment unit tests passed.
+- Full backend suite passed 58/58 against the isolated database; typecheck passed. Test users, bookings, attempts, ledger rows, and payment events were cleaned up. Reference-generation concurrency, provider expiry/acknowledgment races, HTTP authorization, and real provider callback authentication remain to be tested before live payments.
+
+## 2026-10-30 — Payment race, HTTP authorization, and reconciliation follow-up
+
+- Added an atomic attempt-state claim before calling Clink for a reference. Two parallel requests against a delayed fake provider produced one provider call, one stored reference, and an in-progress conflict for the second request.
+- Rechecked slot ownership/availability before generating a reference. A blocked target was rejected before the provider call. Enforced future recurring payment-window opening and reservation expiry on reference generation.
+- A delayed fake expiry response after a paid confirmation did not undo the confirmed slot, ledger, or attempt state. Existing late-acknowledgment behavior still enters paid-unallocated manual review.
+- Local API tests verified payment owner access (200), cross-user denial (404), unauthenticated denial (401), disabled sandbox acknowledgment, and rejection of malformed/oversized callbacks without a state change.
+- Added read-only per-attempt reconciliation across payment, booking, slot, earning ledger, and event rows. It returned no issues on valid fixtures and detected a deliberately corrupted ledger amount.
+- Full isolated backend suite passed 59/59; typecheck and build passed. The payment test database had zero users, bookings, attempts, ledger entries, events, and sessions after cleanup. Real Clink callback authentication, provider timing, refunds/settlement, mobile device behavior, and two-API VM drills remain.
+
+## 2026-10-30 — Isolated VM payment acknowledgment rehearsal
+
+- Created a separate `turfbookpk_payment_loadtest` database and payment-only Compose overlay on the four-vCPU VirtualBox VM. The ordinary API, worker, database, and load-test data were left running independently.
+- Ten concurrent sandbox-style PAID acknowledgments through Nginx and two API instances returned one first acknowledgment and nine duplicates. The booking and attempt confirmed once, with one ledger row, one payment event, two player/vendor notifications, and one vendor earnings increment. The fixture was removed after the check.
+- Stopped one isolated API and repeated the same test through the surviving instance. All ten requests completed with the same single-effect invariants. The isolated payment containers were stopped afterward.
+- This verifies callback idempotency and API failover with synthetic payment evidence. It does not verify Clink-origin authenticity, actual banking payment, provider expiry, refunds, settlement, or mobile device behavior.
+- Added a second two-API VM case for payment after the local hold expired. Ten concurrent callbacks resulted in one paid-unallocated/manual-review event, one player notification, no booking allocation, no ledger entry, and no vendor earnings. The isolated services were stopped after testing.
+- Ran an isolated worker recovery drill on the VM. While the worker was stopped, created a pending payment notification and an expired processing lease. After starting the worker, both outbox jobs became sent (attempt counts 1 and 2); a repeat check showed no duplicate processing. Removed fixtures and stopped the isolated worker. This tests the outbox recovery path, not a live Clink expiry call.
+- Reviewed the mobile 1-Bill payment-state screen. A failed initial status fetch previously left an empty instructions view; it now shows an explicit retry/back state. Manual-review status now takes precedence over a generic failed label. Mobile typecheck and lint (without ESLint cache, which was permission-blocked) passed. Physical-device transitions still require a running development build and controlled callbacks.
+## 2026-10-31 — Expo SDK 58 mobile upgrade
+
+- Upgraded the Expo mobile app from SDK 57 to SDK 58 with Expo-aligned React 19.3, React Native 0.88, Expo Router, native modules, TypeScript types, and ESLint config. Regenerated the npm lockfile.
+- Moved the legacy splash configuration to the `expo-splash-screen` plugin and made the dynamic Expo config consume the static config for SDK 58 validation.
+- Updated React Native 0.88 compatibility: removed unsupported StatusBar props, aligned OTP input refs and color-scheme handling, and made virtualized-list optional components return `undefined`. Switched calendar calls to the SDK 58 legacy entry point so the existing add-to-calendar action still resolves at runtime.
+- Expo Doctor passed 20/20 checks, TypeScript passed, ESLint passed, and an iOS JavaScript export bundled successfully. Physical-device Expo Go behavior and native development builds still need device verification; generated Android native files are local and were not rebuilt here.
+
+## 2026-10-31 — Backend security checks
+
+- Fixed suspended accounts retaining access to ordinary authenticated routes. Access, refresh, and new sessions now reject suspension; admin suspension revokes active refresh sessions transactionally.
+- Added HTTP checks for admin authorization, vendor document and ground-verification access, suspended-session revocation, and spoofed forwarding headers against OTP rate limiting.
+- Added production startup checks for a missing database URL and short authentication secrets. Extended signed-upload tests for private-document owner scope, disallowed public PDFs, and oversize documents.
+- Full server suite passed 61/61, including database integration tests. Server typecheck, build, and diff checks passed. The emulator was not needed for these backend checks. Live Clink callback authentication and physical-device checks remain separate external tests.
+- Checked the mobile and admin production paths. Mobile release configuration now rejects an HTTP API URL; development builds can still use local HTTP. Mobile TypeScript, ESLint without its unwritable cache, and an iOS release bundle passed. Admin TypeScript and production build passed. No emulator was attached, so interactive checkout, app restart, notification routing, and offline behavior remain device checks.
+
+## 2026-11-01 — Android emulator payment rehearsal
+
+- Installed Expo Go 58 on the emulator after confirming the old installed development build used React Native 0.86.3 while SDK 58 JavaScript uses 0.88.1. A fresh native build was attempted twice; Reanimated CMake failed on a deeply nested Windows path, including through a short drive mapping. Native push and development-build checks therefore remain open.
+- Used a temporary local API with a fixed test OTP and signed in with a disposable player. Verified Search, ground detail, tomorrow's 1.5-hour slots, checkout validation, private billing-profile save, booking hold, and pending booking detail. Clink reference generation returned 502 in the current sandbox environment, consistent with the provider IP whitelist limitation.
+- For a local-only UI rehearsal, attached a fake 18-digit reference to that player's unresolved attempt while its slot hold was still owned by the player. The app showed the 24-digit consumer number, QR code, countdown, and pending state. After an app restart, the pending booking remained available through Bookings and reopened its payment screen.
+- Sent a controlled sandbox acknowledgment to the local API: first response status `1`, duplicate status `2`. The app showed Payment confirmed; the database had one confirmed booking, one booked slot, one earning ledger row, and one payment event. The Bookings tab moved the item to Upcoming/Confirmed.
+- Removed the disposable user, booking, attempt, ledger/event rows, and slot claim; a follow-up database check found zero matching rows. Fixed dark checkout date/time contrast, hid refund-grace countdown until a booking is paid, and limited the player check-in code to confirmed bookings. Mobile TypeScript and targeted lint passed after these edits.
+- Real Clink reference generation, provider-origin callback authentication, live bank payment, push behavior, iOS device behavior, and offline/slow-network payment behavior still require separate tests.
+
+## 2026-11-01 — Mobile reliability and broader security pass
+
+- Hardened the active 1-Bill screens against duplicate checkout taps and overlapping refresh requests. Status polling/countdown now pause while the app is backgrounded and refresh immediately on return; offline failures retain the last known payment and expose an in-place retry state.
+- Re-ran the full backend suite: 61/61 passed. The HTTP and service checks cover cross-user and role authorization, suspended sessions, spoofed forwarding headers, callback parsing/size limits, upload MIME/size/ownership rules, payment concurrency/idempotency, log redaction, and production startup guards.
+- Removed unused mobile Google Sign-In/Auth Session/Zod packages and applied compatible transitive patches. Production audit results are now server 0 findings, mobile 0 critical/high with 12 Expo-toolchain moderate findings, and admin 0 critical with one high PostCSS finding requiring a planned Next 16 migration.
+- Updated Next.js from 15.5.0 to 15.5.28, moved nodemon to server development dependencies, made the runtime container use the unprivileged `node` user, and removed `/api/test` from production. The hardened Docker image built successfully and reports user `node` with zero production dependency findings.
+- Added `docs/SECURITY_RELIABILITY_REVIEW_2026-11-01.md` with the completed evidence and the remaining physical-device/provider checks. No emulator was attached during this pass, so interactive offline/background behavior remains a short manual confirmation rather than a claimed result.
+
+## 2026-11-01 — Windows Android native-build repair
+
+- Traced the SDK 58 Android failure to Windows `MAX_PATH` limits in Reanimated and React Native New Architecture autolinking, rather than application code, Firebase, Gradle, or the installed JDK.
+- Added a reproducible `patch-package` fix for Reanimated and an Expo config plugin that shortens the app CMake staging directory and enables safe CMake object-path hashing after future prebuilds.
+- Verified Reanimated's ARM64 native target and the complete x86_64 debug APK build. The APK was generated at `PitchBook/android/app/build/outputs/apk/debug/app-debug.apk`; mobile TypeScript, ESLint without cache, Expo prebuild config resolution, and diff checks passed.
+
+## 2026-11-01 — Pitch changeover scheduling
+
+- Implemented a 10-minute default gap between teams, with 5/10/15-minute choices in the vendor schedule wizard. Playing time remains the advertised slot start and end; generated slot starts advance by playing duration plus the gap.
+- Added per-ground configuration and per-slot/per-booking snapshots. The SQL exclusion constraint covers playing time plus changeover, while manual/recurring slot actions and schedule replacement validate existing occupied periods. Schedule replacement preserves bookings, holds, club reservations, blackout-blocked slots, and booking history.
+- Added changeover guidance in player slot selection, checkout, booking details, and vendor daily slots. Vendors review how many generated slots will be replaced or protected before confirming schedule changes. Vendors can record a delayed actual start with a reason during a confirmed match; the player sees the record and receives a booking notification. The recorded delay never extends the next booking.
+- Server and mobile typechecks, targeted mobile lint, and targeted timing tests passed. The migration applied successfully in an isolated schema-copy database, then in the local development database (migration record 0034). A rollback-only SQL test confirmed that a 2:05 PM start after a 2:00 PM finish is rejected and a 2:10 PM start is accepted in both databases; the disposable database was removed afterward. A PostgreSQL integration test also passed for preview-only behavior, preserving an old booked slot, rejecting a too-early new slot, and generating the next slot at the 10-minute boundary. Device testing of the vendor schedule wizard and delayed-start action remains before release.

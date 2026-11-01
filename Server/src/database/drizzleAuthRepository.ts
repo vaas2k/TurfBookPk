@@ -170,6 +170,7 @@ export class DrizzleAuthRepository implements AuthRepository {
       avatar_url: user.avatarUrl,
       is_verified: user.isVerified,
       is_setup_complete: user.isSetupComplete,
+      is_suspended: user.isSuspended,
       created_at: user.createdAt.toISOString(),
       updated_at: user.updatedAt.toISOString(),
     };

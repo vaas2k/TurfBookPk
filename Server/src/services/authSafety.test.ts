@@ -11,7 +11,7 @@ class MemoryAuthRepository implements AuthRepository {
   user: UserProfile = {
     id: '00000000-0000-4000-8000-000000000001', phone: '923001234567', email: null, full_name: 'Test Player',
     city: null, bio: null, preferred_foot: null, preferred_position: null, skill_level: null, role: 'player',
-    avatar_url: null, is_verified: true, is_setup_complete: true,
+    avatar_url: null, is_verified: true, is_setup_complete: true, is_suspended: false,
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   };
 
@@ -67,4 +67,14 @@ test('refresh token rotation has exactly one winner and revokes the old access t
   assert.equal(attempts.filter((result) => result.status === 'fulfilled').length, 1);
   assert.equal(attempts.filter((result) => result.status === 'rejected').length, 1);
   await assert.rejects(service.authenticateAccessToken(original.accessToken), (error: any) => error.code === 'unauthorized');
+});
+
+test('suspension blocks existing access, refresh, and new sessions', async () => {
+  const repository = new MemoryAuthRepository();
+  const service = new TokenService(repository);
+  const session = await service.createSession(repository.user);
+  repository.user.is_suspended = true;
+  await assert.rejects(service.authenticateAccessToken(session.accessToken), (error: any) => error.code === 'account_suspended');
+  await assert.rejects(service.refresh(session.refreshToken), (error: any) => error.code === 'account_suspended');
+  await assert.rejects(service.createSession(repository.user), (error: any) => error.code === 'account_suspended');
 });

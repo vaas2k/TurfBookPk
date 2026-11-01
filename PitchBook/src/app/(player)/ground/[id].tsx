@@ -782,6 +782,7 @@ export default function GroundDetail() {
                             >
                               {formatDuration(slot.start_time, slot.end_time)}
                             </Text>
+                            {slot.turnaround_minutes > 0 && <Text className={`text-xs mt-1 ${isSelected ? "text-white/80" : isAvailable ? "text-[#9FC6A2]" : "text-[#5D635A]"}`}>{slot.turnaround_minutes} min changeover after play</Text>}
                             {slot.is_peak && (
                               <Text className="text-[#D97706] text-xs font-semibold mt-1">
                                 Peak price
@@ -855,12 +856,14 @@ export default function GroundDetail() {
                     date: slot.date,
                     startTime: slot.start_time.slice(0, 5),
                     endTime: slot.end_time.slice(0, 5),
+                    turnaroundMinutes: slot.turnaround_minutes,
                     price: slot.price,
                   })),
                 ),
                 date: selectedSlots[0]!.date,
                 startTime: selectedSlots[0]!.start_time.slice(0, 5),
                 endTime: selectedSlots[0]!.end_time.slice(0, 5),
+                turnaroundMinutes: String(selectedSlots[0]!.turnaround_minutes),
                 amount: String(selectedTotal),
                 cancellationPolicy: ground.cancellation_policy || "standard",
               },

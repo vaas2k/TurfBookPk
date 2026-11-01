@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ComponentRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store/authStore';
@@ -18,7 +18,7 @@ export default function OTPVerificationScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [canResend, setCanResend] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const inputs = useRef<(TextInput | null)[]>([]);
+  const inputs = useRef<(ComponentRef<typeof TextInput> | null)[]>([]);
   const { verifyOTP, sendOTP, clearError, error } = useAuthStore();
 
   useEffect(() => {

@@ -8,13 +8,13 @@ import postgres from 'postgres';
 
 const source = new URL(process.env.DATABASE_URL || '');
 const name = decodeURIComponent(source.pathname.slice(1));
-source.pathname = `/${name.endsWith('_loadtest') ? name : `${name}_loadtest`}`;
-if (process.env.NODE_ENV === 'production' || !source.pathname.endsWith('_loadtest') || !process.env.REDIS_URL) throw new Error('This drill requires a non-production _loadtest database and Redis');
+if (process.env.NODE_ENV === 'production' || !name.endsWith('_worker_loadtest') || !process.env.REDIS_URL) throw new Error('This drill requires the isolated _worker_loadtest database and Redis');
 const db = postgres(source.toString(), { max: 3, prepare: false });
 const children = [];
-const locks = [2026102401, 2026102402, 2026102403, 2026102405, 2026102406, 2026102407];
+const locks = [2026102401, 2026102402, 2026102403, 2026102405, 2026102406, 2026102407, 2026102601];
 let lockConnection;
 let fixtureUserId;
+let otpPhones = [];
 
 async function availablePort() {
   const server = createServer();
@@ -68,6 +68,23 @@ try {
   assert.equal(responses.filter((status) => status === 200).length, 300);
   assert.equal(responses.filter((status) => status === 429).length, 1);
 
+  const otpIp = `198.18.${randomInt(1, 255)}.${randomInt(1, 255)}`;
+  const otpPrefix = randomInt(100000, 999999);
+  const candidates = Array.from({ length: 6 }, (_, index) => `923${otpPrefix}${String(index).padStart(3, '0')}`);
+  const [existingOtps] = await db`SELECT count(*)::int AS count FROM otp_challenges WHERE phone IN ${db(candidates)}`;
+  if (existingOtps.count) throw new Error('Synthetic OTP prefix collided with existing data; rerun');
+  otpPhones = candidates;
+  const otpStatuses = [];
+  for (let index = 0; index < otpPhones.length; index++) {
+    const port = index % 2 ? rightPort : leftPort;
+    const result = await fetch(`http://127.0.0.1:${port}/api/auth/otp/request`, {
+      method: 'POST', headers: { 'X-Forwarded-For': otpIp, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: otpPhones[index] }), signal: AbortSignal.timeout(3000),
+    });
+    otpStatuses.push(result.status);
+  }
+  assert.deepEqual(otpStatuses, [202, 202, 202, 202, 202, 429]);
+
   // Hold unrelated maintenance locks so this smoke test cannot alter seeded slots.
   lockConnection = await db.reserve();
   for (const id of locks) {
@@ -77,15 +94,32 @@ try {
   const [user] = await db`INSERT INTO users (phone, full_name) VALUES (${`+92312${randomUUID().replaceAll('-', '').slice(0, 10)}`}, 'Multi-worker Test') RETURNING id`;
   fixtureUserId = user.id;
   const [notification] = await db`INSERT INTO notifications (user_id, type, title, message) VALUES (${fixtureUserId}, 'booking', 'Multi-worker test', 'Test message') RETURNING id`;
+  const claimant = spawn(process.execPath, ['--input-type=module', '-e',
+    "import { claimDuePushJobs } from './dist/services/notificationOutbox.js'; const jobs = await claimDuePushJobs(process.argv[1]); if (jobs.length !== 1) process.exit(2); process.kill(process.pid, 'SIGKILL');",
+    notification.id], {
+    cwd: new URL('..', import.meta.url), env: { ...process.env, DATABASE_URL: source.toString(), NODE_ENV: 'development' }, stdio: 'ignore',
+  });
+  const claimExit = await Promise.race([
+    new Promise((resolve, reject) => {
+      claimant.once('exit', (code, signal) => resolve({ code, signal }));
+      claimant.once('error', reject);
+    }),
+    new Promise((_, reject) => setTimeout(() => { claimant.kill(); reject(new Error('Claimant did not exit within 20 seconds')); }, 20_000)),
+  ]);
+  assert.equal(claimExit.signal, 'SIGKILL');
+  const [abandoned] = await db`SELECT status, attempts FROM notification_outbox WHERE notification_id = ${notification.id}`;
+  assert.equal(abandoned.status, 'processing');
+  assert.equal(abandoned.attempts, 1);
   const workers = [launch('worker'), launch('worker')];
   const outcome = await until(async () => {
     const [row] = await db`SELECT status, attempts FROM notification_outbox WHERE notification_id = ${notification.id}`;
     return row?.status === 'sent' ? row : null;
-  }, workers);
-  assert.equal(outcome.attempts, 1);
-  console.log(JSON.stringify({ database: source.pathname.slice(1), api_processes: 2, shared_limit: { accepted: 300, rejected: 1 }, worker_processes: 2, notification_outbox: outcome }));
+  }, workers, 90_000);
+  assert.equal(outcome.attempts, 2);
+  console.log(JSON.stringify({ database: source.pathname.slice(1), api_processes: 2, shared_limit: { accepted: 300, rejected: 1 }, otp_limit: { accepted: 5, rejected: 1 }, worker_processes: 2, worker_crash_recovered: true, notification_outbox: outcome }));
 } finally {
   for (const child of children) if (child.exitCode === null) child.kill();
+  if (otpPhones.length) await db`DELETE FROM otp_challenges WHERE phone IN ${db(otpPhones)}`;
   if (fixtureUserId) await db`DELETE FROM users WHERE id = ${fixtureUserId}`;
   if (lockConnection) { await lockConnection`SELECT pg_advisory_unlock_all()`; lockConnection.release(); }
   await db.end();

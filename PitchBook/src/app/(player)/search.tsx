@@ -296,7 +296,7 @@ export default function SearchScreen() {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1" style={{ backgroundColor: theme.canvas }}>
-      <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.canvas} translucent={false} />
+      <StatusBar barStyle={appearance === 'dark' ? 'light-content' : 'dark-content'} />
       <View className="px-5 pt-4 pb-4" style={{ backgroundColor: theme.canvas }}>
         <View className="flex-row items-center justify-between">
           <View>

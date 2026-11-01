@@ -1,0 +1,28 @@
+diff --git a/node_modules/react-native-reanimated/android/CMakeLists.txt b/node_modules/react-native-reanimated/android/CMakeLists.txt
+index e2a5bfd..0414655 100644
+--- a/node_modules/react-native-reanimated/android/CMakeLists.txt
++++ b/node_modules/react-native-reanimated/android/CMakeLists.txt
+@@ -1,6 +1,10 @@
+ project(Reanimated)
+ cmake_minimum_required(VERSION 3.16)
+ 
++# Windows' default MAX_PATH can be exceeded by Reanimated's deeply nested C++
++# sources. A lower object-path limit makes CMake hash long object directories.
++set(CMAKE_OBJECT_PATH_MAX 200)
++
+ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+ 
+ set(CMAKE_CXX_STANDARD 20)
+diff --git a/node_modules/react-native-reanimated/android/build.gradle.kts b/node_modules/react-native-reanimated/android/build.gradle.kts
+index 46728e5..ec3a205 100644
+--- a/node_modules/react-native-reanimated/android/build.gradle.kts
++++ b/node_modules/react-native-reanimated/android/build.gradle.kts
+@@ -225,6 +225,8 @@ android {
+     externalNativeBuild {
+         cmake {
+             path = file("CMakeLists.txt")
++            // Keep generated native paths short enough for Windows MAX_PATH.
++            buildStagingDirectory = rootProject.file(".cxx/react-native-reanimated")
+         }
+     }
+ 

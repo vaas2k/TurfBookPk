@@ -14,4 +14,8 @@ test('signed Cloudinary uploads cannot overwrite cached public photos or private
   assert.equal(document.fields.overwrite, 'false');
   assert.equal(document.fields.type, 'authenticated');
   assert.equal(document.publicUrl, null);
+  assert.match(document.key, /^turfbookpk\/owner\/ground_authority_document\//);
+  await assert.rejects(storage.createUploadTarget({ ownerId: 'owner', contentType: 'application/pdf', contentLength: 1024, purpose: 'ground' }), (error: any) => error.code === 'invalid_media_type');
+  await assert.rejects(storage.createUploadTarget({ ownerId: 'owner', contentType: 'application/pdf', contentLength: 12 * 1024 * 1024 + 1, purpose: 'ground_authority_document' }), (error: any) => error.code === 'invalid_media_size');
+  await assert.rejects(storage.deleteObject({ ownerId: 'another-owner', key: document.key }), (error: any) => error.code === 'media_forbidden');
 });

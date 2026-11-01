@@ -291,7 +291,6 @@ export default function PlayerHome() {
     <SafeAreaView className="flex-1" style={{ backgroundColor: theme.canvas }}>
       <StatusBar
         barStyle={appearance === "dark" ? "light-content" : "dark-content"}
-        backgroundColor={theme.canvas}
       />
       <ScrollView
         className="flex-1"

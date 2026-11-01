@@ -60,7 +60,7 @@ export default function VendorProfile() {
   };
 
   return <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
-    <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+    <StatusBar barStyle="light-content" />
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 38 }}>
       <Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 15 }} className="text-[#8E948B]">SETTINGS & CONTROL</Text>
       <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[25px] text-[#F5F5F0] mt-1">Profile</Text>

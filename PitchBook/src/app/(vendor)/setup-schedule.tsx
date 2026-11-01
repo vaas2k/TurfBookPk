@@ -12,12 +12,14 @@ import { router, useLocalSearchParams } from "expo-router";
 import {
   Ground,
   listVendorGrounds,
+  previewGroundSchedule,
   saveGroundSchedule,
 } from "@/lib/api/vendors";
 import { Ionicons } from "@expo/vector-icons";
 import { Toast } from "@/components/ui/toast";
 import { goBackOrReplace } from "@/lib/navigation";
 import { TimePicker } from "@/components/ui/time-picker";
+import { appDialog } from "@/components/ui/app-dialog";
 
 const field =
   "bg-[#1B1F19] border border-[#30372B] rounded-xl px-4 py-3 text-[#F5F5F0]";
@@ -35,6 +37,7 @@ export default function SetupSchedule() {
   const [open, setOpen] = useState("14:00");
   const [close, setClose] = useState("23:00");
   const [duration, setDuration] = useState(60);
+  const [turnaround, setTurnaround] = useState<5 | 10 | 15>(10);
   const [price, setPrice] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [days, setDays] = useState([0, 1, 2, 3, 4, 5, 6]);
@@ -51,6 +54,7 @@ export default function SetupSchedule() {
           setOpen(value.operating_hours.open);
           setClose(value.operating_hours.close);
           setPrice(String(value.price_per_hour));
+          setTurnaround(value.turnaround_minutes === 5 || value.turnaround_minutes === 15 ? value.turnaround_minutes : 10);
         }
       })
       .catch(() => setToast("Unable to load this ground."));
@@ -66,11 +70,11 @@ export default function SetupSchedule() {
     for (
       let value = minutes(open);
       value + duration <= minutes(close);
-      value += duration
+      value += duration + turnaround
     )
       result.push(clock(value));
     return result;
-  }, [open, close, duration]);
+  }, [open, close, duration, turnaround]);
   useEffect(() => setSelected((current) => current.length ? current.filter((time) => choices.includes(time)) : choices), [choices]);
   const save = async () => {
     if (!id) return;
@@ -83,18 +87,30 @@ export default function SetupSchedule() {
       return setToast("Enter a valid whole-number price.");
     setSaving(true);
     try {
-      await saveGroundSchedule(id, {
+      const payload = {
         open_time: open,
         close_time: close,
         slot_duration_minutes: duration,
+        turnaround_minutes: turnaround,
         slot_starts: selected,
         days,
         price: amount,
-      });
-      router.replace({
-        pathname: "/(vendor)/ground-slots",
-        params: { id, title: title || ground?.title || "Ground" },
-      });
+      } as const;
+      const preview = await previewGroundSchedule(id, { ...payload, slot_starts: [...selected], days: [...days] });
+      appDialog.alert("Review booking times", `${selected.length} times repeat on ${days.length} days each week. Teams play for ${duration} minutes, followed by a ${turnaround}-minute changeover.\n\n${preview.replaceable_slots} unbooked generated slots will be replaced. ${preview.protected_slots} existing slots and bookings keep their times.`, [
+        { text: "Go back", style: "cancel" },
+        { text: "Save schedule", onPress: async () => {
+          setSaving(true);
+          try {
+            await saveGroundSchedule(id, { ...payload, slot_starts: [...selected], days: [...days] });
+            router.replace({ pathname: "/(vendor)/ground-slots", params: { id, title: title || ground?.title || "Ground" } });
+          } catch (error: any) {
+            setToast(error?.message || "Unable to save the schedule.");
+          } finally {
+            setSaving(false);
+          }
+        } },
+      ]);
     } catch (error: any) {
       setToast(error?.message || "Unable to save the schedule.");
     } finally {
@@ -108,7 +124,7 @@ export default function SetupSchedule() {
   };
   return (
     <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+      <StatusBar barStyle="light-content" />
       <ScrollView
         className="flex-1 px-6"
         contentContainerStyle={{ paddingBottom: 40 }}
@@ -159,7 +175,10 @@ export default function SetupSchedule() {
             </TouchableOpacity>
           ))}
         </View>
-        <View className="bg-[#1B1F19] border border-[#30372B] rounded-2xl p-4"><View className="flex-row"><Ionicons name="information-circle-outline" size={22} color="#57CC63" /><View className="flex-1 ml-3"><Text className="text-[#F5F5F0] font-bold">We build the choices for you</Text><Text className="text-[#92978F] text-xs leading-5 mt-1">Based on your hours and slot length, we will automatically generate every possible booking time in the next step.</Text></View></View></View>
+        <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 17 }} className="text-[#AFAFA9] mb-2">TIME BETWEEN TEAMS</Text>
+        <View className="flex-row mb-3">{([5, 10, 15] as const).map((value) => <TouchableOpacity key={value} accessibilityRole="button" accessibilityState={{ selected: turnaround === value }} onPress={() => setTurnaround(value)} className={`flex-1 py-3 mr-2 rounded-xl items-center ${turnaround === value ? "bg-[#42B84F]" : "bg-[#1B1F19] border border-[#30372B]"}`}><Text className={turnaround === value ? "text-[#102110] font-bold" : "text-[#F5F5F0] font-bold"}>{value} min</Text></TouchableOpacity>)}</View>
+        <Text className="text-[#92978F] text-xs leading-5 mb-5">Teams get their full playing time. This gap lets one team leave the pitch before the next starts.</Text>
+        <View className="bg-[#1B1F19] border border-[#30372B] rounded-2xl p-4"><View className="flex-row"><Ionicons name="information-circle-outline" size={22} color="#57CC63" /><View className="flex-1 ml-3"><Text className="text-[#F5F5F0] font-bold">We build the choices for you</Text><Text className="text-[#92978F] text-xs leading-5 mt-1">Based on your hours, playing time, and gap, we generate booking choices in the next step.</Text></View></View></View>
         </>}
         {step === 2 && <>
         <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 17 }} className="text-[#AFAFA9] mb-2">
@@ -253,7 +272,7 @@ export default function SetupSchedule() {
           placeholder="1200"
           placeholderTextColor="#777D74"
         />
-        <View className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 mb-5"><Text className="text-[#F5F5F0] font-bold">Your schedule will repeat</Text><Text className="text-[#A8C9AC] text-xs leading-5 mt-1">{selected.length} selected times will repeat on {days.length === 7 ? 'every day' : `${days.length} day${days.length === 1 ? '' : 's'} each week`}. You can still block or reserve any individual day later.</Text></View>
+        <View className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 mb-5"><Text className="text-[#F5F5F0] font-bold">Your schedule will repeat</Text><Text className="text-[#A8C9AC] text-xs leading-5 mt-1">{selected.length} selected times will repeat on {days.length === 7 ? 'every day' : `${days.length} day${days.length === 1 ? '' : 's'} each week`}, with {turnaround} minutes between teams. Existing bookings keep their times. You can still block or reserve any day later.</Text></View>
         </>}
         <View className="flex-row mt-2"><TouchableOpacity accessibilityRole="button" onPress={() => setStep((current) => Math.max(1, current - 1))} disabled={step === 1} className={`min-h-[52px] px-5 rounded-xl items-center justify-center mr-3 ${step === 1 ? 'opacity-0' : 'border border-[#30372B]'}`}><Text className="text-[#D5D8D1] font-bold">Back</Text></TouchableOpacity>{step < 3 ? <TouchableOpacity accessibilityRole="button" onPress={continueStep} className="flex-1 min-h-[52px] bg-[#42B84F] rounded-xl items-center justify-center"><Text className="text-[#102110] font-bold">Continue</Text></TouchableOpacity> : <TouchableOpacity
           disabled={saving}
@@ -263,7 +282,7 @@ export default function SetupSchedule() {
           <Text className="text-[#102110] font-bold">
             {saving
               ? "Saving schedule..."
-              : `Save ${selected.length} repeating slots`}
+              : `Review ${selected.length} repeating slots`}
           </Text>
         </TouchableOpacity>}</View>
       </ScrollView>

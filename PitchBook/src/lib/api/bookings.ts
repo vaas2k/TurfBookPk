@@ -91,6 +91,11 @@ export async function markBookingCompleted(id: string): Promise<BookingProfile> 
   return result.booking;
 }
 
+export async function recordDelayedStart(id: string, reason: 'previous_team' | 'venue_delay' | 'other'): Promise<BookingProfile> {
+  const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}/delayed-start`, { method: 'PATCH', data: { reason } });
+  return result.booking;
+}
+
 export type PaymentBillingProfile = { full_name: string; masked_cnic: string; billing_address: string; email: string; phone: string; consented_at: string };
 export type PaymentAttempt = { id: string; booking_id: string | null; order_id: string | null; provider: string; status: string; provider_status: string; amount: number; service_charge: number | null; final_payable_amount: number | null; clink_id: string | null; consumer_number: string | null; provider_due_date: string | null; expires_at: string | null; paid_at: string | null; review_status: string; provider_error: string | null; manual_acknowledgment_test_enabled: boolean };
 

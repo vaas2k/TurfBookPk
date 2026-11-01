@@ -127,7 +127,7 @@ export default function GroundSlots() {
       edges={["top", "bottom", "left", "right"]}
       className="flex-1 bg-[#10120F]"
     >
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+      <StatusBar barStyle="light-content" />
       <ScrollView
         className="flex-1 px-5"
         contentContainerStyle={{ paddingBottom: 40 }}
@@ -196,7 +196,7 @@ export default function GroundSlots() {
         </TouchableOpacity>
         <View className="bg-[#1B1F19] border border-[#30372B] rounded-2xl p-3 mb-4">
           <Text className="text-[#1A1A2E] font-bold mb-3">
-            Calendar â€” next 31 days
+            Calendar — next 31 days
           </Text>
           <View className="flex-row items-center justify-between mb-4">
             <TouchableOpacity

@@ -39,13 +39,30 @@ Run `bash deploy/test-pgbouncer-vm.sh` to create 30 read-only three-second clien
 Then check:
 
 1. `/api/health` and `/api/ready` work through the proxy. Briefly interrupt PostgreSQL or Redis and confirm readiness becomes unavailable; restore the service.
-2. Set `STAGING_API_URL` and run `node scripts/check-staging-day3.mjs` from `Server/`. Use a disposable `_loadtest` database for `node scripts/check-multi-instance.mjs`.
+2. Set `STAGING_API_URL` and run `node scripts/check-staging-day3.mjs` from `Server/`. For the two-API/two-worker drill, use the separate `turfbookpk_worker_loadtest` database and overlay below.
 3. Inspect PgBouncer `SHOW POOLS` and PostgreSQL `pg_stat_activity` while the test runs. Keep server connections within your configured budget.
 4. Apply `postgres-observability.conf.example` to the test database and verify slow query logging without query parameters or private customer data.
 5. Stop one API and one worker while work is active. Check that the remaining replicas continue, queued jobs resume, and no duplicate database effects appear.
 6. Compare discovery p95 and CPU with `API_COMPRESSION=true` and `false`. Check response cache headers and run `node scripts/check-public-media-cache.mjs` for public images.
 
 Record VM CPU/RAM, request rate, p50/p95/p99, errors, database connections, and worker queue lag in `SCALABILITY_BASELINE.md`. Repeat the checks on hosted staging before using these numbers for production sizing.
+
+### Isolated API/worker recovery drill
+
+The multi-instance script requires a migrated database whose name ends in `_worker_loadtest`. It creates temporary users, OTP challenges, and one notification, then removes them. It checks shared Redis request limits across two API processes and verifies another worker reclaims a notification after the first claimant is killed. Do not aim it at the full read-load seed or the ordinary rehearsal database.
+
+```bash
+docker compose --env-file deploy/.env.vm -f deploy/compose.vm.yml \
+  exec -T db createdb -U turfbookpk turfbookpk_worker_loadtest
+
+worker_files="-f deploy/compose.vm.yml -f deploy/compose.worker-test-rehearsal.yml"
+docker compose --env-file deploy/.env.vm $worker_files \
+  --profile worker-test-tools run --rm worker-test-migrate
+docker compose --env-file deploy/.env.vm $worker_files \
+  --profile worker-test-tools run --rm worker-test-run
+```
+
+Expected result: 300 general requests accepted and the next rejected; five OTP requests accepted and the sixth rejected; one notification sent with two claim attempts after a 45-second expired lease. The test takes roughly a minute. If the database already exists and has no other data, skip only `createdb`.
 
 ## Booking-write rehearsal
 

@@ -239,6 +239,13 @@
       "when": 1792972801000,
       "tag": "0033_payment_observability_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793491200000,
+      "tag": "0034_slot_turnaround",
+      "breakpoints": true
     }
   ]
 }

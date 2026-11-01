@@ -122,7 +122,7 @@ export default function NearbyGroundsScreen() {
             keyExtractor={(item) => item.ground.id}
             contentContainerStyle={{ padding: 20, paddingTop: 8 }}
             showsVerticalScrollIndicator={false}
-            ListHeaderComponent={locationDenied ? <Text className="text-[#E5B85B] text-xs mb-3">Allow location to sort these grounds by distance.</Text> : null}
+            ListHeaderComponent={locationDenied ? <Text className="text-[#E5B85B] text-xs mb-3">Allow location to sort these grounds by distance.</Text> : undefined}
             ListEmptyComponent={<Text className="text-[#AFAFA9] text-sm text-center py-16">No approved grounds were found nearby.</Text>}
             renderItem={({ item: { ground, distance: km, slots } }) => (
             <TouchableOpacity

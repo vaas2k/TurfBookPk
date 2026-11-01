@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,12 +13,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { formatTimeRange12 } from '@/lib/time';
+import { formatTime12, formatTimeRange12 } from '@/lib/time';
 import { createBooking, createBookingOrder, generateClinkReference, getPaymentBillingProfile, getPaymentConfiguration, PaymentBillingProfile, savePaymentBillingProfile } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { goBackOrReplace } from '@/lib/navigation';
 
-type CheckoutSlot = { id: string; date: string; startTime: string; endTime: string; price: number };
+type CheckoutSlot = { id: string; date: string; startTime: string; endTime: string; price: number; turnaroundMinutes?: number };
 
 function parseSelectedSlots(value: string | string[] | undefined): CheckoutSlot[] {
   if (typeof value !== 'string') return [];
@@ -41,6 +41,7 @@ export default function PaymentMethodScreen() {
     date: string;
     startTime: string;
     endTime: string;
+    turnaroundMinutes?: string;
     amount: string;
     cancellationPolicy?: 'lenient' | 'standard' | 'strict';
   }>();
@@ -51,6 +52,7 @@ export default function PaymentMethodScreen() {
   const [loading, setLoading] = useState(false);
   const [reserveFutureSlots, setReserveFutureSlots] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const submissionInFlight = useRef(false);
 
   const [idempotencyKey] = useState(
     () => `booking-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -80,6 +82,7 @@ export default function PaymentMethodScreen() {
   useEffect(() => { void getPaymentBillingProfile().then((profile) => { setSavedProfile(profile); if (profile) setBilling({ full_name: profile.full_name, cnic: '', billing_address: profile.billing_address, email: profile.email, phone: profile.phone }); else setEditBilling(true); }).catch(() => setEditBilling(true)); }, []);
 
   const handleConfirm = async () => {
+    if (submissionInFlight.current) return;
     if (!slotIds.length) {
       setToast('The selected slots are missing. Please select them again.');
       return;
@@ -92,6 +95,7 @@ export default function PaymentMethodScreen() {
       setToast('Enter a valid Pakistani mobile number for 1-Bill.');
       return;
     }
+    submissionInFlight.current = true;
     setLoading(true);
     try {
       const paymentConfiguration = await getPaymentConfiguration();
@@ -110,13 +114,14 @@ export default function PaymentMethodScreen() {
       const msg = error?.message || 'This slot is no longer available. Please select another slot.';
       setToast(msg);
     } finally {
+      submissionInFlight.current = false;
       setLoading(false);
     }
   };
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" translucent={false} />
+      <StatusBar barStyle="light-content" />
       {/* Header */}
       <View className="flex-row items-center px-5 py-4">
         <TouchableOpacity
@@ -146,14 +151,15 @@ export default function PaymentMethodScreen() {
             <View className="border-t border-[#30372B] mt-4 pt-4">
               <View className="flex-row items-center mb-2">
                 <Ionicons name="calendar-outline" size={16} color="#737373" />
-                <Text className="text-[#737373] text-sm ml-2 font-medium">{params.date}</Text>
+                <Text className="text-[#AFAFA9] text-sm ml-2 font-medium">{params.date}</Text>
               </View>
               <View className="flex-row items-center">
                 <Ionicons name="time-outline" size={16} color="#737373" />
-                <Text className="text-[#1A1A2E] text-sm ml-2 font-bold">
+                <Text className="text-[#F8F7F0] text-sm ml-2 font-bold">
                   {formatTimeRange12(params.startTime, params.endTime)}
                 </Text>
               </View>
+              {isMultiSlotOrder ? <Text className="text-[#AFAFA9] text-xs leading-5 mt-3">Arrive early for each match. Every listed start and end is full playing time; changeover begins afterward.</Text> : Number(params.turnaroundMinutes) > 0 ? <Text className="text-[#AFAFA9] text-xs leading-5 mt-3">Arrive early. Pitch access starts at the booked time; play ends at {formatTime12(params.endTime)}. The {params.turnaroundMinutes}-minute changeover is for leaving the pitch.</Text> : null}
               {isMultiSlotOrder && (
                 <Text className="text-[#4CAF50] text-sm font-semibold mt-3">
                   {slotIds.length} slots selected across your chosen dates

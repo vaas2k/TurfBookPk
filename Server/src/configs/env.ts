@@ -1,10 +1,14 @@
 import 'dotenv/config';
 
 const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction && !process.env.DATABASE_URL) throw new Error('DATABASE_URL must be configured in production');
 
 function requiredSecret(name: string, developmentFallback: string): string {
   const value = process.env[name];
-  if (value) return value;
+  if (value) {
+    if (isProduction && value.length < 32) throw new Error(`${name} must contain at least 32 characters in production`);
+    return value;
+  }
   if (isProduction) throw new Error(`${name} must be configured in production`);
   return developmentFallback;
 }
@@ -127,6 +131,7 @@ if (env.loadTestRateLimitBypass && (isProduction || !/_loadtest(?:\?|$)/.test(en
 if (!['mock', 'clink'].includes(env.paymentProvider)) throw new Error('PAYMENT_PROVIDER must be mock or clink');
 if (!['sandbox', 'live'].includes(env.paymentEnvironment)) throw new Error('PAYMENT_ENVIRONMENT must be sandbox or live');
 if (isProduction && env.paymentProvider === 'mock') throw new Error('Mock payments are forbidden in production');
+if (isProduction && env.clinkAllowUnverifiedSandboxAck) throw new Error('Unsigned Clink acknowledgments are forbidden in production');
 if (env.paymentProvider === 'clink') {
   if (!env.clinkUsername || !env.clinkPassword) throw new Error('CLINK_USERNAME and CLINK_PASSWORD are required for Clink');
   if (!/^\d{6}$/.test(env.clinkBillerPrefix)) throw new Error('CLINK_BILLER_PREFIX must contain exactly 6 digits');

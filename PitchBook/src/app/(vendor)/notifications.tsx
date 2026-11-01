@@ -151,7 +151,7 @@ export default function VendorNotificationsScreen() {
       edges={["top", "bottom", "left", "right"]}
       className="flex-1 bg-[#10120F]"
     >
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+      <StatusBar barStyle="light-content" />
       <View className="px-6 pt-5 pb-3 flex-row items-center">
         <TouchableOpacity
           accessibilityRole="button"
@@ -222,7 +222,7 @@ export default function VendorNotificationsScreen() {
         ListFooterComponent={
           loadingMore ? (
             <ActivityIndicator className="py-4" color="#42B84F" />
-          ) : null
+          ) : undefined
         }
         renderItem={({ item, index }) => {
           const visual = visualFor(item);

@@ -6,7 +6,7 @@ import { bookingOrders, bookings, grounds, ledgerEntries, notifications, payment
 import { env } from '../configs/env.js';
 import { AppError, getErrorMessage } from '../helpers/errors.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
-import { clinkPhone, referencePaymentProvider } from '../services/paymentProvider.js';
+import { clinkPhone, referencePaymentProvider, type ReferencePaymentProvider } from '../services/paymentProvider.js';
 import { sendExpoPush } from '../services/expoPushService.js';
 import { decryptPaymentValue, encryptPaymentValue, identifierLastFour, paymentIdentifierFingerprint } from '../services/sensitiveData.js';
 import { errorMetadata, logEvent, redactOperationalData } from '../services/operationalLogger.js';
@@ -25,14 +25,16 @@ function pakistanDate(date: Date): string { return new Date(date.getTime() + 5 *
 function paymentView(row: typeof paymentAttempts.$inferSelect) {
   return { id: row.id, booking_id: row.bookingId, order_id: row.orderId, provider: row.provider, status: row.status, provider_status: row.providerStatus, amount: row.amount, service_charge: row.serviceCharge, final_payable_amount: row.finalPayableAmount, clink_id: row.providerReference, consumer_number: row.consumerNumber, provider_due_date: row.providerDueDate, expires_at: row.expiresAt?.toISOString() || null, paid_at: row.paidAt?.toISOString() || null, review_status: row.reviewStatus, provider_error: row.providerError, manual_acknowledgment_test_enabled: env.paymentProvider === 'clink' && env.paymentEnvironment === 'sandbox' && env.clinkAllowUnverifiedSandboxAck };
 }
-function acknowledgmentTime(value: unknown): Date {
+export function acknowledgmentTime(value: unknown): Date {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) throw new AppError('invalid_acknowledgment', 'Payment_DateTime is invalid', 422);
   const parsed = new Date(`${value.replace(' ', 'T')}+05:00`);
-  if (Number.isNaN(parsed.getTime())) throw new AppError('invalid_acknowledgment', 'Payment_DateTime is invalid', 422);
+  const roundTrip = Number.isNaN(parsed.getTime()) ? '' : new Date(parsed.getTime() + 5 * 3_600_000).toISOString().slice(0, 19).replace('T', ' ');
+  if (roundTrip !== value) throw new AppError('invalid_acknowledgment', 'Payment_DateTime is invalid', 422);
   return parsed;
 }
 
 export class PaymentController {
+  constructor(private readonly providerFactory: () => ReferencePaymentProvider = referencePaymentProvider) {}
   configuration = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
     const available = env.paymentProvider === 'clink' && env.paymentEnvironment === 'sandbox';
     paymentResponse(response, { provider: env.paymentProvider, environment: env.paymentEnvironment, available, manual_acknowledgment_test_enabled: available && env.clinkAllowUnverifiedSandboxAck }, available ? 'Clink sandbox is ready.' : 'Clink sandbox is not configured.', 'configuration_checked', available ? 'Continue checkout.' : 'Configure the Clink server environment and restart the API.');
@@ -71,6 +73,8 @@ export class PaymentController {
     if (!attempt && bookingId) {
       const booking = (await db.select().from(bookings).where(and(eq(bookings.id, bookingId), eq(bookings.playerId, request.auth!.userId))).limit(1))[0];
       if (!booking || !booking.isRecurringReservation) throw new AppError('payment_attempt_missing', 'Payment attempt was not found', 404);
+      if (!booking.paymentWindowOpensAt || booking.paymentWindowOpensAt > new Date()) throw new AppError('payment_window_not_open', 'Payment for this reserved slot is not open yet', 409);
+      if (!booking.reservationExpiresAt || booking.reservationExpiresAt <= new Date()) throw new AppError('reservation_expired', 'This reservation has expired', 409);
       [attempt] = await db.insert(paymentAttempts).values({ bookingId, playerId: booking.playerId, vendorId: booking.vendorId, provider: 'clink', amount: booking.totalAmount, idempotencyKey: `recurring-payment:${booking.id}:clink` }).onConflictDoNothing().returning();
       if (!attempt) attempt = (await db.select().from(paymentAttempts).where(eq(paymentAttempts.idempotencyKey, `recurring-payment:${booking.id}:clink`)).limit(1))[0];
     }
@@ -85,20 +89,22 @@ export class PaymentController {
     clinkPhone(profile.phone);
     if (targetAttempt.providerReference && ['pending', 'paid'].includes(targetAttempt.providerStatus)) return paymentResponse(response, { payment: paymentView(targetAttempt), idempotent: true }, 'Existing Clink reference returned; no duplicate was generated.', 'reference_already_exists', targetAttempt.providerStatus === 'paid' ? 'Open the confirmed booking.' : 'Wait for Clink payment acknowledgment.');
     if (targetAttempt.providerStatus === 'unknown') throw new AppError('payment_under_review', 'The previous provider request has an unknown result and cannot be retried automatically', 409);
+    if (targetAttempt.providerStatus === 'initializing') throw new AppError('payment_reference_in_progress', 'A payment reference is already being generated. Check its status shortly.', 409);
     const expiresAt = new Date(Date.now() + env.paymentHoldMinutes * 60_000); const dueDate = pakistanDate(expiresAt);
-    if (['failed', 'expired'].includes(targetAttempt.providerStatus)) await this.reacquireTarget(targetAttempt, expiresAt);
+    if (['failed', 'expired'].includes(targetAttempt.providerStatus) || (targetAttempt.providerStatus === 'pending' && !targetAttempt.providerReference)) await this.reacquireTarget(targetAttempt, expiresAt);
     const applicantReference = `TB-${targetAttempt.id.replace(/-/g, '').slice(0, 24)}`;
-    await db.update(paymentAttempts).set({ provider: 'clink', providerStatus: 'initializing', applicantReference, expiresAt, providerDueDate: dueDate, providerError: null, expiryRetryCount: 0, expiryNextAttemptAt: null, updatedAt: new Date() }).where(eq(paymentAttempts.id, targetAttempt.id));
-    const targetBookings = targetAttempt.bookingId
-      ? [targetAttempt.bookingId]
-      : (await db.select({ id: bookings.id }).from(bookings).where(and(eq(bookings.orderId, targetAttempt.orderId!), eq(bookings.status, 'pending_payment')))).map((row) => row.id);
-    if (targetBookings.length) {
-      await db.update(bookings).set({ holdExpiresAt: expiresAt, updatedAt: new Date() }).where(inArray(bookings.id, targetBookings));
-      await db.update(slots).set({ holdExpiresAt: expiresAt, updatedAt: new Date() }).where(inArray(slots.holdBookingId, targetBookings));
-    }
+    const [claimed] = await db.update(paymentAttempts).set({ provider: 'clink', providerStatus: 'initializing', applicantReference, expiresAt, providerDueDate: dueDate, providerError: null, expiryRetryCount: 0, expiryNextAttemptAt: null, updatedAt: new Date() }).where(and(eq(paymentAttempts.id, targetAttempt.id), inArray(paymentAttempts.providerStatus, ['pending', 'failed', 'expired']))).returning({ id: paymentAttempts.id });
+    if (!claimed) throw new AppError('payment_reference_in_progress', 'A payment reference is already being generated. Check its status shortly.', 409);
     try {
+      const targetBookings = targetAttempt.bookingId
+        ? [targetAttempt.bookingId]
+        : (await db.select({ id: bookings.id }).from(bookings).where(and(eq(bookings.orderId, targetAttempt.orderId!), eq(bookings.status, 'pending_payment')))).map((row) => row.id);
+      if (targetBookings.length) {
+        await db.update(bookings).set({ holdExpiresAt: expiresAt, updatedAt: new Date() }).where(inArray(bookings.id, targetBookings));
+        await db.update(slots).set({ holdExpiresAt: expiresAt, updatedAt: new Date() }).where(inArray(slots.holdBookingId, targetBookings));
+      }
       const correlationId = requestId(response);
-      const generated = await referencePaymentProvider().generateReference({ amount: targetAttempt.amount, dueDate, applicantReference, payer: { cnic: decryptPaymentValue(profile.cnicCiphertext), fullName: profile.fullName, address: decryptPaymentValue(profile.billingAddressCiphertext), phone: profile.phone, email: profile.email }, diagnostics: { ...(correlationId ? { requestId: correlationId } : {}), paymentAttemptId: targetAttempt.id } });
+      const generated = await this.providerFactory().generateReference({ amount: targetAttempt.amount, dueDate, applicantReference, payer: { cnic: decryptPaymentValue(profile.cnicCiphertext), fullName: profile.fullName, address: decryptPaymentValue(profile.billingAddressCiphertext), phone: profile.phone, email: profile.email }, diagnostics: { ...(correlationId ? { requestId: correlationId } : {}), paymentAttemptId: targetAttempt.id } });
       const [updatedAttempt] = await db.update(paymentAttempts).set({ providerReference: generated.clinkId, consumerNumber: generated.consumerNumber, providerStatus: 'pending', expiresAt, providerDueDate: dueDate, finalPayableAmount: null, updatedAt: new Date() }).where(eq(paymentAttempts.id, targetAttempt.id)).returning();
       logEvent('info', 'payment_reference_generation_completed', { request_id: requestId(response), payment_attempt_id: targetAttempt.id, clink_id_suffix: generated.clinkId.slice(-6), expires_at: expiresAt.toISOString() });
       paymentResponse(response, { payment: paymentView(updatedAttempt!), idempotent: false, fee_notice: 'Clink may add a service charge that is not returned by the current sandbox API.' }, '1-Bill reference generated successfully.', 'reference_generated', 'Pay using 1-Bill and wait for Clink acknowledgment.', 201);
@@ -160,7 +166,7 @@ export class PaymentController {
       }
       void sendExpoPush({ userIds: [attempt.playerId], title: 'Payment under review', body: 'Your 1-Bill payment was received but needs manual review.', data: { paymentId: attempt.id } });
       response.json([{ Status_Code: '1', Status_Desc: 'Acknowledged - payment requires manual review' }]);
-    } catch (error) { logEvent('error', 'clink_acknowledgment_failed', { request_id: requestId(response), ...errorMetadata(error) }); fail(error instanceof SyntaxError ? 'Invalid JSON body.' : String(redactOperationalData(getErrorMessage(error)))); }
+    } catch (error) { logEvent('error', 'clink_acknowledgment_failed', { request_id: requestId(response), ...errorMetadata(error) }); fail(error instanceof SyntaxError ? 'Invalid JSON body.' : error instanceof AppError ? error.message : 'Unable to process acknowledgment.'); }
   };
 
   private async releaseTarget(attempt: typeof paymentAttempts.$inferSelect): Promise<void> {
@@ -178,6 +184,9 @@ export class PaymentController {
       if (!payable.length) throw new AppError('payment_target_unavailable', 'This booking can no longer be paid', 409);
       const now = new Date();
       for (const row of payable) {
+        if (!['pending_payment', 'expired'].includes(row.booking.status)) throw new AppError('payment_target_unavailable', 'This booking can no longer be paid', 409);
+        if (row.booking.isRecurringReservation && (!row.booking.paymentWindowOpensAt || row.booking.paymentWindowOpensAt > now)) throw new AppError('payment_window_not_open', 'Payment for this reserved slot is not open yet', 409);
+        if (row.booking.isRecurringReservation && (!row.booking.reservationExpiresAt || row.booking.reservationExpiresAt <= now)) throw new AppError('reservation_expired', 'This reservation has expired', 409);
         const [held] = await tx.update(slots).set({ heldBy: attempt.playerId, holdBookingId: row.booking.id, holdExpiresAt: expiresAt, updatedAt: now }).where(and(eq(slots.id, row.slot.id), eq(slots.isBooked, false), eq(slots.isBlocked, false), or(isNull(slots.holdExpiresAt), lte(slots.holdExpiresAt, now), eq(slots.holdBookingId, row.booking.id)))).returning();
         if (!held) throw new AppError('slot_unavailable', 'One or more slots are no longer available', 409);
         await tx.update(bookings).set({ status: 'pending_payment', paymentStatus: 'pending', holdExpiresAt: expiresAt, updatedAt: now }).where(eq(bookings.id, row.booking.id));
@@ -202,7 +211,7 @@ export class PaymentController {
   private async expireAttempt(attempt: typeof paymentAttempts.$inferSelect, force = false): Promise<typeof paymentAttempts.$inferSelect> {
     if (attempt.providerStatus !== 'pending' || !attempt.providerReference || (!force && (!attempt.expiresAt || attempt.expiresAt > new Date() || attempt.expiryRetryCount >= MAX_EXPIRY_ATTEMPTS || (attempt.expiryNextAttemptAt && attempt.expiryNextAttemptAt > new Date())))) return attempt;
     try {
-      await referencePaymentProvider().expireReference({ clinkId: attempt.providerReference, diagnostics: { paymentAttemptId: attempt.id } });
+      await this.providerFactory().expireReference({ clinkId: attempt.providerReference, diagnostics: { paymentAttemptId: attempt.id } });
       await this.releaseTarget(attempt);
       const now = new Date();
       const [expired] = await db.update(paymentAttempts).set({ status: 'failed', providerStatus: 'expired', providerError: force ? 'Payment reported as failed' : 'Payment window expired', expiryNextAttemptAt: null, failedAt: now, updatedAt: now }).where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.providerStatus, 'pending'))).returning();

@@ -29,9 +29,11 @@ export function getApiConfigurationError(): string | null {
     return "EXPO_PUBLIC_API_URL is missing. Add it to PitchBook/.env and restart Expo.";
   try {
     const url = new URL(API_URL);
-    return url.protocol === "http:" || url.protocol === "https:"
-      ? null
-      : "EXPO_PUBLIC_API_URL must use http:// or https://.";
+    if (url.protocol !== "http:" && url.protocol !== "https:")
+      return "EXPO_PUBLIC_API_URL must use http:// or https://.";
+    if (!__DEV__ && url.protocol !== "https:")
+      return "Release builds require an HTTPS API address.";
+    return null;
   } catch {
     return "EXPO_PUBLIC_API_URL must be a valid http:// or https:// API address.";
   }

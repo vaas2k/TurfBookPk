@@ -308,8 +308,8 @@ export default function VendorGrounds() {
               }
             >
               {ground.is_active
-                ? "LIVE â€” players can book"
-                : "HIDDEN â€” players cannot book"}
+                ? "LIVE — players can book"
+                : "HIDDEN — players cannot book"}
             </Text>
           </View>
         </View>
@@ -498,7 +498,7 @@ export default function VendorGrounds() {
                 {loadingMore ? "Loading grounds..." : "Load more grounds"}
               </Text>
             </TouchableOpacity>
-          ) : null
+          ) : undefined
         }
       />
 

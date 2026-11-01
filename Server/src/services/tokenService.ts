@@ -13,6 +13,7 @@ export class TokenService {
   constructor(private readonly repository: AuthRepository) {}
 
   async createSession(user: UserProfile): Promise<AuthSession> {
+    if (user.is_suspended) throw new AppError('account_suspended', 'This account is suspended', 403);
     const created = this.buildSession(user);
     await this.repository.saveRefreshSession(created.storedSession);
     return created.session;
@@ -53,6 +54,8 @@ export class TokenService {
     if (!session || session.userId !== claims.userId || session.revokedAt || session.expiresAt <= Date.now()) {
       throw new AppError('unauthorized', 'Your session has been logged out or expired', 401);
     }
+    const user = await this.repository.findUserById(claims.userId);
+    if (!user || user.is_suspended) throw new AppError('account_suspended', 'This account is suspended', 403);
     return claims;
   }
 
@@ -63,6 +66,7 @@ export class TokenService {
     }
     const user = await this.repository.findUserById(existing.userId);
     if (!user) throw new AppError('unauthorized', 'User account was not found', 401);
+    if (user.is_suspended) throw new AppError('account_suspended', 'This account is suspended', 403);
     const replacement = this.buildSession(user);
     const rotated = await this.repository.rotateRefreshSession(existing.id, hashToken(refreshToken), replacement.storedSession);
     if (!rotated) throw new AppError('unauthorized', 'This refresh token has already been used', 401);

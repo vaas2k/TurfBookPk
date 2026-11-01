@@ -25,6 +25,8 @@ export async function registerForPushNotifications(): Promise<string | null> {
     const current = await Notifications.getPermissionsAsync();
     const status = current.status === 'granted' ? current.status : (await Notifications.requestPermissionsAsync()).status;
     if (status !== 'granted') return null;
+    // ESLint cannot resolve the enum re-exported by expo-notifications at runtime.
+    // eslint-disable-next-line import/namespace
     if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('bookings', { name: 'Bookings', importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 250, 250, 250] });
     const projectId = process.env.EXPO_PUBLIC_EXPO_PROJECT_ID || Constants.expoConfig?.extra?.eas?.projectId;
     if (!projectId) return null;

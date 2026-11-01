@@ -72,7 +72,7 @@ function OwnerHomeView({
 
   return (
     <SafeAreaView className="flex-1 bg-[#0F110E]">
-      <StatusBar barStyle="light-content" backgroundColor="#0F110E" />
+      <StatusBar barStyle="light-content" />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 104 }}
         showsVerticalScrollIndicator={false}

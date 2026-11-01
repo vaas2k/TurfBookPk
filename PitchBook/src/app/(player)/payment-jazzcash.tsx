@@ -45,7 +45,7 @@ export default function PaymentJazzCash() {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#10120F]">
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+      <StatusBar barStyle="light-content" />
 
       <View className="px-6 pt-4 pb-5 flex-row items-center">
         <TouchableOpacity

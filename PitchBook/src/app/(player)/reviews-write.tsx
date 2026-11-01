@@ -48,7 +48,6 @@ export default function WriteReview() {
     >
       <StatusBar
         barStyle={appearance === "dark" ? "light-content" : "dark-content"}
-        backgroundColor={theme.canvas}
       />
       <ScrollView
         className="px-5"

@@ -58,7 +58,7 @@ function mapBooking(row: any) {
     id: booking.id, booking_number: booking.bookingNumber, player_id: booking.playerId, vendor_id: booking.vendorId,
     ground_id: booking.groundId, slot_id: booking.slotId, ground_title: row.ground.title, ground_address: row.ground.address,
     player_name: row.player?.fullName || 'Player', player_phone: row.player?.phone || null,
-    date: booking.date, start_time: booking.startTime, end_time: booking.endTime, total_amount: booking.totalAmount,
+    date: booking.date, start_time: booking.startTime, end_time: booking.endTime, turnaround_minutes: booking.turnaroundMinutes, actual_start_at: booking.actualStartAt?.toISOString() ?? null, start_delay_reason: booking.startDelayReason, total_amount: booking.totalAmount,
     platform_fee: booking.platformFee, vendor_amount: booking.vendorAmount, status: booking.status,
     payment_status: booking.paymentStatus, payment_method: booking.paymentMethod, payment_reference: booking.paymentReference,
     hold_expires_at: booking.holdExpiresAt?.toISOString() ?? null, cancelled_at: booking.cancelledAt?.toISOString() ?? null,
@@ -79,6 +79,26 @@ async function fetchBooking(id: string) {
 }
 
 export class BookingController {
+  recordDelayedStart = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
+    const id = param(request.params.id, 'Booking id');
+    const reason = request.body?.reason;
+    if (reason !== 'previous_team' && reason !== 'venue_delay' && reason !== 'other') throw new AppError('invalid_delay_reason', 'Choose why the pitch started late', 422);
+    const vendor = (await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
+    const current = await fetchBooking(id);
+    if (!current || vendor?.id !== current.booking.vendorId) throw new AppError('not_found', 'Booking was not found', 404);
+    const now = new Date();
+    if (current.booking.status !== 'confirmed' || now < bookingStart(current.booking.date, current.booking.startTime) || now >= bookingStart(current.booking.date, current.booking.endTime)) throw new AppError('delay_not_recordable', 'Record the actual start during a confirmed playing slot', 409);
+    const saved = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(bookings).set({ actualStartAt: now, startDelayReason: reason, updatedAt: now }).where(and(eq(bookings.id, id), eq(bookings.status, 'confirmed'), isNull(bookings.actualStartAt))).returning();
+      if (updated) await tx.insert(notifications).values({ userId: updated.playerId, type: 'booking', title: 'Delayed start recorded', message: `The venue recorded that your match at ${current.ground.title} started late. Your booked end time has not changed.`, data: { bookingId: id } });
+      return updated;
+    });
+    if (!saved) throw new AppError('delay_already_recorded', 'The actual start has already been recorded', 409);
+    void sendExpoPush({ userIds: [saved.playerId], title: 'Delayed start recorded', body: `The venue recorded a delayed start for your match at ${current.ground.title}.`, data: { bookingId: id } });
+    const result = await fetchBooking(id);
+    response.json({ booking: result ? mapBooking(result) : null });
+  };
   confirmOrderMock = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     assertMockPaymentsEnabled();
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
@@ -164,7 +184,7 @@ export class BookingController {
         const isFutureReservation = recurringReservation && item.slot.date !== payNowDate;
         const window = isFutureReservation ? recurringPaymentWindow(item.slot.date, item.slot.startTime) : null;
         const reservationHoldExpiresAt = window?.expiresAt ?? holdExpiresAt;
-        const [booking] = await tx.insert(bookings).values({ bookingNumber: bookingNumber(), orderId: created.id, playerId: request.auth!.userId, vendorId: item.ground.vendorId, groundId: item.slot.groundId, slotId: item.slot.id, date: item.slot.date, startTime: item.slot.startTime, endTime: item.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee, vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: env.paymentProvider === 'clink' ? 'clink_1bill' : 'mock', idempotencyKey: `${key}:${item.slot.id}`, holdExpiresAt: reservationHoldExpiresAt, isRecurringReservation: isFutureReservation, paymentWindowOpensAt: window?.opensAt ?? null, reservationExpiresAt: window?.expiresAt ?? null, cancellationPolicy: cancellationPolicy(item.ground.cancellationPolicy) }).returning();
+        const [booking] = await tx.insert(bookings).values({ bookingNumber: bookingNumber(), orderId: created.id, playerId: request.auth!.userId, vendorId: item.ground.vendorId, groundId: item.slot.groundId, slotId: item.slot.id, date: item.slot.date, startTime: item.slot.startTime, endTime: item.slot.endTime, turnaroundMinutes: item.slot.turnaroundMinutes, totalAmount: price.totalAmount, platformFee: price.platformFee, vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: env.paymentProvider === 'clink' ? 'clink_1bill' : 'mock', idempotencyKey: `${key}:${item.slot.id}`, holdExpiresAt: reservationHoldExpiresAt, isRecurringReservation: isFutureReservation, paymentWindowOpensAt: window?.opensAt ?? null, reservationExpiresAt: window?.expiresAt ?? null, cancellationPolicy: cancellationPolicy(item.ground.cancellationPolicy) }).returning();
         if (!booking) throw new AppError('booking_failed', 'Unable to create order bookings', 500);
         const held = await tx.update(slots).set({ heldBy: request.auth!.userId, holdBookingId: booking.id, holdExpiresAt: reservationHoldExpiresAt, updatedAt: now }).where(and(eq(slots.id, item.slot.id), eq(slots.isBooked, false), eq(slots.isBlocked, false), or(isNull(slots.holdExpiresAt), lte(slots.holdExpiresAt, now)))).returning({ id: slots.id });
         if (!held[0]) throw new AppError('slot_unavailable', 'One or more selected slots are unavailable', 409);
@@ -216,7 +236,7 @@ export class BookingController {
       const booking = (await tx.insert(bookings).values({
         bookingNumber: bookingNumber(), playerId: request.auth!.userId,
         vendorId: selected.ground.vendorId, groundId: selected.slot.groundId, slotId: selected.slot.id, date: selected.slot.date,
-        startTime: selected.slot.startTime, endTime: selected.slot.endTime, totalAmount: price.totalAmount, platformFee: price.platformFee,
+        startTime: selected.slot.startTime, endTime: selected.slot.endTime, turnaroundMinutes: selected.slot.turnaroundMinutes, totalAmount: price.totalAmount, platformFee: price.platformFee,
         vendorAmount: price.vendorAmount, status: 'pending_payment', paymentStatus: 'pending', paymentMethod: env.paymentProvider === 'clink' ? 'clink_1bill' : 'mock',
         idempotencyKey: key, holdExpiresAt, cancellationPolicy: cancellationPolicy(selected.ground.cancellationPolicy)
       }).returning())[0];

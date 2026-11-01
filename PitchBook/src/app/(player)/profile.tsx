@@ -113,8 +113,6 @@ export default function ProfileScreen() {
     >
       <StatusBar
         barStyle={appearance === 'dark' ? "light-content" : "dark-content"}
-        backgroundColor={theme.canvas}
-        translucent={false}
       />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}

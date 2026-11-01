@@ -11,11 +11,12 @@ RUN npm run build
 
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/drizzle ./drizzle
-COPY --from=build /app/scripts ./scripts
+COPY --chown=node:node --from=build /app/dist ./dist
+COPY --chown=node:node --from=build /app/drizzle ./drizzle
+COPY --chown=node:node --from=build /app/scripts ./scripts
 
 EXPOSE 5000
+USER node
 CMD ["npm", "run", "start"]

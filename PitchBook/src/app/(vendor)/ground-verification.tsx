@@ -135,7 +135,7 @@ export default function GroundVerificationScreen() {
   const reviewed = status === "under_review" || status === "approved";
   return (
     <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+      <StatusBar barStyle="light-content" />
       <View className="px-5 py-3 flex-row items-center border-b border-[#30372B]">
         <TouchableOpacity
           accessibilityRole="button"

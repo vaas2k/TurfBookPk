@@ -27,6 +27,8 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Decide whether verification is mandatory, then consistently enforce vendor/ground verification in public discovery and booking. (Decision: not mandatory until an admin verification workflow exists.)
 - [x] Prevent vendors from creating slots in the past.
 - [x] Filter past slots out of public ground and availability responses.
+- [x] Add selectable 5/10/15-minute pitch changeovers to new vendor schedules (10-minute default), snapshot the selected gap on slots/bookings, and enforce occupied-time conflicts in PostgreSQL and the API.
+- [x] Apply and verify `Server/drizzle/0034_slot_turnaround.sql` on the local development database; the rollback-only SQL check passed. Device testing of old bookings alongside the new schedule wizard remains.
 - [x] Fix ground deletion with historical bookings by using archival/deactivation instead of destructive deletion.
 - [x] Apply and verify `Server/drizzle/0005_slot_time_integrity.sql` against the target database.
   - [x] Detect and resolve existing overlapping slot records first. (Migration applied successfully; the exclusion constraint would reject any pre-existing overlaps.)

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -21,9 +21,9 @@ function formatCountdown(expiresAt: string | null, now: number) {
 
 function stateCopy(payment: PaymentAttempt) {
   if (payment.status === 'paid' || payment.status === 'confirmed') return { title: 'Payment confirmed', detail: 'Your booking is confirmed.', color: '#3DB54A', icon: 'checkmark-circle' as const };
+  if (payment.provider_status === 'unknown' || payment.review_status === 'manual_review' || payment.provider_status === 'paid_unallocated') return { title: 'Payment under review', detail: 'We could not safely confirm this payment automatically. Your payment is recorded and support will review it.', color: '#F59E0B', icon: 'alert-circle' as const };
   if (payment.provider_status === 'expired') return { title: 'Reference expired', detail: 'This payment window has ended. Return to the booking to try again when allowed.', color: '#F59E0B', icon: 'time' as const };
   if (payment.status === 'failed') return { title: 'Reference failed', detail: payment.provider_error || 'The provider could not generate or process this reference.', color: '#EF4444', icon: 'close-circle' as const };
-  if (payment.provider_status === 'unknown' || payment.review_status === 'manual_review' || payment.provider_status === 'paid_unallocated') return { title: 'Payment under review', detail: 'We could not safely confirm this payment automatically. Your payment is recorded and support will review it.', color: '#F59E0B', icon: 'alert-circle' as const };
   return { title: 'Waiting for payment', detail: 'Complete payment in a supported bank or wallet app, then check the status.', color: '#60A5FA', icon: 'hourglass' as const };
 }
 
@@ -34,19 +34,53 @@ export default function PaymentInstructionsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [toast, setToast] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [sandboxPaymentSent, setSandboxPaymentSent] = useState(false);
-  const shouldPoll = Boolean(payment && !isTerminal(payment));
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const shouldPoll = Boolean(appActive && payment && !isTerminal(payment));
 
-  const refresh = useCallback(async (quiet = false, announce = false) => {
-    if (!paymentId) return;
+  const refresh = useCallback((quiet = false, announce = false) => {
+    if (!paymentId) return Promise.resolve();
+    if (refreshInFlight.current) return refreshInFlight.current;
     if (!quiet) setRefreshing(true);
-    try { const latest = await getPaymentAttempt(paymentId); setPayment(latest); if (announce) setToast(`Payment status refreshed: ${latest.provider_status.replaceAll('_', ' ')}.`); }
-    catch (error: any) { if (!quiet) setToast(error?.message || 'Unable to check payment status.'); }
-    finally { setLoading(false); setRefreshing(false); }
+    const request = (async () => {
+      try {
+        const latest = await getPaymentAttempt(paymentId);
+        setPayment(latest);
+        setLoadError(null);
+        if (announce) setToast(`Payment status refreshed: ${latest.provider_status.replaceAll('_', ' ')}.`);
+      } catch (error: any) {
+        const message = error?.message || 'Unable to check payment status.';
+        setLoadError(message);
+        if (!quiet) setToast(message);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        refreshInFlight.current = null;
+      }
+    })();
+    refreshInFlight.current = request;
+    return request;
   }, [paymentId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1_000); return () => clearInterval(timer); }, []);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      const active = state === 'active';
+      setAppActive(active);
+      if (active) {
+        setNow(Date.now());
+        void refresh(true);
+      }
+    });
+    return () => subscription.remove();
+  }, [refresh]);
+  useEffect(() => {
+    if (!appActive) return;
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [appActive]);
   useEffect(() => {
     if (!shouldPoll) return;
     let delay = 4_000;
@@ -67,11 +101,14 @@ export default function PaymentInstructionsScreen() {
 
   if (loading) return <SafeAreaView className="flex-1 bg-[#10120F] items-center justify-center"><StatusBar barStyle="light-content" /><ActivityIndicator size="large" color="#3DB54A" /><Text className="text-[#AFAFA9] mt-4">Loading payment instructions…</Text></SafeAreaView>;
 
+  if (!payment) return <SafeAreaView edges={['top', 'left', 'right', 'bottom']} className="flex-1 bg-[#10120F] px-5 justify-center items-center"><StatusBar barStyle="light-content" /><Ionicons name="cloud-offline-outline" size={42} color="#F59E0B" /><Text className="text-[#F8F7F0] text-lg font-bold mt-4">Payment status unavailable</Text><Text className="text-[#AFAFA9] text-center mt-2">{loadError || 'Check your connection and try again.'}</Text><TouchableOpacity accessibilityRole="button" onPress={() => void refresh()} className="bg-[#3DB54A] rounded-full px-8 py-4 mt-6"><Text className="text-white font-bold">Try again</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => goBackOrReplace('/(player)/bookings')} className="py-4 mt-2"><Text className="text-[#AFAFA9]">Back to bookings</Text></TouchableOpacity></SafeAreaView>;
+
   return (
     <SafeAreaView edges={['top', 'left', 'right', 'bottom']} className="flex-1 bg-[#10120F]">
-      <StatusBar barStyle="light-content" backgroundColor="#10120F" />
+      <StatusBar barStyle="light-content" />
       <View className="flex-row items-center px-5 py-4"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace('/(player)/bookings')} className="w-11 h-11 rounded-full border border-[#30372B] items-center justify-center"><Ionicons name="arrow-back" size={22} color="#F8F7F0" /></TouchableOpacity><Text className="text-[#F8F7F0] text-xl font-bold ml-4">1-Bill payment</Text></View>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+        {loadError && <View className="rounded-[18px] bg-[#2A2413] border border-[#5B4A16] p-4 mb-4 flex-row items-center"><Ionicons name="cloud-offline-outline" size={22} color="#F7D774" /><View className="flex-1 ml-3"><Text className="text-[#F7D774] font-bold">Status may be out of date</Text><Text className="text-[#D8C995] text-xs leading-5 mt-1">{loadError}</Text></View><TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry payment status" onPress={() => void refresh()} className="min-w-11 min-h-11 items-center justify-center"><Ionicons name="refresh" size={22} color="#F7D774" /></TouchableOpacity></View>}
         <View className="rounded-[24px] bg-[#181C16] border border-[#343A30] p-5 items-center">
           {status && <><Ionicons name={status.icon} size={38} color={status.color} /><Text className="text-[#F8F7F0] text-xl font-bold mt-3">{status.title}</Text><Text className="text-[#AFAFA9] text-sm text-center leading-5 mt-2">{status.detail}</Text></>}
           <View className="w-full border-t border-[#30372B] mt-5 pt-5 flex-row justify-between"><Text className="text-[#AFAFA9]">Booking amount</Text><Text className="text-[#F8F7F0] font-bold">PKR {Number(payment?.amount || 0).toLocaleString()}</Text></View>

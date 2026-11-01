@@ -12,6 +12,9 @@ export interface BookingProfile {
   date: string;
   start_time: string;
   end_time: string;
+  turnaround_minutes: number;
+  actual_start_at: string | null;
+  start_delay_reason: 'previous_team' | 'venue_delay' | 'other' | null;
   total_amount: number;
   platform_fee: number;
   vendor_amount: number;

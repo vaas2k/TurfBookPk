@@ -178,7 +178,7 @@ export default function VendorBookings() {
           renderSectionHeader={renderSectionHeader}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          ListFooterComponent={loadingMore ? <ActivityIndicator className="py-4" color="#4CAF50" /> : null}
+          ListFooterComponent={loadingMore ? <ActivityIndicator className="py-4" color="#4CAF50" /> : undefined}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
           showsVerticalScrollIndicator={false}
           refreshControl={

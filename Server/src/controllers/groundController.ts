@@ -9,6 +9,7 @@ import { CANCELLATION_POLICIES, cancellationPolicy } from '../services/cancellat
 import { PeakWindow, effectiveSlotPrice } from '../services/peakPricing.js';
 import { materializeSchedules } from '../services/scheduleMaterialization.js';
 import { cachedPublicDiscovery, cachedPublicGround, publicGroundEtag } from '../services/publicGroundCache.js';
+import { periodsConflict, validTurnaround } from '../services/slotTurnaround.js';
 
 function textArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()) : [];
@@ -132,6 +133,13 @@ function hasStarted(date: string, time: string): boolean {
 }
 
 function timeMinutes(value: string): number { return Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5)); }
+function conflictingSlot(groundId: string, date: string, startTime: string, endTime: string, turnaroundMinutes: number, excludeId?: string) {
+  return db.select({ id: slots.id }).from(slots).where(and(
+    eq(slots.groundId, groundId),
+    sql`tsrange(${slots.date} + ${slots.startTime}, ${slots.date} + ${slots.endTime} + greatest(${slots.turnaroundMinutes}, ${turnaroundMinutes}) * interval '1 minute', '[)') && tsrange(${date}::date + ${startTime}::time, ${date}::date + ${endTime}::time + ${turnaroundMinutes} * interval '1 minute', '[)')`,
+    excludeId ? ne(slots.id, excludeId) : undefined,
+  )).limit(1);
+}
 function enforceSlotPolicy(ground: typeof grounds.$inferSelect, date: string, startTime: string, endTime: string): void {
   if (timeMinutes(endTime) - timeMinutes(startTime) > env.maxSlotDurationMinutes) throw new AppError('slot_duration_exceeded', `Slots may be at most ${env.maxSlotDurationMinutes} minutes`, 422);
   if (timeMinutes(startTime) < timeMinutes(ground.operatingHours.open) || timeMinutes(endTime) > timeMinutes(ground.operatingHours.close)) throw new AppError('outside_operating_hours', `Slots must be within ${ground.operatingHours.open}–${ground.operatingHours.close}`, 422);
@@ -146,12 +154,12 @@ function isHeld(row: typeof slots.$inferSelect): boolean {
 function pakistanToday(): string { return new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10); }
 
 export function toGround(row: typeof grounds.$inferSelect) {
-  return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_percentage: row.peakPercentage, peak_windows: row.peakWindows.map((window) => ({ days: window.days, start_time: window.startTime, end_time: window.endTime })), is_active: row.isActive, is_verified: row.isVerified, verification_status: row.verificationStatus, verification_reason: row.verificationReason, rating: row.rating, total_reviews: row.totalReviews, operating_hours: row.operatingHours, scheduling_policy: { max_slot_duration_minutes: env.maxSlotDurationMinutes, max_advance_booking_days: env.maxAdvanceBookingDays }, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+  return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_percentage: row.peakPercentage, peak_windows: row.peakWindows.map((window) => ({ days: window.days, start_time: window.startTime, end_time: window.endTime })), is_active: row.isActive, is_verified: row.isVerified, verification_status: row.verificationStatus, verification_reason: row.verificationReason, rating: row.rating, total_reviews: row.totalReviews, operating_hours: row.operatingHours, turnaround_minutes: row.turnaroundMinutes, scheduling_policy: { max_slot_duration_minutes: env.maxSlotDurationMinutes, max_advance_booking_days: env.maxAdvanceBookingDays }, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
 function toSlot(row: typeof slots.$inferSelect, ground?: typeof grounds.$inferSelect) {
   const effective = ground ? effectiveSlotPrice(row.date, row.startTime, row.endTime, { basePrice: row.price, peakPercentage: ground.peakPercentage, peakWindows: ground.peakWindows }) : { amount: row.price, isPeak: false };
-  return { id: row.id, ground_id: row.groundId, date: row.date, start_time: row.startTime, end_time: row.endTime, price: effective.amount, base_price: row.price, is_peak: effective.isPeak, is_booked: row.isBooked, is_blocked: row.isBlocked, is_club_reserved: row.isClubReserved, reservation_note: row.reservationNote, is_held: isHeld(row), created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+  return { id: row.id, ground_id: row.groundId, date: row.date, start_time: row.startTime, end_time: row.endTime, turnaround_minutes: row.turnaroundMinutes, price: effective.amount, base_price: row.price, is_peak: effective.isPeak, is_booked: row.isBooked, is_blocked: row.isBlocked, is_club_reserved: row.isClubReserved, reservation_note: row.reservationNote, is_held: isHeld(row), created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
 async function vendorIdForUser(userId: string): Promise<string> {
@@ -461,14 +469,9 @@ export class GroundController {
     if (start_time >= end_time) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
     if (hasStarted(date, start_time)) throw new AppError('slot_expired', 'Slots must start in the future', 422);
     enforceSlotPolicy(ground, date, start_time, end_time);
-    const conflict = await db.select({ id: slots.id }).from(slots).where(and(
-      eq(slots.groundId, groundId),
-      eq(slots.date, date),
-      lt(slots.startTime, end_time),
-      gt(slots.endTime, start_time),
-    )).limit(1);
-    if (conflict[0]) throw new AppError('slot_conflict', 'This slot overlaps an existing slot', 409);
-    const row = (await db.insert(slots).values({ groundId, date, startTime: start_time, endTime: end_time, price }).returning())[0];
+    const conflict = await conflictingSlot(groundId, date, start_time, end_time, ground.turnaroundMinutes);
+    if (conflict[0]) throw new AppError('slot_conflict', 'Allow the required changeover time between slots', 409);
+    const row = (await db.insert(slots).values({ groundId, date, startTime: start_time, endTime: end_time, turnaroundMinutes: ground.turnaroundMinutes, price }).returning())[0];
     if (!row) throw new AppError('slot_creation_failed', 'Slot could not be created', 500);
     response.status(201).json({ slot: toSlot(row) });
   };
@@ -496,9 +499,9 @@ export class GroundController {
     const created = await db.transaction(async (tx) => {
       const result = [];
       for (const slotDate of recurringDates) {
-        const conflict = await tx.select({ id: slots.id }).from(slots).where(and(eq(slots.groundId, groundId), eq(slots.date, slotDate), lt(slots.startTime, endTime), gt(slots.endTime, startTime))).limit(1);
-        if (conflict[0]) throw new AppError('slot_conflict', `A slot already overlaps ${slotDate}`, 409);
-        const [row] = await tx.insert(slots).values({ groundId, date: slotDate, startTime, endTime, price }).returning();
+        const conflict = await conflictingSlot(groundId, slotDate, startTime, endTime, ground.turnaroundMinutes);
+        if (conflict[0]) throw new AppError('slot_conflict', `Allow the required changeover time on ${slotDate}`, 409);
+        const [row] = await tx.insert(slots).values({ groundId, date: slotDate, startTime, endTime, turnaroundMinutes: ground.turnaroundMinutes, price }).returning();
         if (!row) throw new AppError('slot_creation_failed', 'Unable to create recurring slots', 500);
         result.push(toSlot(row));
       }
@@ -513,17 +516,44 @@ export class GroundController {
     const open = normalizedTime(body.open_time); const close = normalizedTime(body.close_time);
     const starts: string[] = Array.isArray(body.slot_starts) ? [...new Set((body.slot_starts as unknown[]).map((value) => normalizedTime(value)).filter((value): value is string => Boolean(value)))] : [];
     const days: number[] = Array.isArray(body.days) ? [...new Set((body.days as unknown[]).filter((day): day is number => typeof day === 'number' && Number.isInteger(day)))] : [0, 1, 2, 3, 4, 5, 6]; const duration = typeof body.slot_duration_minutes === 'number' ? body.slot_duration_minutes : 0; const price = typeof body.price === 'number' ? body.price : 0;
-    if (!open || !close || open >= close || !starts.length || starts.length > 30 || !Number.isSafeInteger(duration) || duration < 30 || duration > env.maxSlotDurationMinutes || !Number.isSafeInteger(price) || price <= 0 || days.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) throw new AppError('invalid_schedule', 'Choose valid hours, selected slots, days, duration, and price', 422);
+    const turnaround = body.turnaround_minutes === undefined ? 10 : body.turnaround_minutes;
+    if (!open || !close || open >= close || !starts.length || starts.length > 30 || !days.length || !validTurnaround(turnaround) || !Number.isSafeInteger(duration) || duration < 30 || duration > env.maxSlotDurationMinutes || !Number.isSafeInteger(price) || price <= 0 || days.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) throw new AppError('invalid_schedule', 'Choose valid hours, selected slots, days, playing duration, changeover, and price', 422);
     const endFor = (start: string) => `${String(Math.floor((timeMinutes(start) + duration) / 60)).padStart(2, '0')}:${String((timeMinutes(start) + duration) % 60).padStart(2, '0')}`;
     if (starts.some((start) => start < open || endFor(start) > close)) throw new AppError('invalid_schedule', 'Every selected slot must fit inside the working hours', 422);
-    const booked = await db.select({ id: slots.id }).from(slots).where(and(eq(slots.groundId, groundId), sql`${slots.scheduleTemplateId} IS NOT NULL`, eq(slots.isBooked, true))).limit(1);
-    if (booked[0]) throw new AppError('schedule_has_bookings', 'This schedule already has bookings. Use daily controls for changes until those bookings pass.', 409);
-    await db.transaction(async (tx) => {
-      await tx.delete(slots).where(and(eq(slots.groundId, groundId), sql`${slots.scheduleTemplateId} IS NOT NULL`, eq(slots.isBooked, false), sql`${slots.holdBookingId} IS NULL`));
+    const proposed = starts.map((start) => ({ date: pakistanToday(), startTime: start, endTime: endFor(start), turnaroundMinutes: turnaround }));
+    if (proposed.some((item, index) => proposed.slice(index + 1).some((other) => periodsConflict(item, other)))) throw new AppError('invalid_schedule', 'Selected slots need the chosen changeover time between them', 422);
+    const previewOnly = body.preview_only === true;
+    const preview = await db.transaction(async (tx) => {
+      // Keep every slot that has booking history or an active claim; replacing a
+      // repeating program must never move or erase a customer's promised time.
+      const existing = await tx.select().from(slots).where(and(eq(slots.groundId, groundId), gte(slots.date, pakistanToday())));
+      const bookingRows = existing.length ? await tx.select({ slotId: bookings.slotId }).from(bookings).where(inArray(bookings.slotId, existing.map((slot) => slot.id))) : [];
+      const withHistory = new Set(bookingRows.map((row) => row.slotId));
+      const removable = existing.filter((slot) => slot.scheduleTemplateId && !slot.isBooked && !slot.isBlocked && !slot.isClubReserved && !slot.holdBookingId && !withHistory.has(slot.id));
+      const removableIds = new Set(removable.map((slot) => slot.id));
+      const protectedSlots = existing.filter((slot) => !removableIds.has(slot.id));
+      const horizon = new Date(`${pakistanToday()}T00:00:00Z`);
+      horizon.setUTCDate(horizon.getUTCDate() + env.maxAdvanceBookingDays);
+      for (let cursor = new Date(`${pakistanToday()}T00:00:00Z`); cursor <= horizon; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+        if (!days.includes(cursor.getUTCDay())) continue;
+        const date = cursor.toISOString().slice(0, 10);
+        for (const item of proposed) {
+          if (hasStarted(date, item.startTime)) continue;
+          const conflict = protectedSlots.find((slot) => {
+            if (slot.date === date && slot.startTime.slice(0, 5) === item.startTime && slot.endTime.slice(0, 5) === item.endTime) return false;
+            return periodsConflict({ ...item, date }, { ...slot, turnaroundMinutes: Math.max(slot.turnaroundMinutes, turnaround) });
+          });
+          if (conflict) throw new AppError('schedule_conflict', `Keep a changeover gap on ${date} around ${conflict.startTime.slice(0, 5)}. An existing slot or booking is protected.`, 409);
+        }
+      }
+      if (previewOnly) return { replaceableSlots: removable.length, protectedSlots: protectedSlots.length };
+      if (removable.length) await tx.delete(slots).where(inArray(slots.id, removable.map((slot) => slot.id)));
       await tx.delete(slotScheduleTemplates).where(eq(slotScheduleTemplates.groundId, groundId));
-      await tx.update(grounds).set({ operatingHours: { open, close }, pricePerHour: price, updatedAt: new Date() }).where(eq(grounds.id, groundId));
-      await tx.insert(slotScheduleTemplates).values(starts.map((start) => ({ groundId, days, startTime: start, endTime: endFor(start), price })));
+      await tx.update(grounds).set({ operatingHours: { open, close }, turnaroundMinutes: turnaround, pricePerHour: price, updatedAt: new Date() }).where(eq(grounds.id, groundId));
+      await tx.insert(slotScheduleTemplates).values(starts.map((start) => ({ groundId, days, startTime: start, endTime: endFor(start), turnaroundMinutes: turnaround, price })));
+      return { replaceableSlots: removable.length, protectedSlots: protectedSlots.length };
     });
+    if (previewOnly) { response.json({ preview: { replaceable_slots: preview.replaceableSlots, protected_slots: preview.protectedSlots, selected_times: starts.length, repeat_days: days.length, turnaround_minutes: turnaround } }); return; }
     const refreshed = (await db.select().from(grounds).where(eq(grounds.id, groundId)).limit(1))[0]!; await materializeSchedules([refreshed]);
     const created = await db.select().from(slots).where(eq(slots.groundId, groundId)); response.status(201).json({ slots: created.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, refreshed)) });
   };
@@ -581,14 +611,8 @@ export class GroundController {
     if (nextStart >= nextEnd) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
     if (hasStarted(nextDate, nextStart)) throw new AppError('slot_expired', 'Slots must start in the future', 422);
     enforceSlotPolicy(ground, nextDate, nextStart, nextEnd);
-    const conflict = await db.select({ id: slots.id }).from(slots).where(and(
-      eq(slots.groundId, groundId),
-      eq(slots.date, nextDate),
-      lt(slots.startTime, nextEnd),
-      gt(slots.endTime, nextStart),
-      ne(slots.id, current.id),
-    )).limit(1);
-    if (conflict[0]) throw new AppError('slot_conflict', 'This slot overlaps an existing slot', 409);
+    const conflict = await conflictingSlot(groundId, nextDate, nextStart, nextEnd, current.turnaroundMinutes, current.id);
+    if (conflict[0]) throw new AppError('slot_conflict', 'Allow the required changeover time between slots', 409);
     if (body.date !== undefined) values.date = body.date;
     if (body.start_time !== undefined) values.startTime = body.start_time;
     if (body.end_time !== undefined) values.endTime = body.end_time;

@@ -2,7 +2,7 @@ import { and, count, desc, eq, lt, or, sql } from 'drizzle-orm';
 import { Response } from 'express';
 import { createHash } from 'node:crypto';
 import { db } from '../database/client.js';
-import { adminAuditLogs, bookingOrders, bookings, groundVerificationDocuments, groundVerifications, grounds, ledgerEntries, notificationOutbox, notifications, paymentAttempts, reviewReports, reviews, users, vendorVerificationDocuments, vendorVerifications, vendors } from '../database/schema.js';
+import { adminAuditLogs, bookingOrders, bookings, groundVerificationDocuments, groundVerifications, grounds, ledgerEntries, notificationOutbox, notifications, paymentAttempts, refreshSessions, reviewReports, reviews, users, vendorVerificationDocuments, vendorVerifications, vendors } from '../database/schema.js';
 import { env } from '../configs/env.js';
 import { AppError } from '../helpers/errors.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
@@ -336,7 +336,11 @@ export class AdminController {
     const reason = typeof (request.body as Record<string, unknown>)?.reason === 'string' ? String((request.body as Record<string, unknown>).reason).trim().slice(0, 500) || null : null;
     if (typeof suspended !== 'boolean') throw new AppError('invalid_user', 'is_suspended must be true or false', 422);
     if (id === actorId) throw new AppError('invalid_user', 'You cannot suspend your own administrator account', 422);
-    const [user] = await db.update(users).set({ isSuspended: suspended, updatedAt: new Date() }).where(eq(users.id, id)).returning();
+    const [user] = await db.transaction(async (tx) => {
+      const updated = await tx.update(users).set({ isSuspended: suspended, updatedAt: new Date() }).where(eq(users.id, id)).returning();
+      if (suspended && updated[0]) await tx.update(refreshSessions).set({ revokedAt: new Date() }).where(eq(refreshSessions.userId, id));
+      return updated;
+    });
     if (!user) throw new AppError('not_found', 'User was not found', 404);
     await audit(actorId, suspended ? 'user_suspended' : 'user_unsuspended', 'user', id, reason);
     response.json({ user: { id: user.id, is_suspended: user.isSuspended } });

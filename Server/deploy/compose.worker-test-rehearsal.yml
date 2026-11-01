@@ -1,0 +1,32 @@
+# Small isolated database for the multi-API/multi-worker recovery drill.
+# Combine with compose.vm.yml. Never point the ordinary worker at this DB.
+services:
+  worker-test-migrate:
+    image: turfbookpk-server:vm
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk_worker_loadtest
+      DB_POOL_MODE: direct
+      NODE_ENV: development
+    depends_on:
+      db:
+        condition: service_healthy
+    command: npm run db:migrate
+    profiles: ["worker-test-tools"]
+
+  worker-test-run:
+    image: turfbookpk-server:vm
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk_worker_loadtest
+      REDIS_URL: redis://redis:6379
+      DB_POOL_MODE: direct
+      NODE_ENV: development
+      PAYMENT_PROVIDER: mock
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: node scripts/check-multi-instance.mjs
+    profiles: ["worker-test-tools"]

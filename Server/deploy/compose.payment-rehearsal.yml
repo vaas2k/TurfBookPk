@@ -1,0 +1,114 @@
+# Isolated payment drill. Combine with compose.vm.yml in the turfbookpk-vm project.
+# Payment services use only turfbookpk_payment_loadtest and a separate image.
+services:
+  payment-migrate:
+    image: turfbookpk-server:payment-test
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk_payment_loadtest
+      DB_POOL_MODE: direct
+      NODE_ENV: development
+    depends_on:
+      db:
+        condition: service_healthy
+    command: npm run db:migrate
+    profiles: ["payment-test"]
+
+  payment-pgbouncer:
+    image: edoburu/pgbouncer:v1.26.1-p0
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk_payment_loadtest
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "100"
+      DEFAULT_POOL_SIZE: "10"
+      QUERY_TIMEOUT: "15"
+      QUERY_WAIT_TIMEOUT: "10"
+      ADMIN_USERS: turfbookpk
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "turfbookpk", "-d", "turfbookpk_payment_loadtest"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    profiles: ["payment-test"]
+
+  payment-api-a: &payment_api
+    image: turfbookpk-server:payment-test
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@payment-pgbouncer:5432/turfbookpk_payment_loadtest
+      REDIS_URL: redis://redis:6379
+      DB_POOL_MODE: transaction
+      NODE_ENV: development
+      PAYMENT_PROVIDER: clink
+      PAYMENT_ENVIRONMENT: sandbox
+      CLINK_USERNAME: isolated-test-user
+      CLINK_PASSWORD: isolated-test-password
+      CLINK_ALLOW_UNVERIFIED_SANDBOX_ACK: "true"
+      TRUST_PROXY_HOPS: "1"
+      PORT: "5000"
+    depends_on:
+      payment-pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    profiles: ["payment-test"]
+
+  payment-api-b:
+    <<: *payment_api
+
+  payment-proxy:
+    image: nginx:1.30.6-alpine
+    volumes:
+      - ./nginx-payment-rehearsal.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:5081:8080"
+    depends_on:
+      payment-api-a:
+        condition: service_healthy
+      payment-api-b:
+        condition: service_healthy
+    profiles: ["payment-test"]
+
+  payment-worker:
+    image: turfbookpk-server:payment-test
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk_payment_loadtest
+      REDIS_URL: redis://redis:6379
+      DB_POOL_MODE: direct
+      NODE_ENV: development
+      PAYMENT_PROVIDER: clink
+      PAYMENT_ENVIRONMENT: sandbox
+      CLINK_USERNAME: isolated-test-user
+      CLINK_PASSWORD: isolated-test-password
+      CLINK_ALLOW_UNVERIFIED_SANDBOX_ACK: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run worker
+    profiles: ["payment-test"]
+
+  payment-check:
+    image: turfbookpk-server:payment-test
+    env_file: ./.env.vm
+    environment:
+      DATABASE_URL: postgres://turfbookpk:${REHEARSAL_DB_PASSWORD}@db:5432/turfbookpk_payment_loadtest
+      PAYMENT_TEST_URL: http://payment-proxy:8080/api
+      NODE_ENV: development
+    depends_on:
+      payment-proxy:
+        condition: service_started
+    command: node scripts/check-payment-vm.mjs
+    profiles: ["payment-test"]

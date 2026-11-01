@@ -183,12 +183,11 @@ app.get('/api/ready', async (_req, res) => {
     res.json({ status: 'ready', postgres: 'ok', redis: redis ? 'ok' : 'local_only' });
   } catch { res.status(503).json({ status: 'not_ready' }); }
 });
-app.get("/api/test", async (_req, res) => {
-  res.json({
-    status: "ok",
-    message: "Test endpoint is working"
+if (env.nodeEnv !== 'production') {
+  app.get('/api/test', (_request, response) => {
+    response.json({ status: 'ok', message: 'Test endpoint is working' });
   });
-});
+}
 
 app.use((error: unknown, request: express.Request, response: express.Response, _next: express.NextFunction) => {
   const normalizedError = requestParsingError(error) || databaseConstraintError(error) || error;

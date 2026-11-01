@@ -31,6 +31,7 @@ export interface Ground {
   rating: number;
   total_reviews: number;
   operating_hours: { open: string; close: string };
+  turnaround_minutes: number;
   scheduling_policy: { max_slot_duration_minutes: number; max_advance_booking_days: number };
   rules: string[];
   cancellation_policy: CancellationPolicy | null;
@@ -44,6 +45,7 @@ export interface Slot {
   date: string;
   start_time: string;
   end_time: string;
+  turnaround_minutes: number;
   price: number;
   base_price?: number;
   is_peak?: boolean;
@@ -169,7 +171,12 @@ export async function bulkUpdateGroundSlots(groundId: string, slotIds: string[],
   await apiRequest(`/grounds/${groundId}/slots/bulk`, { method: 'PATCH', data: { slot_ids: slotIds, action } });
 }
 
-export async function saveGroundSchedule(groundId: string, data: { open_time: string; close_time: string; slot_duration_minutes: number; slot_starts: string[]; days: number[]; price: number }): Promise<Slot[]> {
+export type GroundScheduleInput = { open_time: string; close_time: string; slot_duration_minutes: number; turnaround_minutes: 5 | 10 | 15; slot_starts: string[]; days: number[]; price: number };
+export async function previewGroundSchedule(groundId: string, data: GroundScheduleInput): Promise<{ replaceable_slots: number; protected_slots: number; selected_times: number; repeat_days: number; turnaround_minutes: number }> {
+  const result = await apiRequest<{ preview: { replaceable_slots: number; protected_slots: number; selected_times: number; repeat_days: number; turnaround_minutes: number } }>(`/grounds/${groundId}/schedule`, { method: 'PUT', data: { ...data, preview_only: true } });
+  return result.preview;
+}
+export async function saveGroundSchedule(groundId: string, data: GroundScheduleInput): Promise<Slot[]> {
   const result = await apiRequest<{ slots: Slot[] }>(`/grounds/${groundId}/schedule`, { method: 'PUT', data });
   return result.slots;
 }

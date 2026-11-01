@@ -42,7 +42,6 @@ export default function WalletScreen() {
     >
       <StatusBar
         barStyle={appearance === "dark" ? "light-content" : "dark-content"}
-        backgroundColor={theme.canvas}
       />
       <View className="px-5 pt-3 pb-4 flex-row items-center">
         <TouchableOpacity

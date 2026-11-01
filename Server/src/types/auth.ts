@@ -14,6 +14,7 @@ export interface UserProfile {
   avatar_url: string | null;
   is_verified: boolean;
   is_setup_complete: boolean;
+  is_suspended: boolean;
   created_at: string;
   updated_at: string;
 }

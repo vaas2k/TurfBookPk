@@ -29,7 +29,7 @@ export default function PaymentProcessing() {
   if (status === 'processing') {
     return (
       <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-        <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+        <StatusBar barStyle="dark-content" />
         <View className="flex-1 items-center justify-center px-6">
           <View className="w-24 h-24 rounded-full bg-[#4CAF50]/20 items-center justify-center mb-6">
             <ActivityIndicator size="large" color="#4CAF50" />
@@ -48,7 +48,7 @@ export default function PaymentProcessing() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8F9FA]">
-      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+      <StatusBar barStyle="dark-content" />
 
       <View className="flex-1 px-6 justify-center items-center">
         <View className="w-24 h-24 rounded-full bg-[#4CAF50]/20 items-center justify-center mb-6">

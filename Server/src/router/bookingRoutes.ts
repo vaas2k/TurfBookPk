@@ -18,6 +18,7 @@ export function createBookingRouter(controller: BookingController, tokenService:
   router.get('/:id/cancellation-preview', controller.cancellationPreview);
   router.patch('/:id/cancel', controller.cancel);
   router.patch('/:id/no-show', controller.markNoShow);
+  router.patch('/:id/delayed-start', controller.recordDelayedStart);
   router.patch('/:id/complete', controller.markCompleted);
   return router;
 }

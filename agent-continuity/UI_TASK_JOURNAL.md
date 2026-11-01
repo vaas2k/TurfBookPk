@@ -103,3 +103,9 @@ This journal is intentionally separate from `TASK_JOURNAL.md`. It records visual
 - Removed vendor transition flashes by retaining mounted tab routes with `navigate`, enforcing a dark native-stack content surface, and replacing the remaining white vendor booking loading/error and modal surfaces.
 - Added the missing Notifications back action, normalized detail-screen back behavior, and extended bottom safe-area ownership to detail routes whose vendor tab bar is hidden.
 - Hardened ground verification headers and uploads for safe areas, long text, and empty image selections. Mobile TypeScript, ESLint, and diff validation pass.
+
+## 2026-11-01 - Payment screen emulator follow-up
+
+- Improved the date and time contrast in the dark 1-Bill checkout summary after seeing the values on the Android emulator.
+- Pending unpaid bookings now explain that refund terms apply after payment. The check-in code appears only for confirmed bookings.
+- Mobile TypeScript and targeted ESLint checks pass.
