@@ -8,6 +8,7 @@ import { appDialog } from '@/components/ui/app-dialog';
 import { useAppearanceStore } from '@/store/appearanceStore';
 import { playerThemes } from '@/theme/playerTheme';
 import { formatPitchSide } from '@/lib/pitch';
+import { shortBookingReference } from '@/lib/booking-reference';
 
 export default function BookingConfirmation() {
   const appearance = useAppearanceStore((state) => state.appearance);
@@ -51,7 +52,7 @@ export default function BookingConfirmation() {
   }
 
   const bookingDetails = {
-    bookingNumber: params.bookingNumber || 'N/A',
+    bookingNumber: shortBookingReference(params.bookingNumber),
     ground: params.ground || 'Ground',
     location: params.address || 'Address unavailable',
     date: params.date || 'Date unavailable',

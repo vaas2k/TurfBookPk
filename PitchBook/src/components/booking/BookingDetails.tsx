@@ -12,6 +12,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDuration, formatTime12, formatTimeRange12 } from "@/lib/time";
+import { shortBookingReference } from "@/lib/booking-reference";
 import {
   BookingProfile,
   BookingDispute,
@@ -371,7 +372,7 @@ export function BookingDetails({
                 Pitch booking
               </Text>
               <Text style={{ color: theme.muted }} className="text-sm mt-2">
-                Ref: #{booking.booking_number}
+                Ref: #{shortBookingReference(booking.booking_number)}
               </Text>
             </View>
           </View>
@@ -448,7 +449,7 @@ export function BookingDetails({
                 style={{ fontFamily: "SpaceGrotesk_700Bold" }}
                 className="text-[#10120F] text-[21px] mt-5"
               >
-                {booking.booking_number}
+                {shortBookingReference(booking.booking_number)}
               </Text>
             </View>
           )}
@@ -592,7 +593,7 @@ export function BookingDetails({
       <View className="px-6 pt-4 pb-4 flex-row items-center"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrReplace("/(vendor)/bookings")} className="w-8 h-10 items-center justify-center -ml-2"><Ionicons name="chevron-back" size={29} color="#F5F5F0" /></TouchableOpacity><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0] text-[21px] ml-2">BOOKING DETAILS</Text></View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 116 + Math.max(insets.bottom, 16) }} showsVerticalScrollIndicator={false}>
         <View className="bg-[#1B1F19] border border-[#30372B] rounded-[18px] p-5">
-          <View className="flex-row items-start"><View className="flex-1"><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0] text-[17px]">{booking.player_name || "Player"}</Text><Text className="text-[#9CA198] text-sm mt-1">#{booking.booking_number} · {booking.ground_title}</Text></View>{booking.player_phone && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Call player" onPress={() => Linking.openURL(`tel:${booking.player_phone}`)} className="w-10 h-10 rounded-full bg-[#17301B] items-center justify-center"><Ionicons name="call-outline" size={21} color="#42B84F" /></TouchableOpacity>}</View>
+          <View className="flex-row items-start"><View className="flex-1"><Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#F5F5F0] text-[17px]">{booking.player_name || "Player"}</Text><Text className="text-[#9CA198] text-sm mt-1">#{shortBookingReference(booking.booking_number)} · {booking.ground_title}</Text></View>{booking.player_phone && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Call player" onPress={() => Linking.openURL(`tel:${booking.player_phone}`)} className="w-10 h-10 rounded-full bg-[#17301B] items-center justify-center"><Ionicons name="call-outline" size={21} color="#42B84F" /></TouchableOpacity>}</View>
           <View className="border-t border-[#30372B] mt-4 pt-4"><View className="flex-row items-center"><Ionicons name="calendar-outline" size={18} color="#42B84F" /><Text className="text-[#E5E7E1] text-sm ml-3">{bookingDate} · {slotTime}</Text></View><View className="flex-row items-center mt-3"><Ionicons name="location-outline" size={18} color="#42B84F" /><Text className="text-[#E5E7E1] text-sm ml-3 flex-1" numberOfLines={1}>{booking.ground_title} · {booking.ground_address}</Text></View></View>
           <View className="border-t border-[#30372B] mt-4 pt-4 flex-row items-center justify-between"><Text className="text-[#9CA198] text-sm">Payment method</Text><View className="rounded-full border border-[#42B84F] px-3 py-1"><Text className="text-[#57CC63] text-xs font-bold capitalize">{paymentLabel}</Text></View></View>
         </View>
@@ -642,7 +643,7 @@ export function BookingDetails({
                 Booking Ref
               </Text>
               <Text className="text-[#1A1A2E] text-sm font-mono font-bold mt-0.5">
-                #{booking.booking_number}
+                #{shortBookingReference(booking.booking_number)}
               </Text>
             </View>
             <BookingStatusBadge

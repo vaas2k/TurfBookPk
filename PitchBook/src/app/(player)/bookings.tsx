@@ -18,6 +18,7 @@ import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { useAppearanceStore } from '@/store/appearanceStore';
 import { playerThemes } from '@/theme/playerTheme';
 import { cancelBookingReminders, scheduleBookingReminders } from '@/lib/notifications';
+import { shortBookingReference } from '@/lib/booking-reference';
 
 interface BookingSection {
   title: string;
@@ -122,7 +123,7 @@ export default function BookingsScreen() {
     const paymentOpen = item.is_recurring_reservation && item.status === 'pending_payment' && !!item.payment_window_opens_at && !!item.reservation_expires_at && new Date(item.payment_window_opens_at).getTime() <= Date.now() && new Date(item.reservation_expires_at).getTime() > Date.now();
     return <TouchableOpacity
       accessibilityRole="button"
-      accessibilityLabel={`View booking ${item.booking_number} for ${item.ground_title}`}
+      accessibilityLabel={`View booking ${shortBookingReference(item.booking_number)} for ${item.ground_title}`}
       onPress={() => router.push({ pathname: '/(player)/booking/[id]', params: { id: item.id } })}
       className="rounded-[22px] p-4 mb-4 border"
       style={{
@@ -148,7 +149,7 @@ export default function BookingsScreen() {
 
       <View className="flex-row justify-between items-center mt-3 pt-3 border-t" style={{ borderTopColor: theme.border }}>
         <Text style={{ color: theme.muted, flexShrink: 1 }} className="text-xs font-mono mr-3" numberOfLines={1}>
-          #{item.booking_number}
+          #{shortBookingReference(item.booking_number)}
         </Text>
         <Text style={{ color: theme.green }} className="font-bold text-base">
           PKR {item.total_amount.toLocaleString()}

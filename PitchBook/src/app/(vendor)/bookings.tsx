@@ -14,6 +14,7 @@ import { formatTimeRange12 } from '@/lib/time';
 import { BookingProfile, getVendorBookings } from '@/lib/api/bookings';
 import { Toast } from '@/components/ui/toast';
 import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
+import { shortBookingReference } from '@/lib/booking-reference';
 
 interface VendorBookingSection {
   title: string;
@@ -121,7 +122,7 @@ export default function VendorBookings() {
   const renderBookingCard = ({ item }: { item: BookingProfile }) => (
     <TouchableOpacity
       accessibilityRole="button"
-      accessibilityLabel={`View booking ${item.booking_number} for ${item.ground_title}`}
+      accessibilityLabel={`View booking ${shortBookingReference(item.booking_number)} for ${item.ground_title}`}
       onPress={() => router.push({ pathname: '/(vendor)/booking/[id]', params: { id: item.id } })}
       className="bg-[#1B1F19] rounded-[14px] p-4 mb-3 border border-[#30372B]"
       style={{
@@ -152,7 +153,7 @@ export default function VendorBookings() {
       )}
 
       <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-[#30372B]">
-        <Text className="text-[#92978F] text-xs">Ref #{item.booking_number}</Text>
+        <Text className="text-[#92978F] text-xs">Ref #{shortBookingReference(item.booking_number)}</Text>
         <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#50C15B] text-sm">PKR {item.vendor_amount.toLocaleString()}</Text>
       </View>
     </TouchableOpacity>

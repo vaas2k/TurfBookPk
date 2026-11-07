@@ -17,6 +17,7 @@ import {
 } from "@/lib/api/vendors";
 import { Toast } from "@/components/ui/toast";
 import { goBackOrReplace } from "@/lib/navigation";
+import { shortBookingReference } from "@/lib/booking-reference";
 
 const emptySummary: EarningsSummary = {
   available_to_withdraw: 0,
@@ -293,7 +294,7 @@ export default function VendorEarnings() {
                       {copy.title}
                     </Text>
                     <Text className="text-[#AFAFA9] text-xs mt-1">
-                      {entry.ground_title} · #{entry.booking_number}
+                      {entry.ground_title} · #{shortBookingReference(entry.booking_number)}
                     </Text>
                   </View>
                   <Text style={{ color: copy.color }} className="font-bold">
@@ -388,7 +389,7 @@ export default function VendorEarnings() {
                 </View>
                 <View className="mt-5 gap-4">
                   <View><Text className="text-xs font-bold text-[#92978F]">GROUND</Text><Text className="mt-1 text-base text-[#F5F5F0]">{selectedEntry.ground_title}</Text></View>
-                  <View><Text className="text-xs font-bold text-[#92978F]">BOOKING</Text><Text className="mt-1 text-base text-[#F5F5F0]">#{selectedEntry.booking_number}</Text></View>
+                  <View><Text className="text-xs font-bold text-[#92978F]">BOOKING</Text><Text className="mt-1 text-base text-[#F5F5F0]">#{shortBookingReference(selectedEntry.booking_number)}</Text></View>
                   <View><Text className="text-xs font-bold text-[#737373]">STATUS</Text><Text style={{ color: copy.color }} className="mt-1 text-base font-bold">{status}</Text></View>
                   <View><Text className="text-xs font-bold text-[#92978F]">RECORDED</Text><Text className="mt-1 text-base text-[#F5F5F0]">{date}</Text></View>
                 </View>
