@@ -151,9 +151,10 @@ const groundController = new GroundController();
 const bookingController = new BookingController();
 const notificationController = new NotificationController();
 const reviewController = new ReviewController();
-const mediaController = new MediaController(new CloudinaryStorageProvider());
+const storageProvider = new CloudinaryStorageProvider();
+const mediaController = new MediaController(storageProvider);
 const engagementController = new EngagementController();
-const adminController = new AdminController();
+const adminController = new AdminController(storageProvider);
 
 app.use('/api/auth', createAuthRouter(authController, tokenService));
 app.use('/api/vendors', createVendorRouter(vendorController, tokenService));

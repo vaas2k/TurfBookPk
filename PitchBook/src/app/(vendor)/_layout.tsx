@@ -22,6 +22,7 @@ function VendorTabBar() {
       "/booking/",
       "/notifications",
       "/edit-profile",
+      "/vendor-guide",
       "/ground-verification",
     ];
     return !detailRoutes.some((route) => pathname.includes(route));
@@ -146,6 +147,7 @@ export default function VendorLayout() {
         <Stack.Screen name="booking/[id]" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="edit-profile" />
+        <Stack.Screen name="vendor-guide" />
         <Stack.Screen name="ground-verification" />
       </Stack>
       <VendorTabBar />

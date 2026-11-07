@@ -1,0 +1,40 @@
+# EAS runs from PitchBook, but archives from this monorepo's Git root.
+# Keep unrelated applications, private documents, and local build output out.
+.git/
+.github/
+.agents/
+.codex/
+.aws/
+Admin_Panel_TurfbookPK/
+Server/
+Figma/
+credentials/
+docs/
+agent-continuity/
+
+# Mobile dependencies and generated output are recreated by EAS.
+PitchBook/node_modules/
+PitchBook/android/
+PitchBook/ios/
+PitchBook/.expo/
+PitchBook/dist/
+PitchBook/web-build/
+PitchBook/.eas-build-inspect/
+PitchBook/.eas-build-inspect-*/
+PitchBook/*.tsbuildinfo
+PitchBook/.env
+PitchBook/.env.*
+!PitchBook/.env.example
+
+# Local/debug files.
+*.log
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+.DS_Store
+
+# Required by the Android Firebase/notification config. It remains Git-ignored.
+!PitchBook/google-services.json

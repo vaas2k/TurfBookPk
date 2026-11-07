@@ -13,8 +13,8 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { formatDuration, formatTimeRange12 } from "@/lib/time";
-import { CANCELLATION_POLICY_LABELS, getPublicGround, Ground, Slot } from "@/lib/api/vendors";
+import { compareByOperatingDay, formatDuration, formatTimeRange12 } from "@/lib/time";
+import { CANCELLATION_POLICY_LABELS, getPublicGround, Ground, Pitch, Slot } from "@/lib/api/vendors";
 import { Toast } from "@/components/ui/toast";
 import { goBackOrReplace } from "@/lib/navigation";
 import { GroundReview, listGroundReviews } from "@/lib/api/reviews";
@@ -72,6 +72,8 @@ export default function GroundDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [ground, setGround] = useState<Ground | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [pitches, setPitches] = useState<Pitch[]>([]);
+  const [selectedPitchId, setSelectedPitchId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<Slot[]>([]);
   const [showSlotPicker, setShowSlotPicker] = useState(false);
@@ -99,14 +101,13 @@ export default function GroundDetail() {
       .then((result) => {
         liveResolved = true;
         setGround(result.ground);
+        setPitches(result.pitches || []);
         void saveCachedGroundDetail(result.ground);
-        const orderedSlots = [...result.slots].sort((a, b) =>
-          `${a.date}T${a.start_time}`.localeCompare(
-            `${b.date}T${b.start_time}`,
-          ),
-        );
+        const orderedSlots = [...result.slots].sort((a, b) => a.date.localeCompare(b.date) || compareByOperatingDay(a.start_time, b.start_time, result.ground.operating_hours.open));
         setSlots(orderedSlots);
-        setSelectedDate(orderedSlots[0]?.date || null);
+        const firstPitch = result.pitches?.find((pitch) => orderedSlots.some((slot) => slot.pitch_id === pitch.id));
+        setSelectedPitchId(firstPitch?.id || result.pitches?.[0]?.id || null);
+        setSelectedDate(orderedSlots.find((slot) => slot.pitch_id === firstPitch?.id)?.date || orderedSlots[0]?.date || null);
         listGroundReviews(result.ground.id)
           .then(setReviews)
           .catch(() => undefined);
@@ -127,10 +128,10 @@ export default function GroundDetail() {
     fetchGround();
   }, [fetchGround]);
 
-  const dates = useMemo(() => [...new Set(slots.map((s) => s.date))], [slots]);
+  const dates = useMemo(() => [...new Set(slots.filter((slot) => !selectedPitchId || slot.pitch_id === selectedPitchId).map((s) => s.date))], [slots, selectedPitchId]);
   const visibleSlots = slots
-    .filter((slot) => slot.date === selectedDate)
-    .sort((a, b) => a.start_time.localeCompare(b.start_time));
+    .filter((slot) => slot.date === selectedDate && (!selectedPitchId || slot.pitch_id === selectedPitchId))
+    .sort((a, b) => compareByOperatingDay(a.start_time, b.start_time, ground?.operating_hours.open));
   const images = ground
     ? ground.cover_image
       ? [ground.cover_image, ...ground.images]
@@ -575,6 +576,7 @@ export default function GroundDetail() {
           )}
           {showSlotPicker && (
             <>
+              <View className="mt-7"><Text style={{ fontFamily: 'BigShouldersDisplay_700Bold', fontSize: 21, color: theme.text }} className="uppercase mb-3">Choose a pitch</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{pitches.map((pitch) => <TouchableOpacity key={pitch.id} accessibilityRole="radio" accessibilityState={{ selected: selectedPitchId === pitch.id }} onPress={() => { setSelectedPitchId(pitch.id); setSelectedSlots([]); setSelectedDate(slots.find((slot) => slot.pitch_id === pitch.id)?.date || null); }} className={`min-w-[132px] rounded-xl border px-4 py-3 mr-2 ${selectedPitchId === pitch.id ? 'border-[#57CC63] bg-[#17301B]' : 'border-[#454B42] bg-[#1B1F19]'}`}><Text className="text-[#F5F5F0] font-bold" numberOfLines={1}>{pitch.name}</Text><Text className={`text-xs mt-1 ${selectedPitchId === pitch.id ? 'text-[#75D67E]' : 'text-[#AFAFA9]'}`}>{pitch.side} a-side{pitch.kind === 'combined' ? ' · Combined' : ''}</Text></TouchableOpacity>)}</ScrollView></View>
               <View className="mt-7">
                 <View className="flex-row items-center justify-between mb-3">
                   <Text
@@ -747,7 +749,7 @@ export default function GroundDetail() {
                           accessibilityRole="button"
                           accessibilityLabel={`${formatTimeRange12(slot.start_time, slot.end_time)} ${statusLabel}`}
                           onPress={() => toggleSlot(slot)}
-                          className={`min-h-[154px] justify-between rounded-2xl p-3.5 mb-3 border ${
+                          className={`min-h-[122px] rounded-2xl p-3 mb-3 border ${
                             isSelected
                               ? "border-[#3DB54A] bg-[#3DB54A]"
                               : isAvailable
@@ -782,7 +784,6 @@ export default function GroundDetail() {
                             >
                               {formatDuration(slot.start_time, slot.end_time)}
                             </Text>
-                            {slot.turnaround_minutes > 0 && <Text className={`text-xs mt-1 ${isSelected ? "text-white/80" : isAvailable ? "text-[#9FC6A2]" : "text-[#5D635A]"}`}>{slot.turnaround_minutes} min changeover after play</Text>}
                             {slot.is_peak && (
                               <Text className="text-[#D97706] text-xs font-semibold mt-1">
                                 Peak price
@@ -793,7 +794,7 @@ export default function GroundDetail() {
                           {reasonBadge ? (
                             reasonBadge
                           ) : (
-                            <View className="flex-row items-center justify-between">
+                            <View className="flex-row items-center justify-between mt-3">
                               <Text
                                 className={`text-sm font-bold ${isSelected ? "text-white" : isAvailable ? "text-[#59C462]" : "text-[#73786F]"}`}
                               >

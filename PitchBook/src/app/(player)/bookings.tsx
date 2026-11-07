@@ -72,10 +72,7 @@ export default function BookingsScreen() {
   }, [load]);
 
   const sections: BookingSection[] = useMemo(() => {
-    const now = new Date();
-    const pakistanNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
-    const todayStr = pakistanNow.toISOString().split('T')[0];
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+    const now = Date.now();
 
     const pending: BookingProfile[] = [];
     const upcoming: BookingProfile[] = [];
@@ -90,7 +87,7 @@ export default function BookingsScreen() {
       } else if (item.status === 'completed' || item.status === 'no_show') {
         completed.push(item);
       } else if (item.status === 'confirmed') {
-        const isPast = item.date < todayStr || (item.date === todayStr && item.end_time < timeStr);
+        const isPast = new Date(`${item.end_date || item.date}T${item.end_time}+05:00`).getTime() <= now;
         if (isPast) {
           completed.push(item);
         } else {
@@ -140,13 +137,13 @@ export default function BookingsScreen() {
       <View className="flex-row justify-between items-start">
         <View className="flex-1 mr-3">
             <Text style={{ fontFamily: 'SpaceGrotesk_700Bold', color: theme.text }} className="text-lg" numberOfLines={1}>
-            {item.ground_title}
+            {item.ground_title}{item.pitch_name ? ` · ${item.pitch_name}` : ''}
           </Text>
           <Text style={{ color: theme.subtle }} className="text-sm mt-1" numberOfLines={1}>
             {item.date} · {formatTimeRange12(item.start_time, item.end_time)}
           </Text>
         </View>
-        <BookingStatusBadge status={item.status} paymentStatus={item.payment_status} />
+        <BookingStatusBadge status={item.status} paymentStatus={item.payment_status} isRecurringReservation={item.is_recurring_reservation} />
       </View>
 
       <View className="flex-row justify-between items-center mt-3 pt-3 border-t" style={{ borderTopColor: theme.border }}>

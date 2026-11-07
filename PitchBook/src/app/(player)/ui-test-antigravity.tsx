@@ -57,7 +57,7 @@ export default function AntigravityUiTestScreen() {
     { label: 'Sat', number: 6, day: 'Sat' },
   ];
 
-  const filters = ['All', '5-a-side', '7-a-side', '11-a-side', 'Indoor'];
+  const filters = ['All', '5 a-side', '7 a-side', '11 a-side', 'Indoor'];
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>

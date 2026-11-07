@@ -1821,3 +1821,103 @@
 - Added per-ground configuration and per-slot/per-booking snapshots. The SQL exclusion constraint covers playing time plus changeover, while manual/recurring slot actions and schedule replacement validate existing occupied periods. Schedule replacement preserves bookings, holds, club reservations, blackout-blocked slots, and booking history.
 - Added changeover guidance in player slot selection, checkout, booking details, and vendor daily slots. Vendors review how many generated slots will be replaced or protected before confirming schedule changes. Vendors can record a delayed actual start with a reason during a confirmed match; the player sees the record and receives a booking notification. The recorded delay never extends the next booking.
 - Server and mobile typechecks, targeted mobile lint, and targeted timing tests passed. The migration applied successfully in an isolated schema-copy database, then in the local development database (migration record 0034). A rollback-only SQL test confirmed that a 2:05 PM start after a 2:00 PM finish is rejected and a 2:10 PM start is accepted in both databases; the disposable database was removed afterward. A PostgreSQL integration test also passed for preview-only behavior, preserving an old booked slot, rejecting a too-early new slot, and generating the next slot at the 10-minute boundary. Device testing of the vendor schedule wizard and delayed-start action remains before release.
+- On 2026-11-02, the user checked slot timing on a physical device and confirmed it looks good. Device checks for changing a schedule around an old booking and recording a delayed start remain.
+
+## 2026-11-02 — Server quality-check repair
+
+- Reproduced the failed GitHub server `npm test` step under Node 22 with a CI-like environment. The payment reference integration test depended on Clink settings from the local `.env`, and its temporary HTTP API readiness probe could time out under parallel test startup.
+- Added a cross-platform test runner that sets inert Clink sandbox credentials only for tests and extended the HTTP test readiness deadline to 20 seconds. It does not call the real Clink provider.
+- Verified `npm test` on the local machine and the full suite under Node 22 without local Clink credentials: 65/65 passed in both runs. Server typecheck and diff checks passed. The fix still needs a new GitHub Actions run after commit/push.
+## 2026-11-04 — Multiple pitches and overnight hours
+
+- Added per-ground pitches, including independent 7/9/11-side options and combined 9/11-side options backed by two independent 7-side pitches. Each pitch has its own recurring slot program and price.
+- Migrated existing slots, templates, and bookings to a default pitch. Booking records retain the pitch name. Physical-pitch occupancy is enforced by a PostgreSQL exclusion constraint, so overlapping holds/bookings/blocks cannot claim the same 7-side pitch through different offers.
+- Added next-day closing hours and schedule offsets. A Monday program can generate slots after midnight on Tuesday, with actual calendar dates stored on slots and bookings.
+- Vendor pitch setup, pitch selection in slot management, and player pitch selection in ground details are wired. Search availability excludes offers whose physical pitches are occupied.
+- Applied the migration to a disposable local database. Server/mobile typechecks, server build, mobile lint, and focused overnight/occupancy integration tests passed. Physical-device workflow testing and migration rehearsal against a representative copy of existing data remain before rollout.
+
+## 2026-11-04 — Ground loading after pitch migration
+
+- Traced vendor/player ground failures to the active local development database missing migration 0035. Saved a validated custom-format backup in ignored `Server/backups/`, applied the migration, and verified pitch tables plus successful public ground list/detail API responses.
+- Corrected the mobile API fallback to identify an HTTP server failure instead of falsely reporting a connection failure.
+
+## 2026-11-04 — Second pitch schedule save
+
+- Reproduced the 500 when a second pitch reused the first pitch's daily time. A legacy unique index still keyed schedule templates by ground and time.
+- Migration 0036 replaces it with pitch-and-time uniqueness. Applied it to the disposable test database, then the local development database. The new two-pitch regression test and existing schedule tests pass; server typecheck passes.
+
+## 2026-11-04 — Extended next-day schedules
+
+- Added an explicit `close_next_day` operating-hours value so venues can represent ranges such as 6 AM through 1 PM the following day, rather than inferring overnight operation only from an earlier clock time.
+- Slot schedule requests now preserve a 0/1 calendar-day offset for every selected start. Materialization therefore publishes morning and afternoon starts after the following sunrise on the correct player calendar date.
+- Existing overnight grounds remain compatible through legacy inference. Server build/typecheck and four schedule integration cases pass, including same-time schedules on two pitches, midnight crossing, and next-day afternoon closing.
+- Fixed schedule review for older grounds whose saved venue close was earlier than the newly selected pitch close. The final confirmed save can extend the venue closing time, while preview remains read-only and narrower pitch schedules never shrink venue hours. Five schedule integration cases now pass, including extending 11 PM to 1 AM next day.
+## 2026-11-04 — 15-minute booking cutoff
+
+- Reduced the minimum booking lead from 45 to 15 minutes in the server default, local development environment, and environment template.
+- Public discovery, dated search pricing, ground detail, standalone slot lists, single booking, and multi-slot booking now use the same cutoff. A slot remains available with 16 minutes left and becomes unavailable exactly 15 minutes before its start.
+- Added a boundary unit test. Server/mobile typechecks and the server production build pass.
+
+## 2026-11-04 — Vendor-friendly exact ground location
+
+- Replaced coordinate-first ground entry with an authenticated Maps Share-link resolver. Google Maps and Apple Maps links are supported, including allowlisted short-link redirects; unsupported hosts and unsafe redirects are rejected server-side.
+- Added current-device location as the secondary capture method and retained manual latitude/longitude only as an advanced fallback. Ground creation now requires valid coordinates at both the mobile and API boundaries.
+- Added focused resolver tests covering Google, Apple, and rejected-host inputs. Server/mobile typechecks, mobile lint, and the focused resolver test pass.
+
+## 2026-11-05 — Persistent admin verification decisions
+
+- Vendor identity, business, and payout decisions now render their persisted database status as a locked selected action after refresh; partial approvals remain separate from final vendor approval.
+- Ground authority-proof decisions use the same persistent selected state, while final ground publication remains a separate action.
+- Admin verification reads are explicitly uncached in both the browser client and API responses. Admin and server typechecks pass; the admin project has no lint script.
+# 2026-11-05 — Manual refunds, disputes, and vendor payouts
+
+- Added encrypted player refund-bank profiles and made refundable cancellations require bank details before submission.
+- Added refund cases with calculated/approved amounts, vendor/platform funding splits, private receipt evidence, transfer references, failure/retry handling, and audit events.
+- Added financial disputes that hold vendor earnings while open and can resolve into a refund case or release the hold.
+- Added vendor payout balances and booking-level eligible earnings, partial payout reasons, payout preparation, private receipt evidence, failure/retry handling, and exactly-once payout ledger entries.
+- Added admin Refunds, Disputes, and Vendor payouts workspaces with clearer status and action messages.
+- Corrected cancellation accounting so vendors retain only their commission-adjusted share rather than the platform portion.
+- Added migration `0037_manual_financial_operations.sql`.
+- Verification: Server, admin, and mobile TypeScript checks pass; all 73 backend tests pass.
+
+## 2026-11-05 — Development payment bypass
+
+- Connected the protected server-side mock payment provider to mobile checkout for local testing without Clink IP whitelisting.
+- Single-slot, multi-slot, and recurring-reservation test payments still use transactional confirmation, slot locking, ledger entries, vendor earnings, and notifications.
+- Test checkout is visibly labelled and skips Clink billing details. Mock payment remains forbidden in production; changing `PAYMENT_PROVIDER` back to `clink` restores 1-Bill.
+
+## 2026-11-05 — Small post-test corrections
+
+- Added explicit same-day/next-day peak-price endings. Overnight windows such as 8 PM–1 AM now apply to eligible slots on both sides of midnight, including dated discovery pricing.
+- Vendor slot management now labels physical slots occupied through another combined pitch offer instead of presenting them as ordinary holds or generic unavailability.
+- Vendor-specific admin transaction activity now reports cancelled and refunded booking states instead of leaving completed cancellations displayed as pending provider activity.
+
+## 2026-11-06 — Booking follow-up and live issue handling
+
+- Fixed whole-ground blackout dates for multi-pitch venues by blocking physical pitches only; combined offers now inherit unavailability without overlapping occupancy records.
+- Recurring checkout now pays same-day selections by default and reserves later dates. Future payments open 24 hours before kickoff and close 2 hours before kickoff, with an explicit pay-all-now option.
+- Completed and failed manual refunds now create player notifications through the durable push outbox.
+- Added a player Match Hub with check-in details, directions, and issue reporting from kickoff until two hours after the match.
+- Worker maintenance now creates an exactly-once “match starting now” notification and routes player taps directly into Match Hub; local reminders remain as an on-device fallback.
+- Added player-created disputes, vendor responses and one-time appeals, admin visibility, payout holds, and resolution notifications. Migrations: `0038_player_vendor_disputes.sql` and `0039_match_start_notification.sql`.
+- Search results now use the compact image-card layout used by the player home feed.
+
+## 2026-11-07 — Booking classification, vendor player access, and admin attention
+
+- Fixed player booking classification to compare confirmed booking end instants in Pakistan time, preventing active/upcoming confirmed bookings from incorrectly appearing under Past on devices in another timezone.
+- Added a visible Book action to the vendor dashboard. It safely switches the same account into player mode so ground owners can book other vendors' grounds, while their vendor profile remains available when they switch back.
+- Added a protected lightweight admin attention-count endpoint and sidebar badges for vendor verification, ground verification, actionable refunds/disputes, payout actions, and reported reviews. Counts refresh once per minute.
+- Server, mobile, and admin typechecks pass; all 75 backend tests pass.
+
+## 2026-11-07 — Recurring payment commitment window
+
+- Recurring checkout now charges every selected occurrence starting within the next 36 hours, even when those occurrences cross into the next calendar day.
+- When every selected occurrence is beyond 36 hours, the earliest occurrence is still paid immediately so a recurring order always begins with a confirmed commitment.
+- Later occurrences remain reserved; their payment window opens 24 hours before kickoff and closes 12 hours before kickoff, after which the worker releases unpaid slots.
+- Persisted recurring-payment classification now controls both mock and Clink confirmation, preventing delayed acknowledgments from changing which occurrences belong to the initial payment.
+- Initial Clink reference generation, failure, and expiry now leave later recurring reservations untouched.
+- Checkout wording and amount previews use the same policy returned by the server. Server/mobile typechecks and all 77 backend tests pass.
+- Added an exactly-once in-app and push reminder two hours before a future recurring payment deadline, backed by migration `0040_recurring_deadline_reminder.sql`.
+- Vendor booking cards now distinguish unpaid recurring reservations with a `Reserved · Unpaid` badge and show the exact Pakistan-local payment deadline; player status badges use the same clear state.
+- Applied the migration locally and verified server/mobile typechecks plus all 78 backend tests.
+- Added migration `0041_booking_pitch_side_snapshot.sql` so every new booking preserves its actual pitch size; existing bookings are backfilled from their linked pitch for accurate confirmations and history.

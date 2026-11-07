@@ -1,94 +1,34 @@
-"use client";
-import { useEffect, useState } from "react";
-import { AdminShell, useAdminSession } from "../../../components/AdminShell";
-import { request } from "../../../lib/api";
-import { CsvExport, PageControls } from "../../../components/AdminListTools";
-type Refund = {
-  id: string;
-  booking_number: string;
-  ground_title: string;
-  player_name: string;
-  vendor_name: string;
-  amount: number;
-  status: string;
-  reason: string | null;
-  cancelled_at: string | null;
-};
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { AdminShell, useAdminSession } from '../../../components/AdminShell';
+import { request, uploadFinancialProof } from '../../../lib/api';
+import { PageControls } from '../../../components/AdminListTools';
+
+type Refund = { id:string; booking_number:string; ground_title:string; player_name:string; vendor_name:string; status:string; responsibility:string; calculated_amount:number; approved_amount:number|null; vendor_funded_amount:number; platform_funded_amount:number; bank_name:string|null; account_title:string|null; account_last_four:string|null; transfer_reference:string|null; has_receipt:boolean; failure_reason:string|null; admin_notes:string|null; created_at:string; completed_at:string|null };
+const money = (value:number|null|undefined) => `Rs ${(value || 0).toLocaleString()}`;
+const label = (value:string) => value.replaceAll('_',' ');
+
 export default function RefundsPage() {
-  const ready = useAdminSession();
-  const [items, setItems] = useState<Refund[]>([]);
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [message, setMessage] = useState("");
-  useEffect(() => {
-    if (ready)
-      void request(`/refunds?q=${encodeURIComponent(query)}&page=${page}&limit=50`)
-        .then((value) => { const data = value as { refunds: Refund[]; pagination: { has_more: boolean } }; setItems(data.refunds); setHasMore(data.pagination.has_more); })
-        .catch((error) =>
-          setMessage(
-            error instanceof Error ? error.message : "Unable to load refunds.",
-          ),
-        );
-  }, [ready, query, page]);
-  return (
-    <AdminShell active="refunds">
-      <header>
-        <div>
-          <p className="eyebrow">REFUNDS &amp; DISPUTES</p>
-          <h1>Refund records</h1>
-        </div>
-        <CsvExport rows={items.map((item) => ({ booking: item.booking_number, ground: item.ground_title, player: item.player_name, vendor: item.vendor_name, amount_pkr: item.amount, status: item.status, reason: item.reason, cancelled_at: item.cancelled_at }))} filename={`refunds-page-${page}.csv`} columns={[{ key: "booking", label: "Booking" }, { key: "ground", label: "Ground" }, { key: "player", label: "Player" }, { key: "vendor", label: "Vendor" }, { key: "amount_pkr", label: "Amount PKR" }, { key: "status", label: "Status" }, { key: "reason", label: "Reason" }, { key: "cancelled_at", label: "Cancelled at" }]} />
-      </header>
-      <p className="muted compact">
-        Refund calculations are recorded here. Gateway settlement actions remain
-        disabled until provider webhooks are available.
-      </p>
-      {message && <p className="banner-error">{message}</p>}
-      <div className="toolbar"><input placeholder="Search booking, ground, player…" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} /></div>
-      <section className="data-table">
-        <div className="table-head transaction-table">
-          <span>Booking</span>
-          <span>Ground</span>
-          <span>Player / vendor</span>
-          <span>Amount</span>
-          <span>Status</span>
-          <span>Cancelled</span>
-        </div>
-        {items.map((item) => (
-          <div className="table-row transaction-table" key={item.id}>
-            <span>
-              <b>{item.booking_number}</b>
-              <small>{item.reason || "Cancellation"}</small>
-            </span>
-            <span>{item.ground_title}</span>
-            <span>
-              {item.player_name} <small>→ {item.vendor_name}</small>
-            </span>
-            <span>
-              <b>Rs {item.amount.toLocaleString()}</b>
-            </span>
-            <span>
-              <em
-                className={
-                  item.status === "refunded" ? "badge live" : "badge pending"
-                }
-              >
-                {item.status.replace("_", " ")}
-              </em>
-            </span>
-            <span>
-              {item.cancelled_at
-                ? new Date(item.cancelled_at).toLocaleDateString()
-                : "—"}
-            </span>
-          </div>
-        ))}
-        {items.length === 0 && (
-          <p className="empty">No refundable cancellations are recorded.</p>
-        )}
-      </section>
-      <PageControls page={page} hasMore={hasMore} onPrevious={() => setPage((value) => Math.max(1, value - 1))} onNext={() => setPage((value) => value + 1)} />
-    </AdminShell>
-  );
+  const ready=useAdminSession(); const [items,setItems]=useState<Refund[]>([]); const [status,setStatus]=useState('all'); const [query,setQuery]=useState(''); const [page,setPage]=useState(1); const [hasMore,setHasMore]=useState(false); const [selected,setSelected]=useState<Refund|null>(null); const [message,setMessage]=useState(''); const [success,setSuccess]=useState(''); const [working,setWorking]=useState(false);
+  const [amount,setAmount]=useState(''); const [responsibility,setResponsibility]=useState('policy'); const [notes,setNotes]=useState(''); const [reference,setReference]=useState(''); const [receipt,setReceipt]=useState<File|null>(null);
+  async function load(){if(!ready)return;try{setMessage('');const data=await request(`/refund-cases?status=${status}&q=${encodeURIComponent(query)}&page=${page}&limit=50`) as {refunds:Refund[];pagination:{has_more:boolean}};setItems(data.refunds);setHasMore(data.pagination.has_more);if(selected)setSelected(data.refunds.find((item)=>item.id===selected.id)||null);}catch(error){setMessage(error instanceof Error?error.message:'Unable to load refunds.');}}
+  useEffect(()=>{void load();},[ready,status,query,page]);
+  function choose(item:Refund){setSelected(item);setAmount(String(item.approved_amount||item.calculated_amount));setResponsibility(item.responsibility);setNotes(item.admin_notes||'');setReference(item.transfer_reference||'');setReceipt(null);setSuccess('');}
+  async function approve(){if(!selected)return;setWorking(true);try{await request(`/refund-cases/${selected.id}/approve`,{method:'POST',body:JSON.stringify({amount:Number(amount),responsibility,notes})});setSuccess('Refund approved and ready for bank transfer.');await load();}catch(error){setMessage(error instanceof Error?error.message:'Unable to approve refund.');}finally{setWorking(false);}}
+  async function complete(){if(!selected||!receipt)return setMessage('Choose the bank receipt before completing the refund.');setWorking(true);try{const key=await uploadFinancialProof(receipt);await request(`/refund-cases/${selected.id}/complete`,{method:'POST',body:JSON.stringify({transfer_reference:reference,receipt_storage_key:key})});setSuccess('Refund recorded as paid. Booking and ledger records were updated.');await load();}catch(error){setMessage(error instanceof Error?error.message:'Unable to complete refund.');}finally{setWorking(false);}}
+  async function fail(){if(!selected)return;const reason=window.prompt('Why did this bank transfer fail?');if(!reason)return;setWorking(true);try{await request(`/refund-cases/${selected.id}/fail`,{method:'POST',body:JSON.stringify({reason})});setSuccess('Refund marked failed and kept available for review.');await load();}catch(error){setMessage(error instanceof Error?error.message:'Unable to update refund.');}finally{setWorking(false);}}
+  const totals=useMemo(()=>({amount:items.reduce((sum,item)=>sum+(item.approved_amount||item.calculated_amount),0),pending:items.filter((item)=>!['refunded','rejected'].includes(item.status)).length,done:items.filter((item)=>item.status==='refunded').length}),[items]);
+  return <AdminShell active="refunds"><header><div><p className="eyebrow">MONEY OPERATIONS</p><h1>Refunds &amp; disputes</h1><p className="muted compact">Review calculated refunds, verify the player bank account, and record each manual bank transfer with proof.</p></div><button className="outline" onClick={()=>location.href='/dashboard/disputes'}>Open disputes</button></header>
+    {message?<p className="banner-error">{message}<button onClick={()=>setMessage('')}>×</button></p>:null}{success?<p className="banner-success">{success}</p>:null}
+    <section className="stat-grid"><article className="stat"><small>Visible refund value</small><strong>{money(totals.amount)}</strong></article><article className="stat"><small>Needs action</small><strong>{totals.pending}</strong></article><article className="stat"><small>Paid refunds</small><strong>{totals.done}</strong></article></section>
+    <div className="toolbar"><input placeholder="Search booking, player, vendor or ground…" value={query} onChange={(event)=>{setPage(1);setQuery(event.target.value);}}/><select value={status} onChange={(event)=>{setPage(1);setStatus(event.target.value);}}><option value="all">All refund statuses</option><option value="awaiting_bank_details">Waiting for bank details</option><option value="pending_review">Needs review</option><option value="approved">Approved — send payment</option><option value="failed">Failed — retry</option><option value="refunded">Refunded</option></select></div>
+    <section className="data-table"><div className="table-head refund-table"><span>Booking / player</span><span>Vendor / ground</span><span>Amount</span><span>Funding</span><span>Status</span><span>Action</span></div>{items.map((item)=><div className="table-row refund-table" key={item.id}><span><b>{item.booking_number}</b><small>{item.player_name}</small></span><span><b>{item.vendor_name}</b><small>{item.ground_title}</small></span><span><b>{money(item.approved_amount||item.calculated_amount)}</b><small>{item.bank_name?`${item.bank_name} ••••${item.account_last_four}`:'Bank details missing'}</small></span><span><small>Vendor {money(item.vendor_funded_amount)}</small><small>Platform {money(item.platform_funded_amount)}</small></span><span><em className={item.status==='refunded'?'badge live':item.status==='failed'?'badge suspended':'badge pending'}>{label(item.status)}</em></span><span><button className="outline" onClick={()=>choose(item)}>Open</button></span></div>)}{!items.length?<p className="empty">No refund cases match this view.</p>:null}</section>
+    <PageControls page={page} hasMore={hasMore} onPrevious={()=>setPage((value)=>Math.max(1,value-1))} onNext={()=>setPage((value)=>value+1)}/>
+    {selected?<div className="ops-modal-backdrop" onMouseDown={()=>setSelected(null)}><section className="ops-modal" onMouseDown={(event)=>event.stopPropagation()}><div className="ops-modal-head"><div><p className="eyebrow">REFUND CASE</p><h2>{selected.booking_number}</h2><p className="muted compact">{selected.player_name} · {selected.vendor_name}</p></div><button className="close-button" onClick={()=>setSelected(null)}>×</button></div><div className="review-facts"><div><dt>Calculated refund</dt><dd>{money(selected.calculated_amount)}</dd></div><div><dt>Player bank</dt><dd>{selected.bank_name?`${selected.bank_name} · ${selected.account_title} · ••••${selected.account_last_four}`:'Waiting for player details'}</dd></div><div><dt>Current status</dt><dd>{label(selected.status)}</dd></div></div>
+      {['pending_review','failed'].includes(selected.status)?<div className="ops-form"><label>Approved refund amount<input inputMode="numeric" value={amount} onChange={(event)=>setAmount(event.target.value.replace(/\D/g,''))}/></label><label>Who funds this refund?<select value={responsibility} onChange={(event)=>setResponsibility(event.target.value)}><option value="policy">Normal policy split</option><option value="vendor">Vendor responsible</option><option value="platform">TurfBookPK responsible</option><option value="shared">Shared using normal split</option></select></label><label className="wide">Internal notes<textarea value={notes} onChange={(event)=>setNotes(event.target.value)} /></label><button disabled={working||!selected.bank_name} className="approve wide" onClick={()=>void approve()}>{working?'Saving…':'Approve refund'}</button></div>:null}
+      {selected.status==='approved'?<div className="ops-form"><label className="wide">Bank transaction reference<input value={reference} onChange={(event)=>setReference(event.target.value)} placeholder="Required bank reference"/></label><label className="wide">Bank receipt (image or PDF)<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event)=>setReceipt(event.target.files?.[0]||null)}/></label><div className="review-actions wide"><button disabled={working||!reference||!receipt} className="approve" onClick={()=>void complete()}>{working?'Uploading and saving…':'Mark refund paid'}</button><button disabled={working} className="danger" onClick={()=>void fail()}>Transfer failed</button></div></div>:null}
+      {selected.status==='refunded'?<p className="decision-saved">Paid successfully. Bank reference: {selected.transfer_reference}. Receipt proof is stored privately.</p>:null}
+    </section></div>:null}
+  </AdminShell>;
 }

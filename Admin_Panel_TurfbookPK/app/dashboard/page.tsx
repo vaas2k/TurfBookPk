@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { request } from '../../lib/api';
 import { AdminShell } from '../../components/AdminShell';
+import { DashboardAnalytics } from '../../components/DashboardAnalytics';
 
 type Counts = { pending_vendors: number; pending_grounds: number; open_review_reports: number; suspended_users: number; total_users: number; active_verified_grounds: number };
 type QueueItem = { id: string; business_name?: string; title?: string; business_city?: string; city?: string; verification_status: string; created_at: string };
@@ -11,7 +12,7 @@ type Report = { id: string; reason: string; status: string; review: { rating: nu
 const empty: Counts = { pending_vendors: 0, pending_grounds: 0, open_review_reports: 0, suspended_users: 0, total_users: 0, active_verified_grounds: 0 };
 
 export default function DashboardPage() {
-  return <FigmaDashboard />;
+  return <DashboardAnalytics />;
   const [name] = useState('Administrator');
   const [counts, setCounts] = useState<Counts>(empty); const [vendors, setVendors] = useState<QueueItem[]>([]); const [grounds, setGrounds] = useState<QueueItem[]>([]); const [reports, setReports] = useState<Report[]>([]); const [message, setMessage] = useState(''); const [loading, setLoading] = useState(true);
   async function load() {

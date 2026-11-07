@@ -1,7 +1,9 @@
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -384,10 +386,12 @@ export default function VendorVerificationFlow({
             />
           ))}
         </View>
+        <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           className="flex-1 px-5 pt-5"
           contentContainerStyle={{ paddingBottom: 28 }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
           {step === 1 && (
@@ -579,6 +583,7 @@ export default function VendorVerificationFlow({
             </TouchableOpacity>
           )}
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

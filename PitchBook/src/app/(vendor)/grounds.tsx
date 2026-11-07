@@ -342,6 +342,7 @@ export default function VendorGrounds() {
             Manage calendar & daily slots
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Manage pitches for ${ground.title}`} onPress={() => router.push({ pathname: '/(vendor)/ground-pitches', params: { id: ground.id, title: ground.title } })} className="border border-[#315536] rounded-xl min-h-[48px] mt-2 items-center justify-center"><Text className="text-[#75D67E] font-bold">Pitches and booking programs</Text></TouchableOpacity>
         <View className="flex-row mt-3">
           <TouchableOpacity
             accessibilityRole="button"

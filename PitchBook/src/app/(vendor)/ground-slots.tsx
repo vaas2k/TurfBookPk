@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   ScrollView,
   StatusBar,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import {
@@ -17,11 +19,16 @@ import {
   GroundBlackout,
   listGroundBlackouts,
   listGroundSlots,
+  listGroundPitches,
+  listVendorGrounds,
+  Pitch,
   Slot,
+  updateGroundSlot,
 } from "@/lib/api/vendors";
 import { Ionicons } from "@expo/vector-icons";
 import { Toast } from "@/components/ui/toast";
 import { goBackOrReplace } from "@/lib/navigation";
+import { compareByOperatingDay, formatTimeRange12 } from "@/lib/time";
 
 const pakistanDate = () =>
   new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -29,28 +36,36 @@ const pakistanDate = () =>
 /** Plain-language daily manager. The older editor remains below temporarily for
  * compatibility, but is deliberately not rendered. */
 export default function GroundSlots() {
-  const { id, title } = useLocalSearchParams<{ id: string; title?: string }>();
+  const { id, title, pitchId } = useLocalSearchParams<{ id: string; title?: string; pitchId?: string }>();
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [pitches, setPitches] = useState<Pitch[]>([]);
+  const [selectedPitchId, setSelectedPitchId] = useState(pitchId || '');
+  const [openingTime, setOpeningTime] = useState('00:00');
   const [blackouts, setBlackouts] = useState<GroundBlackout[]>([]);
   const [date, setDate] = useState(pakistanDate());
-  const [calendarMonth, setCalendarMonth] = useState(
-    pakistanDate().slice(0, 7),
-  );
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [draftDate, setDraftDate] = useState(() => new Date(`${pakistanDate()}T12:00:00`));
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Slot | null>(null);
+  const [updatingSlotId, setUpdatingSlotId] = useState<string | null>(null);
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setLoadError(null);
     try {
-      const [currentSlots, currentBlackouts] = await Promise.all([
+      const [currentSlots, currentBlackouts, currentPitches, currentGrounds] = await Promise.all([
         listGroundSlots(id),
         listGroundBlackouts(id),
+        listGroundPitches(id),
+        listVendorGrounds(),
       ]);
       setSlots(currentSlots);
       setBlackouts(currentBlackouts);
+      setPitches(currentPitches.filter((pitch) => pitch.is_active !== false));
+      setOpeningTime(currentGrounds.find((ground) => ground.id === id)?.operating_hours.open || '00:00');
+      setSelectedPitchId((current) => current || pitchId || currentPitches[0]?.id || '');
     } catch (error: any) {
       const message = error?.message || "Unable to load slots.";
       setLoadError(message);
@@ -58,7 +73,7 @@ export default function GroundSlots() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, pitchId]);
   useEffect(() => {
     load();
   }, [load]);
@@ -72,6 +87,19 @@ export default function GroundSlots() {
     } catch (error: any) {
       setRemoving(null);
       setToast(error?.message || "Unable to remove this slot.");
+    }
+  };
+  const updateSlot = async (slot: Slot, data: Partial<Slot>, message: string) => {
+    if (!id || updatingSlotId) return;
+    setUpdatingSlotId(slot.id);
+    try {
+      await updateGroundSlot(id, slot.id, data);
+      await load();
+      setToast(message);
+    } catch (error: any) {
+      setToast(error?.message || "Unable to update this slot.");
+    } finally {
+      setUpdatingSlotId(null);
     }
   };
   const toggleBlackout = async () => {
@@ -90,38 +118,51 @@ export default function GroundSlots() {
       setToast(error?.message || "Unable to change this closure.");
     }
   };
+  const selectDate = (selected: Date) => {
+    const year = selected.getFullYear();
+    const month = String(selected.getMonth() + 1).padStart(2, "0");
+    const day = String(selected.getDate()).padStart(2, "0");
+    setDate(`${year}-${month}-${day}`);
+    setDraftDate(selected);
+  };
+  const changeDate = (days: number) => {
+    const next = new Date(`${date}T12:00:00`);
+    next.setDate(next.getDate() + days);
+    selectDate(next);
+  };
+  const onAndroidDateChange = (event: DateTimePickerEvent, selected?: Date) => {
+    setDatePickerOpen(false);
+    if (event.type === "set" && selected) selectDate(selected);
+  };
+  // Legacy month-grid values are retained only until its hidden markup is
+  // removed in the scheduled screen-cleanup pass.
+  const calendarMonth = date.slice(0, 7);
   const monthStart = new Date(`${calendarMonth}-01T00:00:00Z`);
-  const daysInMonth = new Date(
-    Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  const days = Array.from(
-    { length: monthStart.getUTCDay() + daysInMonth },
-    (_, index) => {
-      if (index < monthStart.getUTCDay()) return null;
-      const number = index - monthStart.getUTCDay() + 1;
-      const key = `${calendarMonth}-${String(number).padStart(2, "0")}`;
-      return { key, number };
-    },
-  );
+  const daysInMonth = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0)).getUTCDate();
+  const days = Array.from({ length: monthStart.getUTCDay() + daysInMonth }, (_, index) => {
+    if (index < monthStart.getUTCDay()) return null;
+    const number = index - monthStart.getUTCDay() + 1;
+    return { key: `${calendarMonth}-${String(number).padStart(2, "0")}`, number };
+  });
   const moveCalendarMonth = (direction: number) => {
-    const next = new Date(
-      Date.UTC(
-        monthStart.getUTCFullYear(),
-        monthStart.getUTCMonth() + direction,
-        1,
-      ),
-    );
-    const nextMonth = next.toISOString().slice(0, 7);
-    setCalendarMonth(nextMonth);
-    setDate(`${nextMonth}-01`);
+    const next = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + direction, 1));
+    setDate(`${next.toISOString().slice(0, 7)}-01`);
   };
   const todaySlots = slots
-    .filter((slot) => slot.date === date)
-    .sort((a, b) => a.start_time.localeCompare(b.start_time));
+    .filter((slot) => slot.date === date && (!selectedPitchId || slot.pitch_id === selectedPitchId))
+    .sort((a, b) => compareByOperatingDay(a.start_time, b.start_time, openingTime));
   const isBlackout = blackouts.some((item) => item.date === date);
   const available = todaySlots.filter(
-    (slot) => !slot.is_booked && !slot.is_blocked,
+    (slot) => !slot.is_booked && !slot.is_blocked && !slot.is_held,
   ).length;
+  const statusFor = (slot: Slot) => {
+    if (slot.is_booked) return { label: "Booked", color: "#F58A7C", background: "#3B2421" };
+    if (slot.is_held) return { label: "Held", color: "#F5C76B", background: "#3A3120" };
+    if (slot.is_club_reserved) return { label: "Club", color: "#CBB2FF", background: "#30263F" };
+    if (slot.resource_unavailable) return { label: "Used by another pitch option", color: "#8FC5FF", background: "#1E3245" };
+    if (slot.is_blocked) return { label: "Unavailable", color: "#B8BBB5", background: "#30352E" };
+    return { label: "Available", color: "#75D67E", background: "#203B24" };
+  };
   return (
     <SafeAreaView
       edges={["top", "bottom", "left", "right"]}
@@ -153,6 +194,9 @@ export default function GroundSlots() {
             </Text>
           </View>
         </View>
+        <Text className="text-[#AFAFA9] text-sm mb-2">Pitch calendar</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">{pitches.map((pitch) => <TouchableOpacity key={pitch.id} onPress={() => setSelectedPitchId(pitch.id)} className={`rounded-xl border px-4 py-3 mr-2 ${selectedPitchId === pitch.id ? 'border-[#57CC63] bg-[#17301B]' : 'border-[#455A43] bg-[#1B1F19]'}`}><Text className="text-[#F5F5F0] font-bold">{pitch.name} · {pitch.side} a-side</Text></TouchableOpacity>)}</ScrollView>
+        <TouchableOpacity accessibilityRole="button" onPress={() => router.push({ pathname: '/(vendor)/ground-pitches', params: { id, title } })} className="rounded-xl border border-[#315536] px-4 py-3 mb-5"><Text className="text-[#75D67E] font-bold">Add or manage pitches</Text></TouchableOpacity>
         {loadError && slots.length === 0 && !loading && (
           <View className="mb-5 items-center rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-6 py-7">
             <Ionicons name="cloud-offline-outline" size={36} color="#DC2626" />
@@ -176,7 +220,7 @@ export default function GroundSlots() {
           onPress={() =>
             router.push({
               pathname: "/(vendor)/setup-schedule",
-              params: { id, title },
+              params: { id, title, pitchId: selectedPitchId },
             })
           }
           className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 mb-5 flex-row items-center"
@@ -194,7 +238,15 @@ export default function GroundSlots() {
           </View>
           <Ionicons name="chevron-forward" size={20} color="#57CC63" />
         </TouchableOpacity>
-        <View className="bg-[#1B1F19] border border-[#30372B] rounded-2xl p-3 mb-4">
+        <View className="rounded-2xl border border-[#315536] bg-[#172319] p-4 mb-4">
+          <View className="flex-row items-center">
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Previous date" onPress={() => changeDate(-1)} className="h-11 w-11 items-center justify-center rounded-xl bg-[#252F25]"><Ionicons name="chevron-back" size={20} color="#F5F5F0" /></TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose a date" onPress={() => { setDraftDate(new Date(`${date}T12:00:00`)); setDatePickerOpen(true); }} className="mx-3 min-h-[52px] flex-1 flex-row items-center rounded-xl bg-[#243326] px-4"><View className="h-9 w-9 items-center justify-center rounded-lg bg-[#42B84F]"><Ionicons name="calendar-outline" size={19} color="#102110" /></View><View className="ml-3 flex-1"><Text className="text-[11px] font-bold uppercase tracking-wider text-[#8EB493]">Selected date</Text><Text className="mt-0.5 font-bold text-[#F5F5F0]">{new Date(`${date}T12:00:00`).toLocaleDateString("en-PK", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</Text></View><Ionicons name="chevron-down" size={17} color="#AFAFA9" /></TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Next date" onPress={() => changeDate(1)} className="h-11 w-11 items-center justify-center rounded-xl bg-[#252F25]"><Ionicons name="chevron-forward" size={20} color="#F5F5F0" /></TouchableOpacity>
+          </View>
+          <View className="mt-3 flex-row items-center justify-between"><Text className="text-xs text-[#A8C9AC]">Tap the date to choose any day</Text>{date !== pakistanDate() ? <TouchableOpacity accessibilityRole="button" onPress={() => selectDate(new Date(`${pakistanDate()}T12:00:00`))} className="min-h-[36px] justify-center rounded-lg border border-[#47784C] px-3"><Text className="text-xs font-bold text-[#75D67E]">Go to today</Text></TouchableOpacity> : <View className="rounded-full bg-[#2C5932] px-3 py-1.5"><Text className="text-[11px] font-bold text-[#8EE298]">TODAY</Text></View>}</View>
+        </View>
+        <View className="hidden">
           <Text className="text-[#1A1A2E] font-bold mb-3">
             Calendar — next 31 days
           </Text>
@@ -246,7 +298,7 @@ export default function GroundSlots() {
                   />
                 );
               const count = slots.filter(
-                (slot) => slot.date === item.key,
+                (slot) => slot.date === item.key && (!selectedPitchId || slot.pitch_id === selectedPitchId),
               ).length;
               const active = date === item.key;
               return (
@@ -295,27 +347,23 @@ export default function GroundSlots() {
             })}
           </View>
         </View>
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Manage selected day slots"
-          onPress={() =>
-            router.push({
-              pathname: "/(vendor)/ground-slot-day",
-              params: { id, title, date },
-            })
-          }
-          className="bg-[#42B84F] rounded-2xl p-4 mb-4 flex-row items-center justify-between"
-        >
-          <View>
-            <Text className="text-[#102110] font-bold text-base">
-              Manage this day
-            </Text>
-            <Text className="text-[#17351A] text-xs mt-1">
-              {todaySlots.length} slots for {date}
-            </Text>
-          </View>
-          <Ionicons name="arrow-forward" size={22} color="#102110" />
-        </TouchableOpacity>
+        <View className="mb-4">
+          <View className="mb-3 flex-row items-center justify-between"><View><Text className="text-lg font-bold text-[#F5F5F0]">Active slots</Text><Text className="mt-0.5 text-xs text-[#92978F]">{todaySlots.length} slot{todaySlots.length === 1 ? "" : "s"} · {available} available</Text></View>{isBlackout ? <View className="rounded-full bg-[#3B2421] px-3 py-2"><Text className="text-xs font-bold text-[#F58A7C]">GROUND CLOSED</Text></View> : null}</View>
+          {loading ? <ActivityIndicator className="py-8" color="#57CC63" /> : todaySlots.length === 0 ? <View className="items-center rounded-2xl border border-[#30372B] bg-[#1B1F19] px-5 py-7"><Ionicons name="calendar-outline" size={32} color="#71786D" /><Text className="mt-3 font-bold text-[#F5F5F0]">No active slots on this date</Text><Text className="mt-1 text-center text-sm text-[#92978F]">Choose another date or change the regular booking times.</Text></View> : todaySlots.map((slot) => {
+            const status = statusFor(slot);
+            const editable = !slot.is_booked && !slot.is_held && !slot.resource_unavailable;
+            const busy = updatingSlotId === slot.id;
+            return <View key={slot.id} className="mb-3 rounded-2xl border border-[#30372B] bg-[#1B1F19] p-4">
+              <View className="flex-row items-center"><View className="h-11 w-11 items-center justify-center rounded-xl bg-[#252F25]"><Ionicons name="time-outline" size={21} color="#75D67E" /></View><View className="ml-3 flex-1"><Text className="text-base font-bold text-[#F5F5F0]">{formatTimeRange12(slot.start_time, slot.end_time)}</Text><Text className="mt-1 text-xs text-[#92978F]">PKR {slot.price.toLocaleString()}{slot.is_peak ? " · Peak price" : ""}</Text></View><View style={{ backgroundColor: status.background }} className="rounded-full px-3 py-2"><Text style={{ color: status.color }} className="text-[11px] font-bold uppercase">{status.label}</Text></View></View>
+              {editable ? <View className="mt-4 flex-row border-t border-[#30372B] pt-3">
+                <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={() => void updateSlot(slot, { is_blocked: !slot.is_blocked, is_club_reserved: false }, slot.is_blocked ? "Slot is available again." : "Slot blocked.")} className="mr-2 min-h-[42px] flex-1 items-center justify-center rounded-xl border border-[#F4B844]"><Text className="text-xs font-bold text-[#F4B844]">{slot.is_blocked ? "Unblock" : "Block"}</Text></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={() => void updateSlot(slot, { is_club_reserved: !slot.is_club_reserved, is_blocked: false, reservation_note: slot.is_club_reserved ? null : "Reserved by venue" }, slot.is_club_reserved ? "Club reservation released." : "Reserved for your club.")} className="mr-2 min-h-[42px] flex-1 items-center justify-center rounded-xl border border-[#B794F6]"><Text className="text-xs font-bold text-[#CBB2FF]">{slot.is_club_reserved ? "Release" : "Reserve"}</Text></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={() => setRemoving(slot)} className="min-h-[42px] flex-1 items-center justify-center rounded-xl border border-[#F58A7C]"><Text className="text-xs font-bold text-[#F58A7C]">Remove</Text></TouchableOpacity>
+              </View> : <Text className="mt-3 border-t border-[#30372B] pt-3 text-xs text-[#92978F]">This slot is protected because a player has booked or is paying for it.</Text>}
+              {busy ? <ActivityIndicator className="absolute bottom-1 right-1" size="small" color="#57CC63" /> : null}
+            </View>;
+          })}
+        </View>
         <TouchableOpacity
           onPress={toggleBlackout}
           className={`rounded-2xl p-4 mb-5 flex-row items-center border ${isBlackout ? "bg-[#17301B] border-[#315536]" : "bg-[#38201E] border-[#69332C]"}`}
@@ -345,62 +393,17 @@ export default function GroundSlots() {
             color={isBlackout ? "#2E7D32" : "#DC2626"}
           />
         </TouchableOpacity>
-        <View className="flex-row mb-4">
-          <View className="flex-1 bg-[#1B1F19] border border-[#30372B] rounded-xl p-3 mr-2">
-            <Text className="text-[#92978F] text-xs">Available</Text>
-            <Text className="text-[#57CC63] text-xl font-bold mt-1">
-              {available}
-            </Text>
-          </View>
-          <View className="flex-1 bg-[#1B1F19] border border-[#30372B] rounded-xl p-3 mr-2">
-            <Text className="text-[#92978F] text-xs">Booked</Text>
-            <Text className="text-[#DC2626] text-xl font-bold mt-1">
-              {todaySlots.filter((slot) => slot.is_booked).length}
-            </Text>
-          </View>
-          <View className="flex-1 bg-[#1B1F19] border border-[#30372B] rounded-xl p-3">
-            <Text className="text-[#92978F] text-xs">Unavailable</Text>
-            <Text className="text-[#C56A00] text-xl font-bold mt-1">
-              {todaySlots.filter((slot) => slot.is_blocked).length}
-            </Text>
+      </ScrollView>
+      {Platform.OS === "android" && datePickerOpen ? <DateTimePicker value={draftDate} mode="date" display="calendar" onChange={onAndroidDateChange} /> : null}
+      <Modal visible={Platform.OS === "ios" && datePickerOpen} transparent animationType="slide" onRequestClose={() => setDatePickerOpen(false)}>
+        <View className="flex-1 justify-end bg-black/60">
+          <View className="rounded-t-3xl border-t border-[#30372B] bg-[#1B1F19] px-5 pb-9 pt-4">
+            <View className="h-1 w-11 self-center rounded-full bg-[#60665E]" />
+            <View className="mt-4 flex-row items-center justify-between"><TouchableOpacity accessibilityRole="button" onPress={() => setDatePickerOpen(false)} className="min-h-[44px] justify-center px-2"><Text className="font-bold text-[#AFAFA9]">Cancel</Text></TouchableOpacity><Text className="text-lg font-bold text-[#F5F5F0]">Choose a date</Text><TouchableOpacity accessibilityRole="button" onPress={() => { selectDate(draftDate); setDatePickerOpen(false); }} className="min-h-[44px] justify-center px-2"><Text className="font-bold text-[#75D67E]">Done</Text></TouchableOpacity></View>
+            <DateTimePicker value={draftDate} mode="date" display="spinner" themeVariant="dark" textColor="#F5F5F0" onChange={(_, selected) => selected && setDraftDate(selected)} style={{ height: 210 }} />
           </View>
         </View>
-        <Text className="text-[#F5F5F0] text-lg font-bold mb-3">
-          {new Date(`${date}T12:00:00`).toLocaleDateString("en-PK", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          })}
-        </Text>
-        {loading ? (
-          <ActivityIndicator className="mt-8" color="#4CAF50" />
-        ) : todaySlots.length === 0 ? (
-          <View className="bg-[#1B1F19] border border-[#30372B] rounded-2xl p-7 items-center">
-            <Ionicons name="calendar-outline" size={36} color="#9CA3AF" />
-            <Text className="text-[#F5F5F0] font-bold mt-3">
-              No slots on this day
-            </Text>
-            <Text className="text-[#92978F] text-center mt-1">
-              Change your regular booking times to add slots.
-            </Text>
-          </View>
-        ) : (
-          <View className="bg-[#1B1F19] border border-[#30372B] rounded-2xl p-5 items-center">
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={30}
-              color="#57CC63"
-            />
-            <Text className="text-[#F5F5F0] font-bold mt-2">
-              Daily slots are ready
-            </Text>
-            <Text className="text-[#92978F] text-sm text-center mt-1">
-              Open day management to block, reserve for your club, or remove
-              individual slots.
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+      </Modal>
       <Modal
         visible={Boolean(removing)}
         transparent

@@ -42,3 +42,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Required by the Android Firebase/notification config. It remains Git-ignored.
+!google-services.json

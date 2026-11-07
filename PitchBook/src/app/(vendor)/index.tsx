@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import {
+  Alert,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -47,6 +48,16 @@ function OwnerHomeView({
   onRefresh: () => void;
 }) {
   const next = schedule[0];
+  const switchToPlayer = useAuthStore((state) => state.switchToPlayer);
+  const [switchingMode, setSwitchingMode] = useState(false);
+  const openPlayerBooking = async () => {
+    if (switchingMode) return;
+    setSwitchingMode(true);
+    const { error } = await switchToPlayer();
+    setSwitchingMode(false);
+    if (error) Alert.alert('Unable to open player mode', error.message);
+    else router.replace('/(player)');
+  };
 
   // Format currency to match image style
   const formatCurrency = (value: number) => {
@@ -104,7 +115,7 @@ function OwnerHomeView({
             </Text>
             <Text className="text-[#92978F] text-xs mt-2">Bookings</Text>
           </View>
-          <TouchableOpacity
+          <View className="flex-row gap-2"><TouchableOpacity accessibilityRole="button" accessibilityLabel="Book another ground as a player" disabled={switchingMode} onPress={() => void openPlayerBooking()} className="h-11 px-3 flex-row flex-shrink-0 rounded-full bg-[#17301B] border border-[#315536] items-center justify-center"><Ionicons name="football-outline" size={18} color="#75D67E" /><Text className="text-[#75D67E] text-xs font-bold ml-1.5">Book</Text></TouchableOpacity><TouchableOpacity
             onPress={() => router.push("/(vendor)/notifications")}
             className="h-11 w-11 flex-shrink-0 rounded-full bg-[#1B1F19] border border-[#30372B] items-center justify-center"
           >
@@ -116,7 +127,7 @@ function OwnerHomeView({
                 </Text>
               </View>
             )}
-          </TouchableOpacity>
+          </TouchableOpacity></View>
         </View>
 
         {/* Stats Card */}

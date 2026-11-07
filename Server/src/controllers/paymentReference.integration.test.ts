@@ -35,6 +35,20 @@ async function availablePort(): Promise<number> {
   return address.port;
 }
 
+async function waitForTestApi(api: ChildProcess, root: string): Promise<void> {
+  // CI starts this process alongside the rest of the test suite, so a fixed
+  // number of short probes can expire before Node/tsx finishes startup.
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (api.exitCode !== null) throw new Error(`Payment HTTP test API exited with code ${api.exitCode}`);
+    try {
+      if ((await fetch(`${root}/ready`, { signal: AbortSignal.timeout(1_000) })).ok) return;
+    } catch { /* startup */ }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error('Payment HTTP test API did not become ready within 20 seconds');
+}
+
 test('parallel reference requests make only one provider generation call', async () => {
   const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
   const cnic = `3${randomInt(100_000_000_000, 999_999_999_999)}`;
@@ -77,14 +91,7 @@ test('parallel reference requests make only one provider generation call', async
     const port = await availablePort();
     api = spawn(process.execPath, ['--import', 'tsx', 'src/server.ts'], { cwd: process.cwd(), env: { ...process.env, PORT: String(port), TRUST_PROXY_HOPS: '0', CLINK_ALLOW_UNVERIFIED_SANDBOX_ACK: 'false' }, stdio: 'ignore' });
     const root = `http://127.0.0.1:${port}/api`;
-    let ready = false;
-    for (let index = 0; index < 50; index++) {
-      if (api.exitCode !== null) throw new Error('Payment HTTP test API exited before readiness');
-      try { ready = (await fetch(`${root}/ready`, { signal: AbortSignal.timeout(1000) })).ok; } catch { /* startup */ }
-      if (ready) break;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    assert.equal(ready, true, 'Payment HTTP test API did not become ready');
+    await waitForTestApi(api, root);
     const otpStatuses = [];
     for (let index = 0; index < 6; index++) {
       const result = await fetch(`${root}/auth/otp/request`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `198.51.100.${index + 1}` }, body: JSON.stringify({ phone: 'invalid' }) });
@@ -128,14 +135,7 @@ test('parallel reference requests make only one provider generation call', async
     const sandboxPort = await availablePort();
     sandboxApi = spawn(process.execPath, ['--import', 'tsx', 'src/server.ts'], { cwd: process.cwd(), env: { ...process.env, PORT: String(sandboxPort), CLINK_ALLOW_UNVERIFIED_SANDBOX_ACK: 'true' }, stdio: 'ignore' });
     const sandboxRoot = `http://127.0.0.1:${sandboxPort}/api`;
-    let sandboxReady = false;
-    for (let index = 0; index < 50; index++) {
-      if (sandboxApi.exitCode !== null) throw new Error('Sandbox HTTP test API exited before readiness');
-      try { sandboxReady = (await fetch(`${sandboxRoot}/ready`, { signal: AbortSignal.timeout(1000) })).ok; } catch { /* startup */ }
-      if (sandboxReady) break;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    assert.equal(sandboxReady, true, 'Sandbox HTTP test API did not become ready');
+    await waitForTestApi(sandboxApi, sandboxRoot);
     const callbackUrl = `${sandboxRoot}/payments/clink/acknowledgment`;
     const callback = (body: string) => fetch(callbackUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body });
     assert.equal((await (await callback('{invalid')).json())[0].Status_Code, '0');

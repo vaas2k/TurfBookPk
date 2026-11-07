@@ -28,7 +28,7 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Prevent vendors from creating slots in the past.
 - [x] Filter past slots out of public ground and availability responses.
 - [x] Add selectable 5/10/15-minute pitch changeovers to new vendor schedules (10-minute default), snapshot the selected gap on slots/bookings, and enforce occupied-time conflicts in PostgreSQL and the API.
-- [x] Apply and verify `Server/drizzle/0034_slot_turnaround.sql` on the local development database; the rollback-only SQL check passed. Device testing of old bookings alongside the new schedule wizard remains.
+- [x] Apply and verify `Server/drizzle/0034_slot_turnaround.sql` on the local development database; the rollback-only SQL check passed. The vendor slot timing was checked on a physical device on 2026-11-02. Old-booking schedule edits and delayed-start recording still need device checks.
 - [x] Fix ground deletion with historical bookings by using archival/deactivation instead of destructive deletion.
 - [x] Apply and verify `Server/drizzle/0005_slot_time_integrity.sql` against the target database.
   - [x] Detect and resolve existing overlapping slot records first. (Migration applied successfully; the exclusion constraint would reject any pre-existing overlaps.)
@@ -217,7 +217,8 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Time-tier cancellation quote, grace windows, exact cancellation preview, and no-show strike tracking.
 - [ ] Add payment-gateway refund execution, account-credit fallback, force-majeure review, rescheduling, and an enforcement workflow after three no-shows.
 - [x] Add vendor-selectable pitch sizes and a practical preset amenity list, with support for custom amenities.
-- [x] Allow a player to reserve future recurring slots while paying only the first slot. Future slots open a configurable payment window 2 hours before start (30 minutes by default); payment confirms that slot, otherwise maintenance releases it. In-app notifications are implemented; remote push will reuse this event later.
+- [x] Allow a player to pay same-day recurring selections while reserving later dates. Future payments open 24 hours before start and close 2 hours before start; payment confirms that slot, otherwise maintenance releases it.
+- [x] Add a time-limited player Match Hub with issue reporting, vendor response/appeal, admin resolution, payout holds, and outcome notifications.
 - [x] allow vendors to activate or deactivate ground on future date
 - 
 
@@ -226,3 +227,9 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [ ] Add Google Sign-In with server-side identity-token verification.
 - [ ] Add Sign in with Apple for iOS with server-side identity-token verification.
 - [ ] Configure and test APNs/EAS credentials and iOS remote-push delivery, permissions, foreground/background behavior, and notification tap routing.
+## Multi-pitch rollout
+
+- [x] Model independent and combined pitches with separate price/schedule and atomic physical-pitch occupancy.
+- [x] Preserve existing slots/bookings through a default-pitch migration and support next-day closing hours.
+- [x] Add vendor/player pitch selection and show pitch identity on bookings.
+- [ ] Rehearse migration with a copy of existing production-sized data and verify vendor/player workflows on a physical device before deployment.

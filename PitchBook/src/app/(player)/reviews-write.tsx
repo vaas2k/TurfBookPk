@@ -1,5 +1,7 @@
 import { useState } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StatusBar,
   Text,
@@ -49,10 +51,12 @@ export default function WriteReview() {
       <StatusBar
         barStyle={appearance === "dark" ? "light-content" : "dark-content"}
       />
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        className="px-5"
+        className="flex-1 px-5"
         contentContainerStyle={{ paddingBottom: 40 }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <View className="flex-row items-center py-4">
           <TouchableOpacity
@@ -159,6 +163,7 @@ export default function WriteReview() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
       <Toast message={error} tone="error" onHide={() => setError(null)} />
     </SafeAreaView>
   );

@@ -5,6 +5,19 @@ import { request } from '../../../lib/api';
 import { CsvExport, PageControls } from '../../../components/AdminListTools';
 
 type Transaction = { id: string; provider: string; provider_reference: string | null; clink_id: string | null; consumer_number: string | null; provider_status: string; review_status: string; amount: number; final_payable_amount: number | null; status: string; booking_number: string; ground_title: string; player_name: string; vendor_name: string; created_at: string; paid_at: string | null };
+function transactionStatus(item: Transaction): { label: string; tone: string } {
+  if (item.review_status === 'manual_review') return { label: 'Manual review', tone: 'attention' };
+  const status = ['refund_pending', 'refunded', 'partially_refunded'].includes(item.status) ? item.status : item.provider_status || item.status;
+  if (status === 'paid') return { label: 'Payment received', tone: 'live' };
+  if (status === 'refunded') return { label: 'Refund completed', tone: 'live' };
+  if (status === 'partially_refunded') return { label: 'Partially refunded', tone: 'attention' };
+  if (status === 'refund_pending') return { label: 'Refund awaiting transfer', tone: 'attention' };
+  if (status === 'pending' || status === 'initializing') return { label: 'Awaiting customer payment', tone: 'pending' };
+  if (status === 'unknown') return { label: 'Provider result unknown', tone: 'attention' };
+  if (status === 'expired') return { label: 'Payment window expired', tone: 'neutral' };
+  if (status === 'failed') return { label: 'Payment failed', tone: 'suspended' };
+  return { label: status.replaceAll('_', ' '), tone: 'neutral' };
+}
 export default function TransactionsPage() {
   return <ClinkTransactionsWorkspace />;
   const ready = useAdminSession(); const [items, setItems] = useState<Transaction[]>([]); const [status, setStatus] = useState('all'); const [query, setQuery] = useState(''); const [page, setPage] = useState(1); const [hasMore, setHasMore] = useState(false); const [message, setMessage] = useState('');
@@ -33,7 +46,7 @@ function ClinkTransactionsWorkspace() {
     <header><div><p className="eyebrow">FINANCIAL RECORDS</p><h1>Transactions</h1><p className="muted compact">Booking and order payment attempts. Provider refunds and settlement remain read-only.</p></div><CsvExport rows={csv} filename={`transactions-page-${page}.csv`} columns={[{ key: 'booking', label: 'Booking / order' }, { key: 'clink_id', label: 'Clink ID' }, { key: 'consumer_number', label: 'Consumer number' }, { key: 'player', label: 'Player' }, { key: 'vendor', label: 'Vendor' }, { key: 'amount_pkr', label: 'Amount PKR' }, { key: 'status', label: 'Status' }, { key: 'provider_status', label: 'Provider status' }, { key: 'review_status', label: 'Review status' }, { key: 'date', label: 'Date' }]} /></header>
     {message ? <p className="banner-error">{message}</p> : null}
     <div className="toolbar"><input placeholder="Search booking, order, Clink ID, player…" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} /><select value={status} onChange={(event) => { setPage(1); setStatus(event.target.value); }}><option value="all">All statuses</option><option value="pending">Pending</option><option value="paid">Paid</option><option value="expired">Expired</option><option value="failed">Failed</option><option value="unknown">Unknown generation</option><option value="manual_review">Manual review</option><option value="refund_pending">Refund pending</option></select></div>
-    <section className="data-table"><div className="table-head transaction-table"><span>Booking / reference</span><span>Ground</span><span>Player / vendor</span><span>Amount</span><span>Status</span><span>Date</span></div>{items.map((item) => <div className="table-row transaction-table" key={item.id}><span><b>{item.booking_number}</b><small>{item.clink_id ? `Clink ${item.clink_id}` : item.provider}</small><small>{item.consumer_number || ''}</small></span><span>{item.ground_title}</span><span>{item.player_name}<small>→ {item.vendor_name}</small></span><span><b>Rs {(item.final_payable_amount ?? item.amount).toLocaleString()}</b></span><span><em className={item.status === 'paid' ? 'badge live' : item.status === 'failed' ? 'badge suspended' : 'badge pending'}>{item.review_status === 'manual_review' ? 'manual review' : item.provider_status.replaceAll('_', ' ')}</em></span><span>{new Date(item.paid_at || item.created_at).toLocaleDateString()}</span></div>)}{!items.length ? <p className="empty">No transaction records match this view.</p> : null}</section>
+    <section className="data-table"><div className="table-head transaction-table"><span>Booking / reference</span><span>Ground</span><span>Player / vendor</span><span>Amount</span><span>Payment state</span><span>Date</span></div>{items.map((item) => { const view = transactionStatus(item); return <div className="table-row transaction-table" key={item.id}><span><b>{item.booking_number}</b><small>{item.clink_id ? `Clink ${item.clink_id}` : item.provider}</small><small>{item.consumer_number || ''}</small></span><span>{item.ground_title}</span><span>{item.player_name}<small>→ {item.vendor_name}</small></span><span><b>Rs {(item.final_payable_amount ?? item.amount).toLocaleString()}</b></span><span><em className={`badge ${view.tone}`}>{view.label}</em></span><span>{new Date(item.paid_at || item.created_at).toLocaleDateString()}</span></div>; })}{!items.length ? <p className="empty">No transaction records match this view.</p> : null}</section>
     <PageControls page={page} hasMore={hasMore} onPrevious={() => setPage((value) => Math.max(1, value - 1))} onNext={() => setPage((value) => value + 1)} />
   </AdminShell>;
 }

@@ -3,13 +3,16 @@ import { and, arrayContains, asc, count, desc, eq, gte, gt, ilike, inArray, lt, 
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
-import { bookings, favoriteGrounds, groundBlackoutDates, groundVerificationDocuments, groundVerifications, grounds, publicGroundCatalogRevision, recentlyViewedGrounds, slots, slotScheduleTemplates, vendors } from '../database/schema.js';
+import { bookings, favoriteGrounds, groundBlackoutDates, groundVerificationDocuments, groundVerifications, grounds, pitchComponents, pitches, publicGroundCatalogRevision, recentlyViewedGrounds, slots, slotScheduleTemplates, vendors } from '../database/schema.js';
 import { env } from '../configs/env.js';
 import { CANCELLATION_POLICIES, cancellationPolicy } from '../services/cancellationPolicy.js';
 import { PeakWindow, effectiveSlotPrice } from '../services/peakPricing.js';
 import { materializeSchedules } from '../services/scheduleMaterialization.js';
 import { cachedPublicDiscovery, cachedPublicGround, publicGroundEtag } from '../services/publicGroundCache.js';
 import { periodsConflict, validTurnaround } from '../services/slotTurnaround.js';
+import { occupiedByAnotherSlot, resourceConflictSql } from '../services/pitchAvailability.js';
+import { isInsideBookingCutoff } from '../services/bookingCutoff.js';
+import { resolveMapLink } from '../services/mapLinkResolver.js';
 
 function textArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()) : [];
@@ -108,10 +111,12 @@ function peakWindows(value: unknown): PeakWindow[] {
     const days = Array.isArray(record.days) ? [...new Set(record.days)] : [];
     const startTime = normalizedTime(record.start_time ?? record.startTime);
     const endTime = normalizedTime(record.end_time ?? record.endTime);
-    if (!days.length || days.some((day) => !Number.isInteger(day) || day < 0 || day > 6) || !startTime || !endTime || startTime >= endTime) {
-      throw new AppError('invalid_peak_windows', 'Each peak window needs days (0-6) and valid start/end times', 422);
+    const endNextDay = record.end_next_day === true || record.endNextDay === true;
+    const validRange = startTime && endTime && (endNextDay ? endTime <= startTime : startTime < endTime);
+    if (!days.length || days.some((day) => !Number.isInteger(day) || day < 0 || day > 6) || !validRange) {
+      throw new AppError('invalid_peak_windows', 'Choose valid peak days and whether the ending time is on the same or next day', 422);
     }
-    return { days: days as number[], startTime, endTime };
+    return { days: days as number[], startTime: startTime!, endTime: endTime!, endNextDay };
   });
 }
 
@@ -121,11 +126,12 @@ function validatePeakConfig(peakPercentage: number | null, windows: PeakWindow[]
   }
 }
 
-function operatingHours(value: unknown): { open: string; close: string } {
+function operatingHours(value: unknown): { open: string; close: string; closeNextDay: boolean } {
   if (!value || typeof value !== 'object') throw new AppError('invalid_operating_hours', 'Operating hours must include opening and closing times', 422);
   const record = value as Record<string, unknown>; const open = normalizedTime(record.open); const close = normalizedTime(record.close);
-  if (!open || !close || open >= close) throw new AppError('invalid_operating_hours', 'Choose valid opening and closing times', 422);
-  return { open, close };
+  const closeNextDay = record.close_next_day === true || record.closeNextDay === true;
+  if (!open || !close || (!closeNextDay && timeMinutes(close) <= timeMinutes(open))) throw new AppError('invalid_operating_hours', 'Closing time must be after opening time, or select closes next day', 422);
+  return { open, close, closeNextDay };
 }
 
 function hasStarted(date: string, time: string): boolean {
@@ -133,16 +139,22 @@ function hasStarted(date: string, time: string): boolean {
 }
 
 function timeMinutes(value: string): number { return Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5)); }
-function conflictingSlot(groundId: string, date: string, startTime: string, endTime: string, turnaroundMinutes: number, excludeId?: string) {
+function closesNextDay(hours: { open: string; close: string; closeNextDay?: boolean }): boolean { return hours.closeNextDay ?? hours.close <= hours.open; }
+function addCalendarDays(value: string, days: number): string { const date = new Date(`${value}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); }
+function conflictingSlot(pitchId: string, date: string, startTime: string, endTime: string, turnaroundMinutes: number, excludeId?: string, endDate = date) {
   return db.select({ id: slots.id }).from(slots).where(and(
-    eq(slots.groundId, groundId),
-    sql`tsrange(${slots.date} + ${slots.startTime}, ${slots.date} + ${slots.endTime} + greatest(${slots.turnaroundMinutes}, ${turnaroundMinutes}) * interval '1 minute', '[)') && tsrange(${date}::date + ${startTime}::time, ${date}::date + ${endTime}::time + ${turnaroundMinutes} * interval '1 minute', '[)')`,
+    eq(slots.pitchId, pitchId),
+    sql`tsrange(${slots.date} + ${slots.startTime}, ${slots.endDate} + ${slots.endTime} + greatest(${slots.turnaroundMinutes}, ${turnaroundMinutes}) * interval '1 minute', '[)') && tsrange(${date}::date + ${startTime}::time, ${endDate}::date + ${endTime}::time + ${turnaroundMinutes} * interval '1 minute', '[)')`,
     excludeId ? ne(slots.id, excludeId) : undefined,
   )).limit(1);
 }
 function enforceSlotPolicy(ground: typeof grounds.$inferSelect, date: string, startTime: string, endTime: string): void {
-  if (timeMinutes(endTime) - timeMinutes(startTime) > env.maxSlotDurationMinutes) throw new AppError('slot_duration_exceeded', `Slots may be at most ${env.maxSlotDurationMinutes} minutes`, 422);
-  if (timeMinutes(startTime) < timeMinutes(ground.operatingHours.open) || timeMinutes(endTime) > timeMinutes(ground.operatingHours.close)) throw new AppError('outside_operating_hours', `Slots must be within ${ground.operatingHours.open}–${ground.operatingHours.close}`, 422);
+  const duration = timeMinutes(endTime) - timeMinutes(startTime) + (endTime <= startTime ? 1440 : 0);
+  if (duration <= 0 || duration > env.maxSlotDurationMinutes) throw new AppError('slot_duration_exceeded', `Slots may be at most ${env.maxSlotDurationMinutes} minutes`, 422);
+  const opens = timeMinutes(ground.operatingHours.open); const closes = timeMinutes(ground.operatingHours.close) + (closesNextDay(ground.operatingHours) ? 1440 : 0);
+  const actualStart = timeMinutes(startTime) + (timeMinutes(startTime) < opens ? 1440 : 0);
+  const insideHours = actualStart >= opens && actualStart + duration <= closes;
+  if (!insideHours) throw new AppError('outside_operating_hours', `Slots must be within ${ground.operatingHours.open}–${ground.operatingHours.close}${closesNextDay(ground.operatingHours) ? ' next day' : ''}`, 422);
   const maxDate = new Date(Date.now() + env.maxAdvanceBookingDays * 86_400_000).toISOString().slice(0, 10);
   if (date > maxDate) throw new AppError('advance_booking_window_exceeded', `Slots may be created up to ${env.maxAdvanceBookingDays} days in advance`, 422);
 }
@@ -154,12 +166,12 @@ function isHeld(row: typeof slots.$inferSelect): boolean {
 function pakistanToday(): string { return new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10); }
 
 export function toGround(row: typeof grounds.$inferSelect) {
-  return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_percentage: row.peakPercentage, peak_windows: row.peakWindows.map((window) => ({ days: window.days, start_time: window.startTime, end_time: window.endTime })), is_active: row.isActive, is_verified: row.isVerified, verification_status: row.verificationStatus, verification_reason: row.verificationReason, rating: row.rating, total_reviews: row.totalReviews, operating_hours: row.operatingHours, turnaround_minutes: row.turnaroundMinutes, scheduling_policy: { max_slot_duration_minutes: env.maxSlotDurationMinutes, max_advance_booking_days: env.maxAdvanceBookingDays }, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+  return { id: row.id, vendor_id: row.vendorId, title: row.title, description: row.description, location: row.location, city: row.city, address: row.address, latitude: row.latitude, longitude: row.longitude, amenities: row.amenities, images: row.images, cover_image: row.coverImage, pitch_type: row.pitchType, price_per_hour: row.pricePerHour, peak_percentage: row.peakPercentage, peak_windows: row.peakWindows.map((window) => ({ days: window.days, start_time: window.startTime, end_time: window.endTime, end_next_day: window.endNextDay === true })), is_active: row.isActive, is_verified: row.isVerified, verification_status: row.verificationStatus, verification_reason: row.verificationReason, rating: row.rating, total_reviews: row.totalReviews, operating_hours: { open: row.operatingHours.open, close: row.operatingHours.close, close_next_day: closesNextDay(row.operatingHours) }, turnaround_minutes: row.turnaroundMinutes, scheduling_policy: { max_slot_duration_minutes: env.maxSlotDurationMinutes, max_advance_booking_days: env.maxAdvanceBookingDays }, rules: row.rules, cancellation_policy: row.cancellationPolicy, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
 function toSlot(row: typeof slots.$inferSelect, ground?: typeof grounds.$inferSelect) {
   const effective = ground ? effectiveSlotPrice(row.date, row.startTime, row.endTime, { basePrice: row.price, peakPercentage: ground.peakPercentage, peakWindows: ground.peakWindows }) : { amount: row.price, isPeak: false };
-  return { id: row.id, ground_id: row.groundId, date: row.date, start_time: row.startTime, end_time: row.endTime, turnaround_minutes: row.turnaroundMinutes, price: effective.amount, base_price: row.price, is_peak: effective.isPeak, is_booked: row.isBooked, is_blocked: row.isBlocked, is_club_reserved: row.isClubReserved, reservation_note: row.reservationNote, is_held: isHeld(row), created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+  return { id: row.id, ground_id: row.groundId, pitch_id: row.pitchId, date: row.date, end_date: row.endDate || row.date, start_time: row.startTime, end_time: row.endTime, turnaround_minutes: row.turnaroundMinutes, price: effective.amount, base_price: row.price, is_peak: effective.isPeak, is_booked: row.isBooked, is_blocked: row.isBlocked, is_club_reserved: row.isClubReserved, reservation_note: row.reservationNote, is_held: isHeld(row), created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
 }
 
 async function vendorIdForUser(userId: string): Promise<string> {
@@ -175,7 +187,89 @@ async function ownedGround(groundId: string, userId: string) {
   return rows[0];
 }
 
+async function selectedPitch(groundId: string, requested: unknown): Promise<string> {
+  const rows = await db.select({ id: pitches.id }).from(pitches).where(and(eq(pitches.groundId, groundId), eq(pitches.isActive, true))).orderBy(asc(pitches.createdAt));
+  const id = typeof requested === 'string' && requested ? requested : rows.length === 1 ? rows[0]!.id : '';
+  if (!rows.some((row) => row.id === id)) throw new AppError('pitch_required', 'Choose a pitch before adding booking times', 422);
+  return id;
+}
+
 export class GroundController {
+  resolveLocation = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const link = typeof request.body?.link === 'string' ? request.body.link.trim() : '';
+    if (!link || link.length > 2_048) throw new AppError('invalid_map_link', 'Paste a valid Google Maps or Apple Maps link', 422);
+    try {
+      const resolved = await resolveMapLink(link);
+      if (!resolved) throw new AppError('map_pin_not_found', 'We could not find a pin in this link. In Maps, drop a pin on the ground and copy its Share link.', 422);
+      response.json({ latitude: resolved.latitude, longitude: resolved.longitude, maps_url: resolved.mapsUrl });
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'unsupported_map_link') throw new AppError('unsupported_map_link', 'Use a Google Maps or Apple Maps Share link', 422);
+      throw new AppError('map_link_unavailable', 'The map link could not be opened right now. Try again or use current location.', 502);
+    }
+  };
+  vendorSlots = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const groundId = routeParam(request.params.id, 'Ground id');
+    const ground = await ownedGround(groundId, request.auth!.userId);
+    const fromDate = typeof request.query.from_date === 'string' ? request.query.from_date : pakistanToday();
+    const toDate = typeof request.query.to_date === 'string' ? request.query.to_date : addCalendarDays(fromDate, 31);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(toDate) || toDate < fromDate || toDate > addCalendarDays(fromDate, 62)) throw new AppError('invalid_date_range', 'Choose a date range of up to 62 days', 422);
+    const rows = await db.select().from(slots).where(and(eq(slots.groundId, groundId), gte(slots.date, fromDate), lte(slots.date, toDate))).orderBy(asc(slots.date), asc(slots.startTime));
+    const busy = await occupiedByAnotherSlot(rows.map((slot) => slot.id));
+    response.setHeader('Cache-Control', 'no-store');
+    response.json({ slots: rows.map((slot) => ({ ...toSlot(slot, ground), resource_unavailable: busy.has(slot.id), is_held: isHeld(slot) || busy.has(slot.id) })) });
+  };
+  listPitches = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const groundId = routeParam(request.params.id, 'Ground id');
+    await ownedGround(groundId, request.auth!.userId);
+    const rows = await db.select().from(pitches).where(eq(pitches.groundId, groundId)).orderBy(asc(pitches.createdAt), asc(pitches.id));
+    const components = rows.length ? await db.select().from(pitchComponents).where(inArray(pitchComponents.pitchId, rows.map((row) => row.id))) : [];
+    response.json({ pitches: rows.map((row) => ({ id: row.id, ground_id: row.groundId, name: row.name, side: row.side, kind: row.kind, is_active: row.isActive, component_pitch_ids: components.filter((item) => item.pitchId === row.id).map((item) => item.componentPitchId) })) });
+  };
+
+  createPitch = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const groundId = routeParam(request.params.id, 'Ground id');
+    await ownedGround(groundId, request.auth!.userId);
+    const name = requiredText(request.body?.name, 'Pitch name');
+    const side = request.body?.side;
+    const kind = request.body?.kind === 'combined' ? 'combined' : 'independent';
+    const componentIds: string[] = Array.isArray(request.body?.component_pitch_ids) ? [...new Set((request.body.component_pitch_ids as unknown[]).filter((id): id is string => typeof id === 'string'))] : [];
+    if (name.length > 80 || ![7, 9, 11].includes(side) || (kind === 'combined' && (![9, 11].includes(side) || componentIds.length !== 2)) || (kind === 'independent' && componentIds.length)) {
+      throw new AppError('invalid_pitch', 'Choose a 7 a-side, 9 a-side, or 11 a-side pitch and exactly two 7 a-side source pitches when combining', 422);
+    }
+    const pitch = await db.transaction(async (tx) => {
+      const existing = await tx.select().from(pitches).where(eq(pitches.groundId, groundId));
+      if (existing.length >= 12) throw new AppError('pitch_limit', 'A ground can have up to 12 pitch options', 422);
+      if (kind === 'combined' && componentIds.some((id) => !existing.some((row) => row.id === id && row.side === 7 && row.kind === 'independent' && row.isActive))) {
+        throw new AppError('invalid_pitch_components', 'Select two active 7 a-side pitches in this ground', 422);
+      }
+      const [created] = await tx.insert(pitches).values({ groundId, name, side, kind }).returning();
+      if (kind === 'combined') await tx.insert(pitchComponents).values(componentIds.map((id) => ({ pitchId: created!.id, componentPitchId: id })));
+      return created!;
+    });
+    response.status(201).json({ pitch: { id: pitch.id, ground_id: groundId, name, side, kind, is_active: true, component_pitch_ids: componentIds } });
+  };
+
+  updatePitch = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const groundId = routeParam(request.params.id, 'Ground id');
+    await ownedGround(groundId, request.auth!.userId);
+    const id = routeParam(request.params.pitchId, 'Pitch id');
+    const current = (await db.select().from(pitches).where(and(eq(pitches.id, id), eq(pitches.groundId, groundId))).limit(1))[0];
+    if (!current) throw new AppError('pitch_not_found', 'Pitch was not found', 404);
+    const name = request.body?.name === undefined ? current.name : requiredText(request.body.name, 'Pitch name');
+    const side = request.body?.side === undefined ? current.side : request.body.side;
+    const isActive = request.body?.is_active === undefined ? current.isActive : request.body.is_active;
+    if (name.length > 80 || !(side === current.side || [7, 9, 11].includes(side)) || typeof isActive !== 'boolean' || (current.kind === 'combined' && side === 7)) throw new AppError('invalid_pitch', 'Use a valid pitch name, size and availability', 422);
+    const hasSlots = (await db.select({ id: slots.id }).from(slots).where(eq(slots.pitchId, id)).limit(1)).length > 0;
+    if (hasSlots && side !== current.side) throw new AppError('pitch_has_slots', 'Remove future unused slots before changing pitch size', 409);
+    if (!isActive && current.kind === 'independent') {
+      const uses = await db.select({ id: pitchComponents.pitchId }).from(pitchComponents).where(eq(pitchComponents.componentPitchId, id)).limit(1);
+      if (uses.length) throw new AppError('pitch_in_use', 'Deactivate its combined pitch options first', 409);
+    }
+    const [updated] = await db.update(pitches).set({ name, side, isActive, updatedAt: new Date() }).where(eq(pitches.id, id)).returning();
+    response.json({ pitch: { id, ground_id: groundId, name, side, kind: current.kind, is_active: updated!.isActive } });
+  };
   listPublic = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     response.setHeader('Cache-Control', 'no-store');
     const q = optionalQueryText(request.query.q, 'Search query');
@@ -196,7 +290,12 @@ export class GroundController {
       filters.push(or(ilike(grounds.title, pattern), ilike(grounds.city, pattern), ilike(grounds.location, pattern), ilike(grounds.address, pattern), ilike(grounds.pitchType, pattern), ilike(sql<string>`array_to_string(${grounds.amenities}, ' ')`, pattern))!);
     }
     if (city) filters.push(ilike(grounds.city, `%${city.replace(/[\\%_]/g, '\\$&')}%`));
-    if (pitchType) filters.push(ilike(grounds.pitchType, pitchType));
+    if (pitchType) {
+      const requestedSide = /^(7|9|11)(?:-a-side| side)?$/i.exec(pitchType)?.[1];
+      filters.push(requestedSide
+        ? sql`EXISTS (SELECT 1 FROM pitches p WHERE p.ground_id = ${grounds.id} AND p.is_active AND p.side = ${Number(requestedSide)})`
+        : ilike(grounds.pitchType, pitchType));
+    }
     if (amenities.length) filters.push(arrayContains(grounds.amenities, amenities));
     if (!availabilityDate && maxPrice < Number.MAX_SAFE_INTEGER) filters.push(lte(grounds.pricePerHour, maxPrice));
 
@@ -219,7 +318,7 @@ export class GroundController {
       });
       const allIds = staticPage.grounds.map((ground) => ground.id);
       const available = allIds.length ? await db.select({ groundId: slots.groundId, availableCount: sql<number>`count(*)::int`, nextAvailableAt: sql<string>`min(${slots.date}::text || 'T' || to_char(${slots.startTime}, 'HH24:MI') || ':00+05:00')` })
-        .from(slots).where(and(inArray(slots.groundId, allIds), eq(slots.isBooked, false), eq(slots.isBlocked, false), gte(slots.date, pakistanToday()), sql`(${slots.holdBookingId} IS NULL OR ${slots.holdExpiresAt} <= now())`, sql`(${slots.date}::timestamp + ${slots.startTime}::time) > (now() AT TIME ZONE 'Asia/Karachi')`))
+        .from(slots).where(and(inArray(slots.groundId, allIds), eq(slots.isBooked, false), eq(slots.isBlocked, false), gte(slots.date, pakistanToday()), sql`(${slots.holdBookingId} IS NULL OR ${slots.holdExpiresAt} <= now())`, sql`(${slots.date}::timestamp + ${slots.startTime}::time) > ((now() AT TIME ZONE 'Asia/Karachi') + ${env.minimumBookingLeadMinutes} * interval '1 minute')`, sql`NOT ${resourceConflictSql}`, sql`EXISTS (SELECT 1 FROM pitches p WHERE p.id = ${slots.pitchId} AND p.is_active)`))
         .groupBy(slots.groundId) : [];
       const summaries: Record<string, { available_count: number; next_available_at: string | null }> = {};
       for (const ground of staticPage.grounds) summaries[ground.id] = { available_count: 0, next_available_at: null };
@@ -231,17 +330,36 @@ export class GroundController {
     // Keep the price filter and price ordering at the database boundary. The
     // correlated lookup is restricted to a ground and one date by the slot index.
     const day = new Date(`${availabilityDate}T12:00:00+05:00`).getUTCDay();
+    const previousDay = (day + 6) % 7;
     const selectedDate = availabilityDate;
     const displayPrice = sql<number>`coalesce((select min(case when ${grounds.peakPercentage} is not null and exists (
       select 1 from jsonb_array_elements(${grounds.peakWindows}) as peak_window(value)
-      where (peak_window.value->'days') @> ${JSON.stringify([day])}::jsonb
-        and (peak_window.value->>'startTime') <= to_char(candidate.start_time, 'HH24:MI')
-        and (peak_window.value->>'endTime') >= to_char(candidate.end_time, 'HH24:MI')
+      where (
+        (coalesce((peak_window.value->>'endNextDay')::boolean, false) = false
+          and (peak_window.value->'days') @> ${JSON.stringify([day])}::jsonb
+          and (peak_window.value->>'startTime') <= to_char(candidate.start_time, 'HH24:MI')
+          and (peak_window.value->>'endTime') >= to_char(candidate.end_time, 'HH24:MI'))
+        or
+        (coalesce((peak_window.value->>'endNextDay')::boolean, false) = true and (
+          ((peak_window.value->'days') @> ${JSON.stringify([day])}::jsonb
+            and to_char(candidate.start_time, 'HH24:MI') >= (peak_window.value->>'startTime')
+            and (candidate.end_date + candidate.end_time) <= (candidate.date + 1 + (peak_window.value->>'endTime')::time))
+          or
+          ((peak_window.value->'days') @> ${JSON.stringify([previousDay])}::jsonb
+            and to_char(candidate.start_time, 'HH24:MI') < (peak_window.value->>'endTime')
+            and to_char(candidate.end_time, 'HH24:MI') <= (peak_window.value->>'endTime'))
+        ))
+      )
     ) then round(candidate.price * (100 + ${grounds.peakPercentage})::numeric / 100)::int else candidate.price end)
       from slots candidate where candidate.ground_id = ${grounds.id}
         and candidate.date = ${selectedDate}::date and candidate.is_booked = false and candidate.is_blocked = false
         and (candidate.hold_booking_id is null or candidate.hold_expires_at <= now())
-        and (candidate.date::timestamp + candidate.start_time) > (now() at time zone 'Asia/Karachi')
+        and (candidate.date::timestamp + candidate.start_time) > ((now() at time zone 'Asia/Karachi') + ${env.minimumBookingLeadMinutes} * interval '1 minute')
+        and exists (select 1 from pitches candidate_pitch where candidate_pitch.id = candidate.pitch_id and candidate_pitch.is_active ${/^(7|9|11)(?:-a-side| side)?$/i.exec(pitchType || '') ? sql`and candidate_pitch.side = ${Number(/^(7|9|11)/i.exec(pitchType!)![1])}` : sql``})
+        and not exists (select 1 from pitch_occupancies occupancy where occupancy.slot_id <> candidate.id and occupancy.resource_pitch_id in
+          (select coalesce(pc.component_pitch_id, candidate.pitch_id) from pitch_components pc where pc.pitch_id = candidate.pitch_id
+           union select candidate.pitch_id where not exists (select 1 from pitch_components pc2 where pc2.pitch_id = candidate.pitch_id))
+          and occupancy.during && tsrange(candidate.date + candidate.start_time, candidate.end_date + candidate.end_time + candidate.turnaround_minutes * interval '1 minute', '[)') and (occupancy.expires_at is null or occupancy.expires_at > now()))
     ), ${grounds.pricePerHour})`;
     // Effective-price calculation is expensive because it inspects dated
     // slots and peak windows per ground. Do not run it for the common
@@ -256,11 +374,11 @@ export class GroundController {
       db.select({ ground: grounds }).from(grounds).innerJoin(vendors, eq(grounds.vendorId, vendors.id)).where(datedCondition).orderBy(...datedOrder).limit(limit).offset(offset),
     ]);
     const ids = pageRows.map(({ ground }) => ground.id);
-    const matchingSlots = ids.length ? await db.select().from(slots).where(and(inArray(slots.groundId, ids), eq(slots.date, selectedDate), eq(slots.isBooked, false), eq(slots.isBlocked, false))).orderBy(asc(slots.startTime)) : [];
+    const matchingSlots = ids.length ? await db.select().from(slots).where(and(inArray(slots.groundId, ids), eq(slots.date, selectedDate), eq(slots.isBooked, false), eq(slots.isBlocked, false), sql`NOT ${resourceConflictSql}`, sql`EXISTS (SELECT 1 FROM pitches p WHERE p.id = ${slots.pitchId} AND p.is_active)`)).orderBy(asc(slots.startTime)) : [];
     const groundById = new Map(pageRows.map(({ ground }) => [ground.id, ground]));
     const slotsByGround = new Map<string, ReturnType<typeof toSlot>[]>();
     for (const slot of matchingSlots) {
-      if (isHeld(slot) || hasStarted(slot.date, slot.startTime)) continue;
+      if (isHeld(slot) || isInsideBookingCutoff(slot.date, slot.startTime)) continue;
       const ground = groundById.get(slot.groundId);
       if (!ground) continue;
       const value = toSlot(slot, ground);
@@ -283,7 +401,10 @@ export class GroundController {
     lastDate.setUTCDate(lastDate.getUTCDate() + env.maxAdvanceBookingDays);
     const groundSlots = await db.select().from(slots).where(and(eq(slots.groundId, row.ground.id), gte(slots.date, pakistanToday()), sql`${slots.date} <= ${lastDate.toISOString().slice(0, 10)}`)).orderBy(asc(slots.date), asc(slots.startTime));
     response.setHeader('Cache-Control', 'no-store');
-    response.json({ ground, slots: groundSlots.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, row.ground)) });
+    const pitchRows = await db.select().from(pitches).where(and(eq(pitches.groundId, row.ground.id), eq(pitches.isActive, true))).orderBy(asc(pitches.createdAt));
+    const components = pitchRows.length ? await db.select().from(pitchComponents).where(inArray(pitchComponents.pitchId, pitchRows.map((pitch) => pitch.id))) : [];
+    const busy = await occupiedByAnotherSlot(groundSlots.map((slot) => slot.id));
+    response.json({ ground, pitches: pitchRows.map((pitch) => ({ id: pitch.id, name: pitch.name, side: pitch.side, kind: pitch.kind, component_pitch_ids: components.filter((item) => item.pitchId === pitch.id).map((item) => item.componentPitchId) })), slots: groundSlots.filter((slot) => !isInsideBookingCutoff(slot.date, slot.startTime) && pitchRows.some((pitch) => pitch.id === slot.pitchId)).map((slot) => ({ ...toSlot(slot, row.ground), is_held: isHeld(slot) || busy.has(slot.id), resource_unavailable: busy.has(slot.id) })) });
   };
 
   getPublicMetadata = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -333,6 +454,7 @@ export class GroundController {
     validatePeakConfig(configuredPeakPercentage, configuredPeakWindows);
     const latitude = coordinate(body.latitude, 'Latitude', -90, 90);
     const longitude = coordinate(body.longitude, 'Longitude', -180, 180);
+    if (latitude === null || longitude === null) throw new AppError('exact_location_required', 'Add the exact ground location using a Maps Share link, current location, or advanced coordinates', 422);
     const ownerVendorId = await vendorIdForUser(request.auth.userId);
     const vendor = (await db.select({ verificationStatus: vendors.verificationStatus, isActive: vendors.isActive }).from(vendors).where(eq(vendors.id, ownerVendorId)).limit(1))[0];
     if (!vendor?.isActive || vendor.verificationStatus !== 'approved') throw new AppError('vendor_verification_required', 'Your vendor verification must be approved before adding grounds', 403);
@@ -341,7 +463,7 @@ export class GroundController {
       location, city, address, latitude, longitude,
       amenities: textArray(body.amenities), images: textArray(body.images), coverImage: typeof body.cover_image === 'string' ? body.cover_image.trim() || null : null,
       pitchType: body.pitch_type?.trim() || null, pricePerHour: body.price_per_hour, peakPercentage: configuredPeakPercentage, peakWindows: configuredPeakWindows,
-      operatingHours: body.operating_hours === undefined ? { open: '06:00', close: '23:00' } : operatingHours(body.operating_hours),
+      operatingHours: body.operating_hours === undefined ? { open: '06:00', close: '23:00', closeNextDay: false } : operatingHours(body.operating_hours),
       rules: textArray(body.rules), cancellationPolicy: body.cancellation_policy === undefined ? 'standard' : validatedCancellationPolicy(body.cancellation_policy),
       isVerified: false, verificationStatus: 'draft', verificationReason: null,
     }).returning())[0];
@@ -451,9 +573,10 @@ export class GroundController {
     const page = queryInteger(request.query.page, 'Page', 1, 1, 10_000);
     const limit = queryInteger(request.query.limit, 'Limit', 100, 1, 200);
     const offset = (page - 1) * limit;
-    const rows = (await db.select().from(slots).where(eq(slots.groundId, ground.ground.id)).orderBy(asc(slots.date), asc(slots.startTime), asc(slots.id))).filter((slot) => !hasStarted(slot.date, slot.startTime));
+    const rows = (await db.select().from(slots).where(eq(slots.groundId, ground.ground.id)).orderBy(asc(slots.date), asc(slots.startTime), asc(slots.id))).filter((slot) => !isInsideBookingCutoff(slot.date, slot.startTime));
     const pageRows = rows.slice(offset, offset + limit);
-    response.json({ slots: pageRows.map((slot) => toSlot(slot, ground.ground)), pagination: { page, limit, total: rows.length, has_more: offset + pageRows.length < rows.length } });
+    const busy = await occupiedByAnotherSlot(pageRows.map((slot) => slot.id));
+    response.json({ slots: pageRows.map((slot) => ({ ...toSlot(slot, ground.ground), resource_unavailable: busy.has(slot.id), is_held: isHeld(slot) || busy.has(slot.id) })), pagination: { page, limit, total: rows.length, has_more: offset + pageRows.length < rows.length } });
   };
 
   createSlot = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -461,17 +584,19 @@ export class GroundController {
     const groundId = routeParam(request.params.id, 'Ground id');
     const ground = await ownedGround(groundId, request.auth.userId);
     const body = request.body || {};
+    const pitchId = await selectedPitch(groundId, body.pitch_id);
     const date = normalizedDate(body.date);
     const start_time = normalizedTime(body.start_time);
     const end_time = normalizedTime(body.end_time);
     const price = body.price;
     if (!date || !start_time || !end_time || !Number.isSafeInteger(price) || price <= 0) throw new AppError('invalid_slot', 'Use a valid date, 24-hour times, and a positive whole-number price', 422);
-    if (start_time >= end_time) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
+    if (start_time === end_time) throw new AppError('invalid_slot', 'Start and end times must be different', 422);
     if (hasStarted(date, start_time)) throw new AppError('slot_expired', 'Slots must start in the future', 422);
     enforceSlotPolicy(ground, date, start_time, end_time);
-    const conflict = await conflictingSlot(groundId, date, start_time, end_time, ground.turnaroundMinutes);
+    const endDate = end_time < start_time ? addCalendarDays(date, 1) : date;
+    const conflict = await conflictingSlot(pitchId, date, start_time, end_time, ground.turnaroundMinutes, undefined, endDate);
     if (conflict[0]) throw new AppError('slot_conflict', 'Allow the required changeover time between slots', 409);
-    const row = (await db.insert(slots).values({ groundId, date, startTime: start_time, endTime: end_time, turnaroundMinutes: ground.turnaroundMinutes, price }).returning())[0];
+    const row = (await db.insert(slots).values({ groundId, pitchId, date, endDate, startTime: start_time, endTime: end_time, turnaroundMinutes: ground.turnaroundMinutes, price }).returning())[0];
     if (!row) throw new AppError('slot_creation_failed', 'Slot could not be created', 500);
     response.status(201).json({ slot: toSlot(row) });
   };
@@ -481,6 +606,7 @@ export class GroundController {
     const groundId = routeParam(request.params.id, 'Ground id');
     const ground = await ownedGround(groundId, request.auth.userId);
     const body = request.body || {};
+    const pitchId = await selectedPitch(groundId, body.pitch_id);
     const date = normalizedDate(body.start_date);
     const startTime = normalizedTime(body.start_time);
     const endTime = normalizedTime(body.end_time);
@@ -490,7 +616,7 @@ export class GroundController {
     if (!date || !startTime || !endTime || !Number.isSafeInteger(price) || price <= 0 || !Number.isSafeInteger(intervalDays) || intervalDays < 1 || !Number.isSafeInteger(occurrences) || occurrences < 1 || occurrences > 60) {
       throw new AppError('invalid_recurring_slots', 'Provide valid slot details, an interval of at least one day, and 1 to 60 occurrences', 422);
     }
-    if (startTime >= endTime) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
+    if (startTime === endTime) throw new AppError('invalid_slot', 'Start and end times must be different', 422);
     const recurringDates = Array.from({ length: occurrences }, (_, index) => {
       const next = new Date(`${date}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + index * intervalDays); return next.toISOString().slice(0, 10);
     });
@@ -499,9 +625,10 @@ export class GroundController {
     const created = await db.transaction(async (tx) => {
       const result = [];
       for (const slotDate of recurringDates) {
-        const conflict = await conflictingSlot(groundId, slotDate, startTime, endTime, ground.turnaroundMinutes);
+        const endDate = endTime < startTime ? addCalendarDays(slotDate, 1) : slotDate;
+        const conflict = await conflictingSlot(pitchId, slotDate, startTime, endTime, ground.turnaroundMinutes, undefined, endDate);
         if (conflict[0]) throw new AppError('slot_conflict', `Allow the required changeover time on ${slotDate}`, 409);
-        const [row] = await tx.insert(slots).values({ groundId, date: slotDate, startTime, endTime, turnaroundMinutes: ground.turnaroundMinutes, price }).returning();
+        const [row] = await tx.insert(slots).values({ groundId, pitchId, date: slotDate, endDate, startTime, endTime, turnaroundMinutes: ground.turnaroundMinutes, price }).returning();
         if (!row) throw new AppError('slot_creation_failed', 'Unable to create recurring slots', 500);
         result.push(toSlot(row));
       }
@@ -514,19 +641,42 @@ export class GroundController {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const groundId = routeParam(request.params.id, 'Ground id'); const ground = await ownedGround(groundId, request.auth.userId); const body = request.body || {};
     const open = normalizedTime(body.open_time); const close = normalizedTime(body.close_time);
-    const starts: string[] = Array.isArray(body.slot_starts) ? [...new Set((body.slot_starts as unknown[]).map((value) => normalizedTime(value)).filter((value): value is string => Boolean(value)))] : [];
+    const requestedPitchId = typeof body.pitch_id === 'string' ? body.pitch_id : '';
+    const pitchRows = await db.select().from(pitches).where(and(eq(pitches.groundId, groundId), eq(pitches.isActive, true))).orderBy(asc(pitches.createdAt));
+    const pitchId = requestedPitchId || (pitchRows.length === 1 ? pitchRows[0]!.id : '');
+    if (!pitchRows.some((pitch) => pitch.id === pitchId)) throw new AppError('pitch_required', 'Choose the pitch whose booking times you are setting', 422);
+    const rawStarts: unknown[] = Array.isArray(body.slot_starts) ? body.slot_starts : [];
     const days: number[] = Array.isArray(body.days) ? [...new Set((body.days as unknown[]).filter((day): day is number => typeof day === 'number' && Number.isInteger(day)))] : [0, 1, 2, 3, 4, 5, 6]; const duration = typeof body.slot_duration_minutes === 'number' ? body.slot_duration_minutes : 0; const price = typeof body.price === 'number' ? body.price : 0;
     const turnaround = body.turnaround_minutes === undefined ? 10 : body.turnaround_minutes;
-    if (!open || !close || open >= close || !starts.length || starts.length > 30 || !days.length || !validTurnaround(turnaround) || !Number.isSafeInteger(duration) || duration < 30 || duration > env.maxSlotDurationMinutes || !Number.isSafeInteger(price) || price <= 0 || days.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) throw new AppError('invalid_schedule', 'Choose valid hours, selected slots, days, playing duration, changeover, and price', 422);
-    const endFor = (start: string) => `${String(Math.floor((timeMinutes(start) + duration) / 60)).padStart(2, '0')}:${String((timeMinutes(start) + duration) % 60).padStart(2, '0')}`;
-    if (starts.some((start) => start < open || endFor(start) > close)) throw new AppError('invalid_schedule', 'Every selected slot must fit inside the working hours', 422);
-    const proposed = starts.map((start) => ({ date: pakistanToday(), startTime: start, endTime: endFor(start), turnaroundMinutes: turnaround }));
+    if (!open || !close || !rawStarts.length || rawStarts.length > 48 || !days.length || !validTurnaround(turnaround) || !Number.isSafeInteger(duration) || duration < 30 || duration > env.maxSlotDurationMinutes || !Number.isSafeInteger(price) || price <= 0 || days.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) throw new AppError('invalid_schedule', 'Choose valid hours, selected slots, days, playing duration, changeover, and price', 422);
+    const groundOpens = timeMinutes(ground.operatingHours.open);
+    const savedGroundCloses = timeMinutes(ground.operatingHours.close) + (closesNextDay(ground.operatingHours) ? 1440 : 0);
+    const onGroundDay = (time: string) => timeMinutes(time) + (timeMinutes(time) < groundOpens ? 1440 : 0);
+    const opening = onGroundDay(open);
+    const requestedCloseNextDay = body.close_next_day === true || timeMinutes(close) <= timeMinutes(open);
+    const closing = timeMinutes(close) + (requestedCloseNextDay ? 1440 : 0);
+    const extendsGroundClosing = body.extend_ground_hours === true && closing > savedGroundCloses;
+    const allowedGroundClose = extendsGroundClosing ? closing : savedGroundCloses;
+    if (opening < groundOpens || closing <= opening || closing > allowedGroundClose) throw new AppError('outside_operating_hours', `Pitch booking times must fit within the venue hours (${ground.operatingHours.open}–${ground.operatingHours.close}${closesNextDay(ground.operatingHours) ? ' next day' : ''}). Edit or extend the venue hours first.`, 422);
+    const parsedStarts = rawStarts.map((value) => {
+      const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
+      const time = normalizedTime(record ? record.time : value);
+      const inferredOffset = time && timeMinutes(time) < groundOpens ? 1 : 0;
+      const dayOffset = record?.day_offset === 0 || record?.day_offset === 1 ? record.day_offset : inferredOffset;
+      return time ? { time, dayOffset } : null;
+    }).filter((value): value is { time: string; dayOffset: number } => Boolean(value));
+    const starts = [...new Map(parsedStarts.map((value) => [`${value.dayOffset}:${value.time}`, value])).values()];
+    if (!starts.length || starts.length !== rawStarts.length) throw new AppError('invalid_schedule', 'One or more selected slot times are invalid', 422);
+    const absoluteStart = (start: { time: string; dayOffset: number }) => timeMinutes(start.time) + start.dayOffset * 1440;
+    const endFor = (start: { time: string; dayOffset: number }) => { const value = (absoluteStart(start) + duration) % 1440; return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`; };
+    if (starts.some((start) => absoluteStart(start) < opening || absoluteStart(start) + duration > closing)) throw new AppError('invalid_schedule', 'Every selected slot must fit inside the working hours', 422);
+    const proposed = starts.map((start) => ({ date: addCalendarDays(pakistanToday(), start.dayOffset), endDate: addCalendarDays(pakistanToday(), Math.floor((absoluteStart(start) + duration) / 1440)), startTime: start.time, endTime: endFor(start), turnaroundMinutes: turnaround, dayOffset: start.dayOffset }));
     if (proposed.some((item, index) => proposed.slice(index + 1).some((other) => periodsConflict(item, other)))) throw new AppError('invalid_schedule', 'Selected slots need the chosen changeover time between them', 422);
     const previewOnly = body.preview_only === true;
     const preview = await db.transaction(async (tx) => {
       // Keep every slot that has booking history or an active claim; replacing a
       // repeating program must never move or erase a customer's promised time.
-      const existing = await tx.select().from(slots).where(and(eq(slots.groundId, groundId), gte(slots.date, pakistanToday())));
+      const existing = await tx.select().from(slots).where(and(eq(slots.pitchId, pitchId), gte(slots.date, pakistanToday())));
       const bookingRows = existing.length ? await tx.select({ slotId: bookings.slotId }).from(bookings).where(inArray(bookings.slotId, existing.map((slot) => slot.id))) : [];
       const withHistory = new Set(bookingRows.map((row) => row.slotId));
       const removable = existing.filter((slot) => slot.scheduleTemplateId && !slot.isBooked && !slot.isBlocked && !slot.isClubReserved && !slot.holdBookingId && !withHistory.has(slot.id));
@@ -538,24 +688,29 @@ export class GroundController {
         if (!days.includes(cursor.getUTCDay())) continue;
         const date = cursor.toISOString().slice(0, 10);
         for (const item of proposed) {
-          if (hasStarted(date, item.startTime)) continue;
+          const itemAbsoluteStart = timeMinutes(item.startTime) + item.dayOffset * 1440;
+          const startDate = addCalendarDays(date, item.dayOffset);
+          const endDate = addCalendarDays(date, Math.floor((itemAbsoluteStart + duration) / 1440));
+          if (hasStarted(startDate, item.startTime)) continue;
           const conflict = protectedSlots.find((slot) => {
-            if (slot.date === date && slot.startTime.slice(0, 5) === item.startTime && slot.endTime.slice(0, 5) === item.endTime) return false;
-            return periodsConflict({ ...item, date }, { ...slot, turnaroundMinutes: Math.max(slot.turnaroundMinutes, turnaround) });
+            if (slot.date === startDate && slot.startTime.slice(0, 5) === item.startTime && slot.endTime.slice(0, 5) === item.endTime) return false;
+            return periodsConflict({ ...item, date: startDate, endDate }, { ...slot, turnaroundMinutes: Math.max(slot.turnaroundMinutes, turnaround) });
           });
           if (conflict) throw new AppError('schedule_conflict', `Keep a changeover gap on ${date} around ${conflict.startTime.slice(0, 5)}. An existing slot or booking is protected.`, 409);
         }
       }
       if (previewOnly) return { replaceableSlots: removable.length, protectedSlots: protectedSlots.length };
       if (removable.length) await tx.delete(slots).where(inArray(slots.id, removable.map((slot) => slot.id)));
-      await tx.delete(slotScheduleTemplates).where(eq(slotScheduleTemplates.groundId, groundId));
-      await tx.update(grounds).set({ operatingHours: { open, close }, turnaroundMinutes: turnaround, pricePerHour: price, updatedAt: new Date() }).where(eq(grounds.id, groundId));
-      await tx.insert(slotScheduleTemplates).values(starts.map((start) => ({ groundId, days, startTime: start, endTime: endFor(start), turnaroundMinutes: turnaround, price })));
+      await tx.delete(slotScheduleTemplates).where(eq(slotScheduleTemplates.pitchId, pitchId));
+      await tx.insert(slotScheduleTemplates).values(starts.map((start) => ({ groundId, pitchId, days, startTime: start.time, endTime: endFor(start), startDayOffset: start.dayOffset, endDayOffset: Math.floor((absoluteStart(start) + duration) / 1440), turnaroundMinutes: turnaround, price })));
+      if (extendsGroundClosing) await tx.update(grounds).set({ operatingHours: { ...ground.operatingHours, close, closeNextDay: requestedCloseNextDay }, updatedAt: new Date() }).where(eq(grounds.id, groundId));
+      const [startingPrice] = await tx.select({ value: sql<number>`min(${slotScheduleTemplates.price})::int` }).from(slotScheduleTemplates).innerJoin(pitches, eq(slotScheduleTemplates.pitchId, pitches.id)).where(and(eq(slotScheduleTemplates.groundId, groundId), eq(pitches.isActive, true)));
+      await tx.update(grounds).set({ pricePerHour: startingPrice?.value ?? price, updatedAt: new Date() }).where(eq(grounds.id, groundId));
       return { replaceableSlots: removable.length, protectedSlots: protectedSlots.length };
     });
     if (previewOnly) { response.json({ preview: { replaceable_slots: preview.replaceableSlots, protected_slots: preview.protectedSlots, selected_times: starts.length, repeat_days: days.length, turnaround_minutes: turnaround } }); return; }
     const refreshed = (await db.select().from(grounds).where(eq(grounds.id, groundId)).limit(1))[0]!; await materializeSchedules([refreshed]);
-    const created = await db.select().from(slots).where(eq(slots.groundId, groundId)); response.status(201).json({ slots: created.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, refreshed)) });
+    const created = await db.select().from(slots).where(eq(slots.pitchId, pitchId)); response.status(201).json({ slots: created.filter((slot) => !hasStarted(slot.date, slot.startTime)).map((slot) => toSlot(slot, refreshed)) });
   };
 
   listBlackouts = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -578,7 +733,19 @@ export class GroundController {
         const existing = await tx.select({ id: groundBlackoutDates.id }).from(groundBlackoutDates).where(and(eq(groundBlackoutDates.groundId, groundId), eq(groundBlackoutDates.date, date))).limit(1);
         if (!existing[0]) await tx.insert(groundBlackoutDates).values({ groundId, date, reason });
       }
-      await tx.update(slots).set({ isBlocked: true, updatedAt: new Date() }).where(and(eq(slots.groundId, groundId), inArray(slots.date, dates), eq(slots.isBooked, false)));
+      // Block the physical pitch slots only. Combined pitch slots share those
+      // resources and are made unavailable by the pitch-occupancy rules. Updating
+      // both representations can make their synchronized occupancy rows overlap.
+      const physicalPitches = await tx.select({ id: pitches.id }).from(pitches)
+        .where(and(eq(pitches.groundId, groundId), eq(pitches.kind, 'independent')));
+      if (physicalPitches.length) {
+        await tx.update(slots).set({ isBlocked: true, updatedAt: new Date() }).where(and(
+          eq(slots.groundId, groundId),
+          inArray(slots.pitchId, physicalPitches.map((pitch) => pitch.id)),
+          inArray(slots.date, dates),
+          eq(slots.isBooked, false),
+        ));
+      }
     });
     response.status(201).json({ dates });
   };
@@ -588,7 +755,17 @@ export class GroundController {
     const groundId = routeParam(request.params.id, 'Ground id'); await ownedGround(groundId, request.auth.userId);
     const date = routeParam(request.params.date, 'Blackout date'); if (!validDate(date)) throw new AppError('invalid_blackout_date', 'Date must use YYYY-MM-DD format', 422);
     await db.delete(groundBlackoutDates).where(and(eq(groundBlackoutDates.groundId, groundId), eq(groundBlackoutDates.date, date)));
-    await db.update(slots).set({ isBlocked: false, updatedAt: new Date() }).where(and(eq(slots.groundId, groundId), eq(slots.date, date), eq(slots.isBooked, false), eq(slots.isClubReserved, false)));
+    const physicalPitches = await db.select({ id: pitches.id }).from(pitches)
+      .where(and(eq(pitches.groundId, groundId), eq(pitches.kind, 'independent')));
+    if (physicalPitches.length) {
+      await db.update(slots).set({ isBlocked: false, updatedAt: new Date() }).where(and(
+        eq(slots.groundId, groundId),
+        inArray(slots.pitchId, physicalPitches.map((pitch) => pitch.id)),
+        eq(slots.date, date),
+        eq(slots.isBooked, false),
+        eq(slots.isClubReserved, false),
+      ));
+    }
     response.status(204).send();
   };
 
@@ -608,12 +785,14 @@ export class GroundController {
     const nextDate = body.date ?? current.date;
     const nextStart = body.start_time ?? current.startTime;
     const nextEnd = body.end_time ?? current.endTime;
-    if (nextStart >= nextEnd) throw new AppError('invalid_slot', 'End time must be later than start time', 422);
+    if (nextStart === nextEnd) throw new AppError('invalid_slot', 'Start and end times must be different', 422);
     if (hasStarted(nextDate, nextStart)) throw new AppError('slot_expired', 'Slots must start in the future', 422);
     enforceSlotPolicy(ground, nextDate, nextStart, nextEnd);
-    const conflict = await conflictingSlot(groundId, nextDate, nextStart, nextEnd, current.turnaroundMinutes, current.id);
+    const nextEndDate = nextEnd < nextStart ? addCalendarDays(nextDate, 1) : nextDate;
+    const conflict = await conflictingSlot(current.pitchId!, nextDate, nextStart, nextEnd, current.turnaroundMinutes, current.id, nextEndDate);
     if (conflict[0]) throw new AppError('slot_conflict', 'Allow the required changeover time between slots', 409);
     if (body.date !== undefined) values.date = body.date;
+    if (body.date !== undefined || body.start_time !== undefined || body.end_time !== undefined) values.endDate = nextEndDate;
     if (body.start_time !== undefined) values.startTime = body.start_time;
     if (body.end_time !== undefined) values.endTime = body.end_time;
     if (body.price !== undefined) {

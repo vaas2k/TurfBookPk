@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BookingProfile } from '@/types/booking';
 
 export const isExpoGoRuntime = (Constants as any).executionEnvironment === 'storeClient' || (Constants as any).appOwnership === 'expo';
-export type NotificationNavigationData = { bookingId?: string; paymentId?: string; groundId?: string; ground_id?: string; destination?: 'vendor_verification' | 'ground_verification'; area?: string; action?: string };
+export type NotificationNavigationData = { bookingId?: string; paymentId?: string; groundId?: string; ground_id?: string; destination?: 'vendor_verification' | 'ground_verification' | 'match_hub' | 'booking_details'; area?: string; action?: string };
 
 if (!isExpoGoRuntime) {
   Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: true }) });

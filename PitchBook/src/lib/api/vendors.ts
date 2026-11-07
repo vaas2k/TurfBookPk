@@ -23,14 +23,14 @@ export interface Ground {
   pitch_type: string | null;
   price_per_hour: number;
   peak_percentage: number | null;
-  peak_windows: { days: number[]; start_time: string; end_time: string }[];
+  peak_windows: { days: number[]; start_time: string; end_time: string; end_next_day?: boolean }[];
   is_active: boolean;
   is_verified: boolean;
   verification_status: string;
   verification_reason: string | null;
   rating: number;
   total_reviews: number;
-  operating_hours: { open: string; close: string };
+  operating_hours: { open: string; close: string; close_next_day?: boolean };
   turnaround_minutes: number;
   scheduling_policy: { max_slot_duration_minutes: number; max_advance_booking_days: number };
   rules: string[];
@@ -42,7 +42,9 @@ export interface Ground {
 export interface Slot {
   id: string;
   ground_id: string;
+  pitch_id: string | null;
   date: string;
+  end_date?: string;
   start_time: string;
   end_time: string;
   turnaround_minutes: number;
@@ -54,8 +56,29 @@ export interface Slot {
   is_club_reserved?: boolean;
   reservation_note?: string | null;
   is_held?: boolean;
+  resource_unavailable?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface Pitch {
+  id: string;
+  ground_id?: string;
+  name: string;
+  side: number;
+  kind: 'independent' | 'combined';
+  is_active?: boolean;
+  component_pitch_ids: string[];
+}
+
+export async function listGroundPitches(groundId: string): Promise<Pitch[]> {
+  return (await apiRequest<{ pitches: Pitch[] }>(`/grounds/${groundId}/pitches`)).pitches;
+}
+export async function createGroundPitch(groundId: string, data: { name: string; side: 7 | 9 | 11; kind: 'independent' | 'combined'; component_pitch_ids?: string[] }): Promise<Pitch> {
+  return (await apiRequest<{ pitch: Pitch }>(`/grounds/${groundId}/pitches`, { method: 'POST', data })).pitch;
+}
+export async function updateGroundPitch(groundId: string, pitchId: string, data: { name?: string; side?: 7 | 9 | 11; is_active?: boolean }): Promise<Pitch> {
+  return (await apiRequest<{ pitch: Pitch }>(`/grounds/${groundId}/pitches/${pitchId}`, { method: 'PATCH', data })).pitch;
 }
 
 export async function getVendorProfile(): Promise<VendorProfile | null> {
@@ -139,12 +162,16 @@ export async function updateGround(id: string, data: Partial<Ground>): Promise<G
   return result.ground;
 }
 
+export async function resolveGroundMapLink(link: string): Promise<{ latitude: number; longitude: number; maps_url: string }> {
+  return apiRequest('/grounds/location/resolve', { method: 'POST', data: { link } });
+}
+
 export async function deleteGround(id: string): Promise<{ deleted: boolean; archived: boolean; message?: string }> {
   return apiRequest<{ deleted: boolean; archived: boolean; message?: string }>(`/grounds/${id}`, { method: 'DELETE' });
 }
 
 export async function listGroundSlots(id: string): Promise<Slot[]> {
-  const result = await apiRequest<{ slots: Slot[] }>(`/grounds/${id}/slots`);
+  const result = await apiRequest<{ slots: Slot[] }>(`/grounds/vendor/mine/${id}/slots`);
   return result.slots;
 }
 
@@ -171,7 +198,7 @@ export async function bulkUpdateGroundSlots(groundId: string, slotIds: string[],
   await apiRequest(`/grounds/${groundId}/slots/bulk`, { method: 'PATCH', data: { slot_ids: slotIds, action } });
 }
 
-export type GroundScheduleInput = { open_time: string; close_time: string; slot_duration_minutes: number; turnaround_minutes: 5 | 10 | 15; slot_starts: string[]; days: number[]; price: number };
+export type GroundScheduleInput = { pitch_id: string; open_time: string; close_time: string; close_next_day: boolean; extend_ground_hours: boolean; slot_duration_minutes: number; turnaround_minutes: 5 | 10 | 15; slot_starts: { time: string; day_offset: 0 | 1 }[]; days: number[]; price: number };
 export async function previewGroundSchedule(groundId: string, data: GroundScheduleInput): Promise<{ replaceable_slots: number; protected_slots: number; selected_times: number; repeat_days: number; turnaround_minutes: number }> {
   const result = await apiRequest<{ preview: { replaceable_slots: number; protected_slots: number; selected_times: number; repeat_days: number; turnaround_minutes: number } }>(`/grounds/${groundId}/schedule`, { method: 'PUT', data: { ...data, preview_only: true } });
   return result.preview;
@@ -223,6 +250,6 @@ export async function searchPublicGrounds(options: PublicGroundSearchOptions): P
   return apiRequest<PublicGroundSearchResult>(`/grounds?${params.toString()}`);
 }
 
-export async function getPublicGround(id: string): Promise<{ ground: Ground; slots: Slot[] }> {
-  return apiRequest<{ ground: Ground; slots: Slot[] }>(`/grounds/${id}`);
+export async function getPublicGround(id: string): Promise<{ ground: Ground; pitches: Pitch[]; slots: Slot[] }> {
+  return apiRequest<{ ground: Ground; pitches: Pitch[]; slots: Slot[] }>(`/grounds/${id}`);
 }

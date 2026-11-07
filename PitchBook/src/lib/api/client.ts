@@ -171,8 +171,8 @@ export async function apiRequest<T>(
       throw (
         apiError ? { ...apiError, message: [apiError.message, apiError.next_action, apiError.request_id ? `Reference: ${apiError.request_id}` : null].filter(Boolean).join('\n') } :
         ({
-          code: "network_error",
-          message: "Unable to connect to the server",
+          code: "server_error",
+          message: `The server could not complete this request (HTTP ${error.response.status}). Please try again.`,
         } satisfies ApiError)
       );
     }

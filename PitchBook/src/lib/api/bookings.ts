@@ -77,6 +77,14 @@ export async function getCancellationPreview(id: string): Promise<{ cancellation
   return apiRequest(`/bookings/${id}/cancellation-preview`);
 }
 
+export type RefundBankProfile = { bank_name: string; account_title: string; account_last_four: string; belongs_to_player: boolean; alternate_owner_reason: string | null };
+export async function getRefundBankProfile(): Promise<RefundBankProfile | null> {
+  return (await apiRequest<{ profile: RefundBankProfile | null }>('/bookings/refund-bank-profile')).profile;
+}
+export async function saveRefundBankProfile(input: { bank_name: string; account_title: string; account_number: string; belongs_to_player: boolean; alternate_owner_reason?: string }): Promise<RefundBankProfile> {
+  return (await apiRequest<{ profile: RefundBankProfile }>('/bookings/refund-bank-profile', { method: 'PUT', data: input })).profile;
+}
+
 export async function getBooking(id: string): Promise<BookingProfile> {
   const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}`);
   return result.booking;
@@ -94,6 +102,33 @@ export async function markBookingCompleted(id: string): Promise<BookingProfile> 
 export async function recordDelayedStart(id: string, reason: 'previous_team' | 'venue_delay' | 'other'): Promise<BookingProfile> {
   const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}/delayed-start`, { method: 'PATCH', data: { reason } });
   return result.booking;
+}
+
+export type BookingDispute = {
+  id: string;
+  status: 'open' | 'waiting' | 'under_review' | 'resolved' | 'rejected';
+  category: string;
+  description: string;
+  vendor_response?: string | null;
+  vendor_appeal?: string | null;
+  resolution?: string | null;
+  refund_amount?: number;
+  created_at: string;
+  vendor_responded_at?: string | null;
+  appealed_at?: string | null;
+  resolved_at?: string | null;
+};
+export async function getBookingDispute(bookingId: string): Promise<BookingDispute | null> {
+  return (await apiRequest<{ dispute: BookingDispute | null }>(`/bookings/${bookingId}/dispute`)).dispute;
+}
+export async function openBookingDispute(bookingId: string, input: { category: string; description: string }): Promise<BookingDispute> {
+  return (await apiRequest<{ dispute: BookingDispute }>(`/bookings/${bookingId}/disputes`, { method: 'POST', data: input })).dispute;
+}
+export async function respondToBookingDispute(bookingId: string, disputeId: string, response: string): Promise<BookingDispute> {
+  return (await apiRequest<{ dispute: BookingDispute }>(`/bookings/${bookingId}/disputes/${disputeId}/respond`, { method: 'POST', data: { response } })).dispute;
+}
+export async function appealBookingDispute(bookingId: string, disputeId: string, appeal: string): Promise<BookingDispute> {
+  return (await apiRequest<{ dispute: BookingDispute }>(`/bookings/${bookingId}/disputes/${disputeId}/appeal`, { method: 'POST', data: { appeal } })).dispute;
 }
 
 export type PaymentBillingProfile = { full_name: string; masked_cnic: string; billing_address: string; email: string; phone: string; consented_at: string };
@@ -114,6 +149,7 @@ export async function getPaymentAttempt(id: string): Promise<PaymentAttempt> {
 export async function getBookingPaymentAttempt(bookingId: string): Promise<PaymentAttempt | null> {
   return (await apiRequest<{ payment: PaymentAttempt | null }>(`/payments/booking/${bookingId}`)).payment;
 }
-export async function getPaymentConfiguration(): Promise<{ provider: string; environment: string; available: boolean; manual_acknowledgment_test_enabled: boolean }> {
+export type PaymentConfiguration = { provider: string; environment: string; available: boolean; test_payment_enabled: boolean; manual_acknowledgment_test_enabled: boolean; recurring_pay_now_hours: number; recurring_payment_opens_before_minutes: number; recurring_payment_deadline_before_minutes: number };
+export async function getPaymentConfiguration(): Promise<PaymentConfiguration> {
   return apiRequest('/payments/configuration');
 }

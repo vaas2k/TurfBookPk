@@ -81,7 +81,8 @@ export default function VendorEarnings() {
   const [summary, setSummary] = useState<EarningsSummary>(emptySummary);
   const [entries, setEntries] = useState<EarningsEntry[]>([]);
   const [period, setPeriod] = useState<'all' | 'week' | 'month'>('all');
-  const [activityFilter, setActivityFilter] = useState<'all' | 'available' | 'pending' | 'reversed' | 'refunds' | 'payouts'>('all');
+  const [periodPickerOpen, setPeriodPickerOpen] = useState(false);
+  const [activityFilter, setActivityFilter] = useState<'all' | 'available' | 'refunds' | 'payouts'>('all');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
@@ -127,8 +128,6 @@ export default function VendorEarnings() {
   const filteredActivity = visibleEntries.filter((entry) => {
     if (activityFilter === 'all') return true;
     if (activityFilter === 'available') return entry.type === 'booking_earning' && entry.status === 'posted';
-    if (activityFilter === 'pending') return entry.status === 'pending';
-    if (activityFilter === 'reversed') return entry.status === 'reversed';
     if (activityFilter === 'refunds') return entry.type === 'refund';
     return entry.type === 'payout';
   });
@@ -183,7 +182,8 @@ export default function VendorEarnings() {
         >
           <Ionicons name="arrow-back" size={20} color="#1A1A2E" />
         </TouchableOpacity>
-        <View><Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 27 }} className="text-[#F5F5F0]">EARNINGS</Text><Text className="text-xs text-[#AFAFA9] mt-0.5">Revenue & performance</Text></View><View className="bg-[#1B1F19] border border-[#30372B] rounded-xl px-4 py-2"><Text className="text-[#F5F5F0] font-bold text-sm">{period === 'week' ? 'Weekly' : period === 'month' ? 'Monthly' : 'All time'}⌄</Text></View>
+        <View><Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 27 }} className="text-[#F5F5F0]">EARNINGS</Text><Text className="text-xs text-[#AFAFA9] mt-0.5">Your money at a glance</Text></View>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose earnings date range" accessibilityState={{ expanded: periodPickerOpen }} onPress={() => setPeriodPickerOpen(true)} className="min-h-[44px] bg-[#1B1F19] border border-[#3A4436] rounded-xl px-4 flex-row items-center justify-center"><Text className="text-[#F5F5F0] font-bold text-sm">{period === 'week' ? 'Last 7 days' : period === 'month' ? 'Last 30 days' : 'All time'}</Text><Ionicons name="chevron-down" size={16} color="#AFAFA9" style={{ marginLeft: 7 }} /></TouchableOpacity>
       </View>
       <ScrollView
         className="flex-1 px-6 pt-5"
@@ -199,11 +199,12 @@ export default function VendorEarnings() {
         }
       >
         <View className="bg-[#1B1F19] border border-[#30372B] rounded-[20px] p-5">
-          <Text className="text-[#AFAFA9] text-sm font-bold">TOTAL REVENUE</Text>
+          <Text className="text-[#AFAFA9] text-sm font-bold">BOOKING EARNINGS</Text>
           <Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F5F5F0] text-[36px] mt-2">
             {money(periodRevenue)}
           </Text>
-          <View className="flex-row mt-4"><View className="mr-6"><Text className="text-[#92978F] text-xs">Available now</Text><Text className="text-[#F5F5F0] font-bold">{money(summary.available_to_withdraw)}</Text></View><View><Text className="text-[#92978F] text-xs">Paid out</Text><Text className="text-[#50C15B] font-bold">{money(summary.total_paid_out)}</Text></View></View>
+          <Text className="text-[#92978F] text-xs mt-1">Income recorded for the selected time period</Text>
+          <View className="flex-row mt-5 pt-4 border-t border-[#30372B]"><View className="flex-1 mr-3"><Text className="text-[#92978F] text-xs">Available now</Text><Text className="text-[#F5F5F0] font-bold mt-1">{money(summary.available_to_withdraw)}</Text><Text className="text-[#737A71] text-[10px] mt-1">Ready for payout</Text></View><View className="flex-1 px-3 border-l border-r border-[#30372B]"><Text className="text-[#92978F] text-xs">Still pending</Text><Text className="text-[#F5C76B] font-bold mt-1">{money(summary.pending_earnings)}</Text><Text className="text-[#737A71] text-[10px] mt-1">Waiting for completion</Text></View><View className="flex-1 ml-3"><Text className="text-[#92978F] text-xs">Paid out</Text><Text className="text-[#50C15B] font-bold mt-1">{money(summary.total_paid_out)}</Text><Text className="text-[#737A71] text-[10px] mt-1">Already settled</Text></View></View>
         </View>
         <View className="mt-4 bg-[#1B1F19] border border-[#30372B] rounded-[20px] p-5">
           <Text className="text-[#F5F5F0] text-base font-bold">Revenue by day</Text>
@@ -244,9 +245,8 @@ export default function VendorEarnings() {
             {filteredActivity.length}{hasMore ? "+" : ""} entries
           </Text>
         </View>
-        <View className="flex-row mb-4">{([['all', 'All time'], ['week', 'Last 7 days'], ['month', 'Last 31 days']] as const).map(([key, label]) => <TouchableOpacity key={key} onPress={() => setPeriod(key)} className={`mr-2 rounded-full px-4 py-2 ${period === key ? 'bg-[#50C15B]' : 'bg-[#1B1F19] border border-[#30372B]'}`}><Text className={period === key ? 'text-[#0C170D] text-xs font-bold' : 'text-[#D9DBD5] text-xs font-bold'}>{label}</Text></TouchableOpacity>)}</View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ paddingRight: 12 }}>
-          {([['all', 'All'], ['available', 'Available'], ['pending', 'Pending'], ['reversed', 'Reversed'], ['refunds', 'Refunds'], ['payouts', 'Payouts']] as const).map(([key, label]) => <TouchableOpacity key={key} accessibilityRole="tab" accessibilityState={{ selected: activityFilter === key }} onPress={() => setActivityFilter(key)} className={`mr-2 rounded-full px-4 py-2.5 ${activityFilter === key ? 'bg-[#50C15B]' : 'bg-[#282E25] border border-[#3A4436]'}`}><Text className={activityFilter === key ? 'text-[#0C170D] text-xs font-bold' : 'text-[#D9DBD5] text-xs font-bold'}>{label}</Text></TouchableOpacity>)}
+          {([['all', 'All'], ['available', 'Available'], ['payouts', 'Payouts'], ['refunds', 'Refunds']] as const).map(([key, label]) => <TouchableOpacity key={key} accessibilityRole="tab" accessibilityState={{ selected: activityFilter === key }} onPress={() => setActivityFilter(key)} className={`mr-2 min-h-[44px] justify-center rounded-full px-5 ${activityFilter === key ? 'bg-[#50C15B]' : 'bg-transparent border border-[#3A4436]'}`}><Text className={activityFilter === key ? 'text-[#0C170D] text-xs font-bold' : 'text-[#D9DBD5] text-xs font-bold'}>{label}</Text></TouchableOpacity>)}
         </ScrollView>
         {loading && entries.length === 0 ? (
           <ActivityIndicator color="#4CAF50" />
@@ -335,6 +335,24 @@ export default function VendorEarnings() {
           </TouchableOpacity>
         )}
       </ScrollView>
+      <Modal
+        visible={periodPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPeriodPickerOpen(false)}
+      >
+        <TouchableOpacity activeOpacity={1} onPress={() => setPeriodPickerOpen(false)} className="flex-1 justify-end bg-black/60">
+          <TouchableOpacity activeOpacity={1} onPress={() => undefined} className="rounded-t-3xl border-t border-[#30372B] bg-[#1B1F19] px-6 pb-9 pt-4">
+            <View className="h-1 w-11 self-center rounded-full bg-[#60665E]" />
+            <Text className="mt-5 text-xl font-bold text-[#F5F5F0]">Show earnings from</Text>
+            <Text className="mt-1 text-sm text-[#92978F]">This changes booking income, charts, and activity. Your current balances stay visible.</Text>
+            {([['all', 'All time', 'Your complete earnings history'], ['week', 'Last 7 days', 'A quick view of this week'], ['month', 'Last 30 days', 'Your recent monthly performance']] as const).map(([key, label, detail]) => {
+              const selected = period === key;
+              return <TouchableOpacity key={key} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => { setPeriod(key); setPeriodPickerOpen(false); }} className={`mt-3 min-h-[62px] flex-row items-center rounded-2xl border px-4 ${selected ? 'border-[#50C15B] bg-[#203B24]' : 'border-[#30372B] bg-[#252A22]'}`}><View className={`h-5 w-5 items-center justify-center rounded-full border ${selected ? 'border-[#50C15B]' : 'border-[#747A71]'}`}>{selected ? <View className="h-2.5 w-2.5 rounded-full bg-[#50C15B]" /> : null}</View><View className="ml-3 flex-1"><Text className="font-bold text-[#F5F5F0]">{label}</Text><Text className="mt-0.5 text-xs text-[#92978F]">{detail}</Text></View></TouchableOpacity>;
+            })}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
       <Modal
         visible={selectedEntry !== null}
         transparent

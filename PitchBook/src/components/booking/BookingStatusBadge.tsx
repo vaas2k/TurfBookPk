@@ -5,9 +5,10 @@ import { BookingProfile } from '@/types/booking';
 interface BookingStatusBadgeProps {
   status: BookingProfile['status'];
   paymentStatus?: BookingProfile['payment_status'];
+  isRecurringReservation?: boolean;
 }
 
-export function BookingStatusBadge({ status, paymentStatus }: BookingStatusBadgeProps) {
+export function BookingStatusBadge({ status, paymentStatus, isRecurringReservation = false }: BookingStatusBadgeProps) {
   let label = 'Confirmed';
   let borderClass = 'border-[#2E7D32]';
   let textClass = 'text-[#2E7D32]';
@@ -16,7 +17,7 @@ export function BookingStatusBadge({ status, paymentStatus }: BookingStatusBadge
 
   switch (status) {
     case 'pending_payment':
-      label = 'Hold Pending';
+      label = isRecurringReservation ? 'Reserved · Unpaid' : 'Hold Pending';
       borderClass = 'border-[#B45309]';
       textClass = 'text-[#B45309]';
       iconName = 'time-outline';

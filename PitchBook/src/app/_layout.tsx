@@ -113,6 +113,10 @@ export default function RootLayout() {
       }
       const bookingId = data.bookingId;
       if (!bookingId) return;
+      if (data.destination === 'match_hub' && currentRole !== 'vendor') {
+        router.push({ pathname: '/(player)/match-hub/[id]', params: { id: bookingId } } as never);
+        return;
+      }
       const group = currentRole === 'vendor' ? 'vendor' : 'player';
       router.push(`/(${group})/booking/${bookingId}` as never);
     });

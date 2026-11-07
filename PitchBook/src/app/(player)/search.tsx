@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   RefreshControl,
   ScrollView,
   Text,
@@ -9,7 +10,6 @@ import {
   View,
   StatusBar,
 } from "react-native";
-import { Image as CachedImage } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -578,18 +578,16 @@ export default function SearchScreen() {
               className="border rounded-2xl overflow-hidden mb-4"
               style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
             >
-              <CachedImage
+              <Image
                 source={{
                   uri:
                     ground.cover_image ||
                     ground.images[0] ||
                     "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800",
                 }}
-                className="h-36 w-full"
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                recyclingKey={ground.id}
-                transition={180}
+                style={{ width: '100%', height: 154, backgroundColor: theme.businessSurface }}
+                resizeMode="cover"
+                accessibilityLabel={`${ground.title} cover photo`}
               />
               <View className="p-4">
                 <View className="flex-row justify-between">
@@ -621,14 +619,12 @@ export default function SearchScreen() {
                         {ground.rating.toFixed(1)}
                       </Text>
                     </View>
-                    <Text style={{ color: theme.subtle }} className="text-xs mt-1">
-                      {ground.total_reviews} reviews
-                    </Text>
+                    <Text style={{ color: theme.subtle }} className="text-xs mt-1">{ground.total_reviews} reviews</Text>
                   </View>
                 </View>
                 <View className="flex-row justify-between items-end mt-4 pt-3 border-t" style={{ borderTopColor: theme.border }}>
                   <View>
-                    <Text style={{ color: theme.green }} className="font-bold">
+                    <Text style={{ color: theme.green }} className="text-sm font-bold">
                       From PKR {lowestPrice.toLocaleString()}
                     </Text>
                     <Text style={{ color: theme.subtle }} className="text-xs mt-1">
@@ -644,11 +640,7 @@ export default function SearchScreen() {
                         </Text>
                       )}
                   </View>
-                  <View className="border rounded-full px-4 py-2" style={{ borderColor: theme.green }}>
-                    <Text style={{ color: theme.green }} className="text-xs font-bold">
-                      View slots
-                    </Text>
-                  </View>
+                  <View className="border rounded-full px-4 py-2" style={{ borderColor: theme.green }}><Text style={{ color: theme.green }} className="text-xs font-bold">View slots</Text></View>
                 </View>
               </View>
             </TouchableOpacity>

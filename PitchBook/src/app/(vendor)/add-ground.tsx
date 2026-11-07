@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import {
+  ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StatusBar,
   Text,
@@ -10,6 +14,7 @@ import {
   TouchableOpacity,
   View,
   AppState,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -19,6 +24,7 @@ import {
   createGround,
   Ground,
   listVendorGrounds,
+  resolveGroundMapLink,
   updateGround,
 } from "@/lib/api/vendors";
 import { Ionicons } from "@expo/vector-icons";
@@ -40,15 +46,18 @@ type FormState = {
   peak_days: number[];
   peak_start_time: string;
   peak_end_time: string;
+  peak_end_next_day: boolean;
   pitch_type: string;
   cover_image: string;
   images: string[];
   amenities: string[];
   rules: string[];
   coordinates: string;
+  map_link: string;
   cancellation_policy: CancellationPolicy;
   operating_open: string;
   operating_close: string;
+  operating_close_next_day: boolean;
 };
 
 const emptyForm: FormState = {
@@ -62,18 +71,21 @@ const emptyForm: FormState = {
   peak_days: [],
   peak_start_time: "18:00",
   peak_end_time: "22:00",
+  peak_end_next_day: false,
   pitch_type: "",
   cover_image: "",
   images: [],
   amenities: [],
   rules: [],
   coordinates: "",
+  map_link: "",
   cancellation_policy: "standard",
   operating_open: "06:00",
   operating_close: "23:00",
+  operating_close_next_day: false,
 };
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const pitchOptions = ["5-a-side", "6-a-side", "7-a-side", "8-a-side", "9-a-side", "11-a-side"];
+const pitchOptions = ["7-a-side", "9-a-side", "11-a-side"];
 const amenityOptions = [
   "Floodlights",
   "Parking",
@@ -127,6 +139,9 @@ export default function AddGround() {
   const [completedGround, setCompletedGround] = useState<Ground | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [showAdvancedCoordinates, setShowAdvancedCoordinates] = useState(false);
+  const [resolvingLocation, setResolvingLocation] = useState(false);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const formRef = useRef(form);
   const stepRef = useRef(step);
   const draftRestoredRef = useRef(false);
@@ -143,7 +158,7 @@ export default function AddGround() {
     if (!draftReady || completedGround) return;
     const current = formRef.current;
     const hasContent = Object.entries(current).some(([key, value]) => {
-      if (key === "cancellation_policy" || key === "operating_open" || key === "operating_close" || key === "peak_start_time" || key === "peak_end_time") return false;
+      if (key === "cancellation_policy" || key === "operating_open" || key === "operating_close" || key === "peak_start_time" || key === "peak_end_time" || key === "peak_end_next_day") return false;
       return Array.isArray(value) ? value.length > 0 : Boolean(value);
     });
     if (!hasContent) return;
@@ -205,6 +220,7 @@ export default function AddGround() {
           peak_days: peak?.days || [],
           peak_start_time: peak?.start_time || "18:00",
           peak_end_time: peak?.end_time || "22:00",
+          peak_end_next_day: peak?.end_next_day === true,
           pitch_type: ground.pitch_type || "",
           cover_image: ground.cover_image || "",
           images: ground.images,
@@ -214,9 +230,11 @@ export default function AddGround() {
             ground.latitude !== null && ground.longitude !== null
               ? `${ground.latitude}, ${ground.longitude}`
               : "",
+          map_link: "",
           cancellation_policy: ground.cancellation_policy || "standard",
           operating_open: ground.operating_hours.open,
           operating_close: ground.operating_hours.close,
+          operating_close_next_day: ground.operating_hours.close_next_day ?? ground.operating_hours.close <= ground.operating_hours.open,
         });
       })
       .catch(() =>
@@ -259,29 +277,57 @@ export default function AddGround() {
     }));
 
   const pickCover = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted)
-      return setToast("Allow photo access to choose a cover image.");
-    const result = await ImagePicker.launchImageLibraryAsync({
+    try { const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
       quality: 0.8,
     });
-    if (!result.canceled) { setSaving(true); try { const uploaded = await uploadImage(result.assets[0], 'ground'); await deleteOwnedImageUrl(form.cover_image).catch(() => undefined); update('cover_image', uploaded.url); } catch (error: any) { setToast(error?.message || 'Unable to upload cover image.'); } finally { setSaving(false); } }
+    if (!result.canceled) { setSaving(true); try { const uploaded = await uploadImage(result.assets[0], 'ground'); await deleteOwnedImageUrl(form.cover_image).catch(() => undefined); update('cover_image', uploaded.url); } catch (error: any) { setToast(error?.message || 'Unable to upload cover image.'); } finally { setSaving(false); } } } catch (error: any) { setToast(error?.message || 'Could not open photos.'); }
   };
 
   const addImages = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted)
-      return setToast("Allow photo access to add ground images.");
-    const result = await ImagePicker.launchImageLibraryAsync({
+    try { const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsMultipleSelection: true,
       quality: 0.8,
     });
-    if (!result.canceled) { setSaving(true); try { const uploaded = await Promise.all(result.assets.map((asset) => uploadImage(asset, 'ground'))); setForm((current) => ({ ...current, images: [...current.images, ...uploaded.map((item) => item.url)] })); } catch (error: any) { setToast(error?.message || 'Unable to upload ground images.'); } finally { setSaving(false); } }
+    if (!result.canceled) { setSaving(true); try { const uploaded = await Promise.all(result.assets.map((asset) => uploadImage(asset, 'ground'))); setForm((current) => ({ ...current, images: [...current.images, ...uploaded.map((item) => item.url)] })); } catch (error: any) { setToast(error?.message || 'Unable to upload ground images.'); } finally { setSaving(false); } } } catch (error: any) { setToast(error?.message || 'Could not open photos.'); }
   };
   const removeGroundImage = async (uri: string) => { setForm((current) => ({ ...current, images: current.images.filter((item) => item !== uri) })); await deleteOwnedImageUrl(uri).catch(() => setToast('Image removed from the ground, but cloud cleanup will be retried later.')); };
+
+  const applyCoordinates = (latitude: number, longitude: number) => update("coordinates", `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+  const resolveMapLink = async () => {
+    if (!form.map_link.trim()) return setToast("Paste the Google Maps or Apple Maps Share link first.");
+    setResolvingLocation(true);
+    try {
+      const result = await resolveGroundMapLink(form.map_link.trim());
+      applyCoordinates(result.latitude, result.longitude);
+      setLocationAccuracy(null);
+      setToast("Ground pin captured from the Maps link.");
+    } catch (error: any) { setToast(error?.message || "Unable to read this Maps link."); }
+    finally { setResolvingLocation(false); }
+  };
+  const captureCurrentLocation = async () => {
+    setResolvingLocation(true);
+    try {
+      const existingPermission = await Location.getForegroundPermissionsAsync();
+      const permission = existingPermission.granted ? existingPermission : await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) return setToast("Allow location access to capture the ground's current position.");
+      const result = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      applyCoordinates(result.coords.latitude, result.coords.longitude);
+      setLocationAccuracy(result.coords.accuracy ?? null);
+      try {
+        const [address] = await Location.reverseGeocodeAsync({ latitude: result.coords.latitude, longitude: result.coords.longitude });
+        if (address) setForm((current) => ({ ...current, coordinates: `${result.coords.latitude.toFixed(6)}, ${result.coords.longitude.toFixed(6)}`, city: current.city || address.city || address.subregion || "", location: current.location || address.district || address.subregion || address.city || "", address: current.address || [address.name, address.street, address.district, address.city, address.region].filter(Boolean).filter((item, index, all) => all.indexOf(item) === index).join(", ") }));
+      } catch { /* Coordinates remain usable if address lookup is unavailable. */ }
+      setToast("Current ground location captured.");
+    } catch (error: any) { setToast(error?.message || "Unable to get the current location. Try outdoors or paste a Maps link."); }
+    finally { setResolvingLocation(false); }
+  };
+  const openCapturedLocation = async () => {
+    const coordinates = parseCoordinates(form.coordinates);
+    if (coordinates) await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${coordinates.latitude},${coordinates.longitude}`);
+  };
 
   const save = async () => {
     if (
@@ -295,9 +341,9 @@ export default function AddGround() {
         "Title, location, city, address, and hourly price are required.",
       );
     const coordinates = parseCoordinates(form.coordinates);
-    if (form.coordinates.trim() && !coordinates)
+    if (!coordinates)
       return setToast(
-        "Coordinates must use latitude, longitude — for example 33.641757, 72.996779.",
+        "Add the exact ground location using a Maps link, current location, or advanced coordinates.",
       );
     const latitude = coordinates?.latitude ?? null;
     const longitude = coordinates?.longitude ?? null;
@@ -320,12 +366,12 @@ export default function AddGround() {
       (!form.peak_days.length ||
         !/^([01]\d|2[0-3]):[0-5]\d$/.test(form.peak_start_time) ||
         !/^([01]\d|2[0-3]):[0-5]\d$/.test(form.peak_end_time) ||
-        form.peak_start_time >= form.peak_end_time)
+        (form.peak_end_next_day ? form.peak_end_time > form.peak_start_time : form.peak_start_time >= form.peak_end_time))
     )
       return setToast("Choose peak days and valid peak start/end times.");
-    if (form.operating_open >= form.operating_close) return setToast('Closing time must be later than opening time.');
-    setSaving(true);
+    if (!form.operating_close_next_day && form.operating_close <= form.operating_open) return setToast('Closing time must be later, or choose closes next day.');
     if (form.images.length < 4 || form.images.length > 8) return setToast("Add 4 to 8 clear photos of the ground for verification.");
+    setSaving(true);
     const images = form.images;
     const data = {
       title: form.title.trim(),
@@ -343,6 +389,7 @@ export default function AddGround() {
               days: form.peak_days,
               start_time: form.peak_start_time,
               end_time: form.peak_end_time,
+              end_next_day: form.peak_end_next_day,
             },
           ]
         : [],
@@ -354,7 +401,7 @@ export default function AddGround() {
       latitude,
       longitude,
       cancellation_policy: form.cancellation_policy,
-      operating_hours: { open: form.operating_open, close: form.operating_close },
+      operating_hours: { open: form.operating_open, close: form.operating_close, close_next_day: form.operating_close_next_day },
     };
     try {
       if (existing) {
@@ -376,7 +423,8 @@ export default function AddGround() {
     if (step === 1) {
       if (!form.title.trim() || !form.location.trim() || !form.city.trim() || !form.address.trim() || !form.price_per_hour) return setToast("Add the ground name, location, address, and hourly price before continuing.");
       if (!Number.isInteger(Number(form.price_per_hour)) || Number(form.price_per_hour) <= 0) return setToast("Price per hour must be a positive whole number.");
-      if (form.operating_open >= form.operating_close) return setToast("Closing time must be later than opening time.");
+      if (!form.operating_close_next_day && form.operating_close <= form.operating_open) return setToast("Closing time must be later, or choose closes next day.");
+      if (!parseCoordinates(form.coordinates)) return setToast("Add the exact ground location before continuing.");
     }
     setStep((current) => Math.min(3, current + 1));
   };
@@ -429,18 +477,22 @@ export default function AddGround() {
     </View>
   );
 
+  const capturedCoordinates = parseCoordinates(form.coordinates);
   if (step === 4 && completedGround) {
     return <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
       <StatusBar barStyle="light-content" />
-      <View className="flex-1 px-6 items-center justify-center"><View className="h-20 w-20 rounded-full bg-[#17301B] border border-[#42B84F] items-center justify-center"><Ionicons name="shield-checkmark" size={42} color="#57CC63" /></View><Text style={{ fontFamily: "BigShouldersDisplay_800ExtraBold", fontSize: 29 }} className="text-[#F5F5F0] mt-7 text-center">GROUND DETAILS SAVED</Text><Text className="text-[#AFAFA9] text-center text-[15px] leading-6 mt-3">One quick verification step remains before {completedGround.title} can be reviewed and listed to players.</Text><View className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 w-full mt-6"><Text className="text-[#57CC63] font-bold">Verification required</Text><Text className="text-[#A8C9AC] text-sm mt-1">Tell us your relationship to the ground and upload the relevant proof securely.</Text></View><TouchableOpacity accessibilityRole="button" onPress={() => router.replace({ pathname: "/(vendor)/ground-verification", params: { id: completedGround.id } })} className="w-full bg-[#42B84F] rounded-full py-4 items-center mt-6"><Text className="text-[#102110] font-bold">Continue to verification</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => router.replace("/(vendor)/grounds")} className="py-4 mt-2"><Text className="text-[#D5D8D1] font-semibold">Finish later</Text></TouchableOpacity></View><Toast message={toast} tone="error" onHide={() => setToast(null)} /></SafeAreaView>;
+      <View className="flex-1 px-6 items-center justify-center"><View className="h-20 w-20 rounded-full bg-[#17301B] border border-[#42B84F] items-center justify-center"><Ionicons name="shield-checkmark" size={42} color="#57CC63" /></View><Text style={{ fontFamily: "BigShouldersDisplay_800ExtraBold", fontSize: 29 }} className="text-[#F5F5F0] mt-7 text-center">GROUND DETAILS SAVED</Text><Text className="text-[#AFAFA9] text-center text-[15px] leading-6 mt-3">Next, add the playing pitches at {completedGround.title}. You can set separate booking times for each pitch.</Text><View className="bg-[#1B251B] border border-[#315536] rounded-2xl p-4 w-full mt-6"><Text className="text-[#57CC63] font-bold">Pitches and verification</Text><Text className="text-[#A8C9AC] text-sm mt-1">Add your pitches, then submit ground authority proof for review.</Text></View><TouchableOpacity accessibilityRole="button" onPress={() => router.replace({ pathname: "/(vendor)/ground-pitches", params: { id: completedGround.id, title: completedGround.title, setup: '1' } })} className="w-full bg-[#42B84F] rounded-full py-4 items-center mt-6"><Text className="text-[#102110] font-bold">Add pitches</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => router.replace("/(vendor)/grounds")} className="py-4 mt-2"><Text className="text-[#D5D8D1] font-semibold">Finish later</Text></TouchableOpacity></View><Toast message={toast} tone="error" onHide={() => setToast(null)} /></SafeAreaView>;
   }
 
   return (
     <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
       <StatusBar barStyle="light-content" />
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         className="flex-1 px-6"
         contentContainerStyle={{ paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <View className="flex-row items-center pt-5 pb-4">
           <TouchableOpacity
@@ -461,7 +513,7 @@ export default function AddGround() {
         </Text>
         <View className="flex-row items-center mb-6"><Text className="text-[#57CC63] text-xs font-bold">STEP {step} OF 3</Text><View className="flex-1 h-1 bg-[#30372B] rounded-full mx-3 overflow-hidden"><View style={{ width: `${(step / 3) * 100}%` }} className="h-full bg-[#42B84F]" /></View><Text className="text-[#92978F] text-xs">{step === 1 ? 'Basics' : step === 2 ? 'Rules & policy' : 'Photos'}</Text></View>
         {step === 1 && <>
-        <View className="mb-5 rounded-2xl border border-[#30372B] bg-[#1B1F19] p-4"><Text className="text-[#F5F5F0] font-bold mb-1">Regular operating hours</Text><Text className="text-[#92978F] text-xs mb-3">Slots must fit inside these hours. You can choose the regular booking times after creating the ground.</Text><View className="flex-row"><View className="flex-1 mr-2"><TimePicker dark label="Opens" value={form.operating_open} onChange={(value) => update('operating_open', value)} maximum="22:30" /></View><View className="flex-1"><TimePicker dark label="Closes" value={form.operating_close} onChange={(value) => update('operating_close', value)} minimum="00:30" /></View></View></View>
+        <View className="mb-5 rounded-2xl border border-[#30372B] bg-[#1B1F19] p-4"><Text className="text-[#F5F5F0] font-bold mb-1">Regular operating hours</Text><Text className="text-[#92978F] text-xs mb-3">Choose when the venue opens and closes, including venues that remain open into the next day.</Text><View className="flex-row"><View className="flex-1 mr-2"><TimePicker dark label="Opens" value={form.operating_open} onChange={(value) => update('operating_open', value)} /></View><View className="flex-1"><TimePicker dark label="Closes" value={form.operating_close} onChange={(value) => update('operating_close', value)} /></View></View><Text className="text-[#D5D8D1] font-semibold mt-4 mb-2">Closing day</Text><View className="flex-row">{[{ value: false, label: 'Same day' }, { value: true, label: 'Next day' }].map((option) => <TouchableOpacity key={option.label} accessibilityRole="radio" accessibilityState={{ selected: form.operating_close_next_day === option.value }} onPress={() => setForm((current) => ({ ...current, operating_close_next_day: option.value }))} className={`flex-1 min-h-[48px] rounded-xl border items-center justify-center mr-2 ${form.operating_close_next_day === option.value ? 'border-[#57CC63] bg-[#17301B]' : 'border-[#454B42]'}`}><Text className={form.operating_close_next_day === option.value ? 'text-[#75D67E] font-bold' : 'text-[#D5D8D1]'}>{option.label}</Text></TouchableOpacity>)}</View>{form.operating_close_next_day && <Text className="text-[#75D67E] text-sm mt-3">Slots continue after midnight and appear on the next calendar date.</Text>}</View>
         {(
           [
             ["title", "Ground title *"],
@@ -491,14 +543,15 @@ export default function AddGround() {
           </View>
         ))}
         <View className="mb-5 rounded-2xl border border-[#30372B] bg-[#1B1F19] p-4">
-          <Text className="text-[#F5F5F0] font-bold mb-1">Pitch size</Text>
-          <Text className="text-[#92978F] text-xs mb-3">Pick the format players will book. This helps them find the right ground.</Text>
+          <Text className="text-[#F5F5F0] font-bold mb-1">First pitch size</Text>
+          <Text className="text-[#92978F] text-xs mb-3">Start with one pitch. You can add more and combine two 7 a-side pitches after saving the ground.</Text>
           <View className="flex-row flex-wrap">
             {pitchOptions.map((pitch) => {
               const selected = form.pitch_type === pitch;
-              return <TouchableOpacity key={pitch} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={`${pitch} pitch`} onPress={() => { setShowCustomPitch(false); update("pitch_type", pitch); }} className={`min-h-[44px] rounded-xl px-3 py-2.5 mr-2 mb-2 border ${selected ? "bg-[#17301B] border-[#42B84F]" : "bg-[#252A22] border-[#30372B]"}`}><Text className={selected ? "text-[#57CC63] font-bold text-sm" : "text-[#D9DBD5] font-semibold text-sm"}>{pitch}</Text></TouchableOpacity>;
+              const pitchLabel = pitch.replace('-a-side', ' a-side');
+              return <TouchableOpacity key={pitch} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={`${pitchLabel} pitch`} onPress={() => { setShowCustomPitch(false); update("pitch_type", pitch); }} className={`min-h-[44px] rounded-xl px-3 py-2.5 mr-2 mb-2 border ${selected ? "bg-[#17301B] border-[#42B84F]" : "bg-[#252A22] border-[#30372B]"}`}><Text className={selected ? "text-[#57CC63] font-bold text-sm" : "text-[#D9DBD5] font-semibold text-sm"}>{pitchLabel}</Text></TouchableOpacity>;
             })}
-            <TouchableOpacity accessibilityRole="radio" accessibilityState={{ selected: showCustomPitch || Boolean(form.pitch_type && !pitchOptions.includes(form.pitch_type)) }} accessibilityLabel="Other pitch size" onPress={() => { setShowCustomPitch(true); if (pitchOptions.includes(form.pitch_type)) update("pitch_type", ""); }} className={`min-h-[44px] rounded-xl px-3 py-2.5 mr-2 mb-2 border ${showCustomPitch || Boolean(form.pitch_type && !pitchOptions.includes(form.pitch_type)) ? "bg-[#17301B] border-[#42B84F]" : "bg-[#252A22] border-[#30372B]"}`}><Text className={showCustomPitch || Boolean(form.pitch_type && !pitchOptions.includes(form.pitch_type)) ? "text-[#57CC63] font-bold text-sm" : "text-[#D9DBD5] font-semibold text-sm"}>Other</Text></TouchableOpacity>
+            {Boolean(id && form.pitch_type && !pitchOptions.includes(form.pitch_type)) && <TouchableOpacity accessibilityRole="radio" accessibilityState={{ selected: true }} accessibilityLabel="Previous pitch size" onPress={() => setShowCustomPitch(true)} className="min-h-[44px] rounded-xl px-3 py-2.5 mr-2 mb-2 border bg-[#17301B] border-[#42B84F]"><Text className="text-[#57CC63] font-bold text-sm">Previous size</Text></TouchableOpacity>}
           </View>
           {(showCustomPitch || Boolean(form.pitch_type && !pitchOptions.includes(form.pitch_type))) && <TextInput className={`${fieldClass} mt-1`} value={pitchOptions.includes(form.pitch_type) ? "" : form.pitch_type} onChangeText={(value) => update("pitch_type", value)} placeholder="e.g. Futsal court" placeholderTextColor="#777D74" />}
         </View>
@@ -514,22 +567,13 @@ export default function AddGround() {
         </View>
         </>}
         {step === 1 && <>
-        <View className="mb-4">
-          <Text style={{ fontFamily: "BigShouldersDisplay_700Bold", fontSize: 15 }} className="text-[#AFAFA9] mb-1">
-            Map coordinates
-          </Text>
-          <TextInput
-            accessibilityLabel="Map coordinates"
-            className={fieldClass}
-            value={form.coordinates}
-            onChangeText={(value) => update("coordinates", value)}
-            placeholder="33.641757, 72.996779"
-            placeholderTextColor="#777D74"
-            autoCapitalize="none"
-          />
-          <Text className="text-[#92978F] text-xs mt-1">
-            Enter latitude and longitude together, separated by a comma.
-          </Text>
+        <View className="mb-5 rounded-2xl border border-[#315536] bg-[#1B251B] p-4">
+          <View className="flex-row items-start"><View className="h-10 w-10 rounded-xl bg-[#42B84F] items-center justify-center"><Ionicons name="location" size={21} color="#102110" /></View><View className="flex-1 ml-3"><Text className="text-[#F5F5F0] text-lg font-bold">Exact ground location</Text><Text className="text-[#A8C9AC] text-xs leading-5 mt-1">Players use this pin for distance and directions.</Text></View></View>
+          <View className="mt-4 rounded-xl border border-[#3D5B40] bg-[#121A13] p-4"><View className="flex-row items-center"><View className="h-7 w-7 rounded-full bg-[#42B84F] items-center justify-center"><Text className="text-[#102110] font-bold">1</Text></View><Text className="text-[#F5F5F0] font-bold ml-2">Paste a Maps Share link</Text><View className="ml-auto rounded-full bg-[#28472D] px-2 py-1"><Text className="text-[#75D67E] text-[10px] font-bold">RECOMMENDED</Text></View></View><Text className="text-[#AFAFA9] text-xs leading-5 mt-3">Open Google Maps or Apple Maps → drop a pin on the ground entrance → Share → Copy link.</Text><TextInput accessibilityLabel="Google Maps or Apple Maps share link" className={`${fieldClass} mt-3 min-h-[54px]`} value={form.map_link} onChangeText={(value) => update("map_link", value)} placeholder="Paste Maps link here" placeholderTextColor="#777D74" autoCapitalize="none" autoCorrect={false} multiline /><TouchableOpacity accessibilityRole="button" disabled={resolvingLocation || !form.map_link.trim()} onPress={() => void resolveMapLink()} className={`min-h-[50px] rounded-xl items-center justify-center mt-3 ${resolvingLocation || !form.map_link.trim() ? 'bg-[#455045]' : 'bg-[#42B84F]'}`}>{resolvingLocation ? <ActivityIndicator color="#102110" /> : <Text className="text-[#102110] font-bold">Use this map pin</Text>}</TouchableOpacity></View>
+          <View className="mt-3 rounded-xl border border-[#30372B] bg-[#1B1F19] p-4"><View className="flex-row items-center"><View className="h-7 w-7 rounded-full border border-[#57CC63] items-center justify-center"><Text className="text-[#75D67E] font-bold">2</Text></View><View className="flex-1 ml-2"><Text className="text-[#F5F5F0] font-bold">Use current location</Text><Text className="text-[#92978F] text-xs mt-1">Use this only while standing at the ground.</Text></View><TouchableOpacity accessibilityRole="button" disabled={resolvingLocation} onPress={() => void captureCurrentLocation()} className="min-h-[44px] rounded-xl border border-[#57CC63] px-3 items-center justify-center"><Text className="text-[#75D67E] font-bold text-xs">Capture</Text></TouchableOpacity></View></View>
+          {capturedCoordinates && <View className="mt-3 rounded-xl border border-[#42B84F] bg-[#17301B] p-4"><View className="flex-row items-center"><Ionicons name="checkmark-circle" size={24} color="#75D67E" /><View className="flex-1 ml-2"><Text className="text-[#F5F5F0] font-bold">Ground pin ready</Text><Text className="text-[#A8C9AC] text-xs mt-1">{locationAccuracy ? `GPS accuracy: about ${Math.round(locationAccuracy)} metres` : 'Captured from the provided location'}</Text></View><TouchableOpacity accessibilityRole="button" onPress={() => void openCapturedLocation()} className="min-h-[44px] px-2 justify-center"><Text className="text-[#75D67E] font-bold text-xs">Check in Maps</Text></TouchableOpacity></View></View>}
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: showAdvancedCoordinates }} onPress={() => setShowAdvancedCoordinates((current) => !current)} className="min-h-[48px] flex-row items-center mt-2"><Text className="text-[#92978F] text-xs font-bold flex-1">3. Advanced coordinates</Text><Ionicons name={showAdvancedCoordinates ? 'chevron-up' : 'chevron-down'} size={18} color="#92978F" /></TouchableOpacity>
+          {showAdvancedCoordinates && <View><TextInput accessibilityLabel="Advanced map coordinates" className={fieldClass} value={form.coordinates} onChangeText={(value) => { update("coordinates", value); setLocationAccuracy(null); }} placeholder="33.641757, 72.996779" placeholderTextColor="#777D74" autoCapitalize="none" /><Text className="text-[#92978F] text-xs mt-1">For support staff or vendors who already know the coordinates.</Text></View>}
         </View>
         <View className="mb-5 rounded-xl border border-[#30372B] bg-[#1B1F19] p-4">
           <Text className="text-[#F5F5F0] font-semibold">Peak pricing</Text>
@@ -567,6 +611,11 @@ export default function AddGround() {
             <View className="flex-1 mr-2"><TimePicker dark label="Starts" value={form.peak_start_time} onChange={(value) => update("peak_start_time", value)} /></View>
             <View className="flex-1"><TimePicker dark label="Ends" value={form.peak_end_time} onChange={(value) => update("peak_end_time", value)} /></View>
           </View>
+          <Text className="text-[#D5D8D1] font-semibold mt-4 mb-2">Peak period ends</Text>
+          <View className="flex-row">
+            {[{ value: false, label: 'Same day' }, { value: true, label: 'Next day' }].map((option) => <TouchableOpacity key={option.label} accessibilityRole="radio" accessibilityState={{ selected: form.peak_end_next_day === option.value }} onPress={() => setForm((current) => ({ ...current, peak_end_next_day: option.value }))} className={`flex-1 min-h-[46px] rounded-xl border items-center justify-center mr-2 ${form.peak_end_next_day === option.value ? 'border-[#57CC63] bg-[#17301B]' : 'border-[#454B42]'}`}><Text className={form.peak_end_next_day === option.value ? 'text-[#75D67E] font-bold' : 'text-[#D5D8D1]'}>{option.label}</Text></TouchableOpacity>)}
+          </View>
+          {form.peak_end_next_day && <Text className="text-[#75D67E] text-xs mt-3">Example: 8 PM to 1 AM next day applies the higher price on both sides of midnight.</Text>}
         </View>
         </>}
         {step === 3 && <>
@@ -668,6 +717,7 @@ export default function AddGround() {
           </Text>
         </TouchableOpacity>}
       </ScrollView>
+      </KeyboardAvoidingView>
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
     </SafeAreaView>
   );

@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { deleteGroundSlot, listGroundSlots, Slot, updateGroundSlot } from "@/lib/api/vendors";
-import { formatDuration, formatTimeRange12 } from "@/lib/time";
+import { compareByOperatingDay, formatDuration, formatTimeRange12 } from "@/lib/time";
 import { Toast } from "@/components/ui/toast";
 import { goBackOrReplace } from "@/lib/navigation";
 
@@ -14,14 +14,14 @@ function StatusTag({ slot }: { slot: Slot }) {
 }
 
 export default function GroundSlotDay() {
-  const { id, title, date } = useLocalSearchParams<{ id: string; title?: string; date: string }>();
+  const { id, title, date, pitchId, openingTime } = useLocalSearchParams<{ id: string; title?: string; date: string; pitchId?: string; openingTime?: string }>();
   const [slots, setSlots] = useState<Slot[]>([]);
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState<Slot | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const load = useCallback(async () => { if (!id) return; setLoading(true); try { setSlots(await listGroundSlots(id)); } catch (error: any) { setToast(error?.message || "Unable to load this day's slots."); } finally { setLoading(false); } }, [id]);
   useEffect(() => { load(); }, [load]);
-  const daySlots = slots.filter((slot) => slot.date === date).sort((left, right) => left.start_time.localeCompare(right.start_time));
+  const daySlots = slots.filter((slot) => slot.date === date && (!pitchId || slot.pitch_id === pitchId)).sort((left, right) => compareByOperatingDay(left.start_time, right.start_time, openingTime || '00:00'));
   const update = async (slot: Slot, data: Partial<Slot>, message: string) => { try { await updateGroundSlot(id, slot.id, data); await load(); setToast(message); } catch (error: any) { setToast(error?.message || "Unable to update this slot."); } };
   const remove = async () => { if (!removing) return; try { await deleteGroundSlot(id, removing.id); setRemoving(null); await load(); setToast("Slot removed."); } catch (error: any) { setToast(error?.message || "Unable to remove this slot."); } };
   const formattedDate = date ? new Date(`${date}T12:00:00`).toLocaleDateString("en-PK", { weekday: "long", day: "numeric", month: "long" }) : "Selected day";

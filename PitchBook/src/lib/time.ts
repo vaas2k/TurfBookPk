@@ -15,7 +15,22 @@ export function formatTimeRange12(
   start?: string | null,
   end?: string | null,
 ): string {
-  return `${formatTime12(start)} - ${formatTime12(end)}`;
+  return `${formatTime12(start)} - ${formatTime12(end)}${start && end && end.slice(0, 5) < start.slice(0, 5) ? ' (next day)' : ''}`;
+}
+
+/** Sorts clock times in the venue's operating-day order. Times before the
+ * opening clock belong to the overnight tail and therefore sort last. */
+export function compareByOperatingDay(left: string, right: string, opening = "00:00"): number {
+  const toMinutes = (value: string) => {
+    const [hour = "0", minute = "0"] = value.slice(0, 5).split(":");
+    return Number(hour) * 60 + Number(minute);
+  };
+  const opens = toMinutes(opening);
+  const position = (value: string) => {
+    const clock = toMinutes(value);
+    return clock < opens ? clock + 24 * 60 : clock;
+  };
+  return position(left) - position(right);
 }
 
 export function formatDuration(

@@ -82,14 +82,17 @@ export default function ProfileScreen() {
     onPress?: () => void,
     value?: string,
     destructive = false,
-  ) => (
+  ) => {
+    const icon: keyof typeof Ionicons.glyphMap = label.includes('Wallet') ? 'wallet-outline' : label.includes('Saved') ? 'heart-outline' : label.includes('Mobile') ? 'call-outline' : label.includes('Notification') ? 'notifications-outline' : label.includes('Language') ? 'language-outline' : label.includes('Help') ? 'help-circle-outline' : label.includes('Log Out') ? 'log-out-outline' : 'person-outline';
+    return (
     <TouchableOpacity
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      className="min-h-[64px] px-4 flex-row items-center border-b"
+      className="min-h-[68px] px-4 flex-row items-center border-b"
       style={{ borderBottomColor: theme.border }}
     >
+      <View className="h-10 w-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: destructive ? '#351D1D' : theme.businessSurface }}><Ionicons name={destructive ? 'trash-outline' : icon} size={20} color={destructive ? '#FF5A55' : theme.green} /></View>
       <Text
         className="flex-1 text-[16px]"
         style={{ color: destructive ? "#FF5A55" : theme.text }}
@@ -98,12 +101,13 @@ export default function ProfileScreen() {
       </Text>
       {value && <Text className="text-sm mr-2" style={{ color: theme.subtle }}>{value}</Text>}
       <Ionicons
-        name={destructive ? "trash-outline" : "chevron-forward"}
+        name="chevron-forward"
         size={21}
         color={destructive ? "#FF5A55" : theme.subtle}
       />
     </TouchableOpacity>
-  );
+    );
+  };
 
   return (
     <SafeAreaView
@@ -150,6 +154,7 @@ export default function ProfileScreen() {
             <Text className="text-sm mt-1" style={{ color: theme.subtle }}>
               {profile?.phone || "No phone number"}
             </Text>
+            {profile?.city && <View className="flex-row items-center mt-1.5"><Ionicons name="location-outline" size={14} color={theme.subtle} /><Text className="text-xs ml-1" style={{ color: theme.subtle }}>{profile.city}</Text></View>}
             <TouchableOpacity
               onPress={() => router.push("/(player)/edit-profile")}
               className="flex-row items-center mt-2"

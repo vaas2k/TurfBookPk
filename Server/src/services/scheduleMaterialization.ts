@@ -26,10 +26,10 @@ export async function materializeSchedules(groundRows: (typeof grounds.$inferSel
   if (complete) return 0;
   const [blackouts, existing] = await Promise.all([
     db.select({ groundId: groundBlackoutDates.groundId, date: groundBlackoutDates.date }).from(groundBlackoutDates).where(and(inArray(groundBlackoutDates.groundId, ids), gte(groundBlackoutDates.date, today), lte(groundBlackoutDates.date, lastDate))),
-    db.select({ groundId: slots.groundId, date: slots.date, startTime: slots.startTime, endTime: slots.endTime }).from(slots).where(and(inArray(slots.groundId, ids), gte(slots.date, today), lte(slots.date, lastDate))),
+    db.select({ groundId: slots.groundId, pitchId: slots.pitchId, date: slots.date, startTime: slots.startTime, endTime: slots.endTime }).from(slots).where(and(inArray(slots.groundId, ids), gte(slots.date, today), lte(slots.date, lastDate))),
   ]);
-  const key = (groundId: string, date: string, startTime: string, endTime: string) => `${groundId}|${date}|${startTime.slice(0, 5)}|${endTime.slice(0, 5)}`;
-  const known = new Set(existing.map((row) => key(row.groundId, row.date, row.startTime, row.endTime)));
+  const key = (pitchId: string | null, date: string, startTime: string, endTime: string) => `${pitchId}|${date}|${startTime.slice(0, 5)}|${endTime.slice(0, 5)}`;
+  const known = new Set(existing.map((row) => key(row.pitchId, row.date, row.startTime, row.endTime)));
   const closed = new Set(blackouts.map((row) => `${row.groundId}|${row.date}`));
   const byGround = new Map<string, typeof templates>();
   for (const template of templates) byGround.set(template.groundId, [...(byGround.get(template.groundId) || []), template]);
@@ -39,11 +39,15 @@ export async function materializeSchedules(groundRows: (typeof grounds.$inferSel
       const date = cursor.toISOString().slice(0, 10);
       if (closed.has(`${ground.id}|${date}`)) continue;
       for (const template of byGround.get(ground.id) || []) {
-        if (!template.days.includes(cursor.getUTCDay()) || hasStarted(date, template.startTime)) continue;
-        const identity = key(ground.id, date, template.startTime, template.endTime);
+        if (!template.days.includes(cursor.getUTCDay())) continue;
+        const slotDate = new Date(cursor); slotDate.setUTCDate(slotDate.getUTCDate() + template.startDayOffset);
+        const slotEndDate = new Date(cursor); slotEndDate.setUTCDate(slotEndDate.getUTCDate() + template.endDayOffset);
+        const actualDate = slotDate.toISOString().slice(0, 10);
+        if (hasStarted(actualDate, template.startTime) || closed.has(`${ground.id}|${actualDate}`)) continue;
+        const identity = key(template.pitchId, actualDate, template.startTime, template.endTime);
         if (known.has(identity)) continue;
         known.add(identity);
-        missing.push({ groundId: ground.id, date, startTime: template.startTime, endTime: template.endTime, turnaroundMinutes: template.turnaroundMinutes, price: template.price, scheduleTemplateId: template.id });
+        missing.push({ groundId: ground.id, pitchId: template.pitchId, date: actualDate, endDate: slotEndDate.toISOString().slice(0, 10), startTime: template.startTime, endTime: template.endTime, turnaroundMinutes: template.turnaroundMinutes, price: template.price, scheduleTemplateId: template.id });
       }
     }
   }

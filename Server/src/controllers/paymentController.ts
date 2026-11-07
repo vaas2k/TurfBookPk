@@ -36,8 +36,19 @@ export function acknowledgmentTime(value: unknown): Date {
 export class PaymentController {
   constructor(private readonly providerFactory: () => ReferencePaymentProvider = referencePaymentProvider) {}
   configuration = async (_request: AuthenticatedRequest, response: Response): Promise<void> => {
-    const available = env.paymentProvider === 'clink' && env.paymentEnvironment === 'sandbox';
-    paymentResponse(response, { provider: env.paymentProvider, environment: env.paymentEnvironment, available, manual_acknowledgment_test_enabled: available && env.clinkAllowUnverifiedSandboxAck }, available ? 'Clink sandbox is ready.' : 'Clink sandbox is not configured.', 'configuration_checked', available ? 'Continue checkout.' : 'Configure the Clink server environment and restart the API.');
+    const clinkAvailable = env.paymentProvider === 'clink' && env.paymentEnvironment === 'sandbox';
+    const testPaymentEnabled = env.paymentProvider === 'mock' && env.nodeEnv !== 'production';
+    const available = clinkAvailable || testPaymentEnabled;
+    paymentResponse(response, {
+      provider: env.paymentProvider,
+      environment: env.paymentEnvironment,
+      available,
+      test_payment_enabled: testPaymentEnabled,
+      manual_acknowledgment_test_enabled: clinkAvailable && env.clinkAllowUnverifiedSandboxAck,
+      recurring_pay_now_hours: env.recurringPayNowHours,
+      recurring_payment_opens_before_minutes: env.recurringPaymentOpensBeforeMinutes,
+      recurring_payment_deadline_before_minutes: env.recurringPaymentDeadlineBeforeMinutes,
+    }, testPaymentEnabled ? 'Development test payments are ready.' : clinkAvailable ? 'Clink sandbox is ready.' : 'No payment provider is configured.', 'configuration_checked', available ? 'Continue checkout.' : 'Configure a payment provider and restart the API.');
   };
 
   billingProfile = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
@@ -98,7 +109,7 @@ export class PaymentController {
     try {
       const targetBookings = targetAttempt.bookingId
         ? [targetAttempt.bookingId]
-        : (await db.select({ id: bookings.id }).from(bookings).where(and(eq(bookings.orderId, targetAttempt.orderId!), eq(bookings.status, 'pending_payment')))).map((row) => row.id);
+        : (await db.select({ id: bookings.id }).from(bookings).where(and(eq(bookings.orderId, targetAttempt.orderId!), eq(bookings.status, 'pending_payment'), eq(bookings.isRecurringReservation, false)))).map((row) => row.id);
       if (targetBookings.length) {
         await db.update(bookings).set({ holdExpiresAt: expiresAt, updatedAt: new Date() }).where(inArray(bookings.id, targetBookings));
         await db.update(slots).set({ holdExpiresAt: expiresAt, updatedAt: new Date() }).where(inArray(slots.holdBookingId, targetBookings));
@@ -170,7 +181,7 @@ export class PaymentController {
   };
 
   private async releaseTarget(attempt: typeof paymentAttempts.$inferSelect): Promise<void> {
-    const ids = attempt.bookingId ? [attempt.bookingId] : (await db.select({ id: bookings.id }).from(bookings).where(eq(bookings.orderId, attempt.orderId!))).map((row) => row.id);
+    const ids = attempt.bookingId ? [attempt.bookingId] : (await db.select({ id: bookings.id }).from(bookings).where(and(eq(bookings.orderId, attempt.orderId!), eq(bookings.isRecurringReservation, false)))).map((row) => row.id);
     if (!ids.length) return;
     await db.transaction(async (tx) => { await tx.update(bookings).set({ status: 'expired', paymentStatus: 'failed', updatedAt: new Date() }).where(and(inArray(bookings.id, ids), eq(bookings.status, 'pending_payment'))); await tx.update(slots).set({ heldBy: null, holdBookingId: null, holdExpiresAt: null, updatedAt: new Date() }).where(inArray(slots.holdBookingId, ids)); });
   }

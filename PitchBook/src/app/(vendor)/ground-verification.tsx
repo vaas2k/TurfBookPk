@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   ActivityIndicator,
   Image,
   ScrollView,
@@ -37,7 +39,7 @@ const labels: Record<
     title: "Owner",
     document: "Ownership or control proof",
     type: "ownership_control_document",
-    note: "For example: ownership deed, allotment, or control agreement.",
+    note: "You can upload an ownership deed, allotment letter, recent utility bill in the owner's name, property-tax document, society letter, or another document that clearly connects you to this ground.",
   },
   tenant_lessee: {
     title: "Tenant / lessee",
@@ -154,10 +156,12 @@ export default function GroundVerificationScreen() {
           </Text>
         </View>
       </View>
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         className="flex-1 px-5 pt-5"
         contentContainerStyle={{ paddingBottom: 34 }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {status === "approved" ? (
           <View className="items-center py-12">
@@ -327,6 +331,7 @@ export default function GroundVerificationScreen() {
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
     </SafeAreaView>
   );

@@ -66,12 +66,42 @@ test('recurring payment window creates one in-app notification', async () => {
   const data = await fixture();
   try {
     const slot = (await db.insert(slots).values({ groundId: data.ground.id, date: '2030-01-02', startTime: '10:00', endTime: '11:00', price: 1000 }).returning())[0]!;
-    const booking = (await db.insert(bookings).values({ bookingNumber: `window-${slot.id}`, playerId: data.player.id, vendorId: data.vendor.id, groundId: data.ground.id, slotId: slot.id, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, totalAmount: 1000, vendorAmount: 1000, isRecurringReservation: true, paymentWindowOpensAt: new Date('2026-01-01T00:00:00Z'), reservationExpiresAt: new Date('2026-01-01T02:00:00Z') }).returning())[0]!;
-    await db.update(slots).set({ heldBy: data.player.id, holdBookingId: booking.id, holdExpiresAt: new Date('2026-01-01T02:00:00Z') }).where(eq(slots.id, slot.id));
+    const booking = (await db.insert(bookings).values({ bookingNumber: `window-${slot.id}`, playerId: data.player.id, vendorId: data.vendor.id, groundId: data.ground.id, slotId: slot.id, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, totalAmount: 1000, vendorAmount: 1000, isRecurringReservation: true, paymentWindowOpensAt: new Date('2026-01-01T00:00:00Z'), reservationExpiresAt: new Date('2026-01-01T14:00:00Z') }).returning())[0]!;
+    await db.update(slots).set({ heldBy: data.player.id, holdBookingId: booking.id, holdExpiresAt: new Date('2026-01-01T14:00:00Z') }).where(eq(slots.id, slot.id));
     const service = new BookingMaintenanceService();
     assert.equal((await service.processRecurringReservations(new Date('2026-01-01T01:00:00Z'))).opened, 1);
     assert.equal((await service.processRecurringReservations(new Date('2026-01-01T01:01:00Z'))).opened, 0);
     const rows = await db.select().from(notifications).where(eq(notifications.userId, data.player.id));
     assert.equal(rows.filter((row) => row.data && (row.data as { bookingId?: string }).bookingId === booking.id).length, 1);
+  } finally { await cleanup({ playerId: data.player.id, ownerId: data.owner.id, vendorId: data.vendor.id, groundId: data.ground.id }); }
+});
+
+test('recurring payment deadline reminder is created exactly once', async () => {
+  const data = await fixture();
+  try {
+    const slot = (await db.insert(slots).values({ groundId: data.ground.id, date: '2030-01-03', startTime: '10:00', endTime: '11:00', price: 1000 }).returning())[0]!;
+    const booking = (await db.insert(bookings).values({ bookingNumber: `deadline-${slot.id}`, playerId: data.player.id, vendorId: data.vendor.id, groundId: data.ground.id, slotId: slot.id, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, totalAmount: 1000, vendorAmount: 1000, isRecurringReservation: true, paymentWindowOpensAt: new Date('2026-01-01T00:00:00Z'), paymentWindowNotifiedAt: new Date('2026-01-01T00:00:00Z'), reservationExpiresAt: new Date('2026-01-01T04:00:00Z') }).returning())[0]!;
+    await db.update(slots).set({ heldBy: data.player.id, holdBookingId: booking.id, holdExpiresAt: new Date('2026-01-01T04:00:00Z') }).where(eq(slots.id, slot.id));
+    const service = new BookingMaintenanceService();
+    assert.equal((await service.processRecurringReservations(new Date('2026-01-01T02:01:00Z'))).reminded, 1);
+    assert.equal((await service.processRecurringReservations(new Date('2026-01-01T02:02:00Z'))).reminded, 0);
+    const rows = await db.select().from(notifications).where(eq(notifications.userId, data.player.id));
+    const reminders = rows.filter((row) => row.title === 'Payment deadline in 2 hours' && row.data && (row.data as { bookingId?: string }).bookingId === booking.id);
+    assert.equal(reminders.length, 1);
+  } finally { await cleanup({ playerId: data.player.id, ownerId: data.owner.id, vendorId: data.vendor.id, groundId: data.ground.id }); }
+});
+
+test('match start notification is created exactly once', async () => {
+  const data = await fixture();
+  try {
+    const slot = (await db.insert(slots).values({ groundId: data.ground.id, date: '2030-01-04', startTime: '10:00', endTime: '11:00', price: 1000 }).returning())[0]!;
+    const booking = (await db.insert(bookings).values({ bookingNumber: `starting-${slot.id}`, playerId: data.player.id, vendorId: data.vendor.id, groundId: data.ground.id, slotId: slot.id, date: slot.date, startTime: slot.startTime, endTime: slot.endTime, totalAmount: 1000, vendorAmount: 1000, status: 'confirmed', paymentStatus: 'paid' }).returning())[0]!;
+    const service = new BookingMaintenanceService();
+    assert.equal(await service.notifyStartingMatches(new Date('2030-01-04T05:01:00Z')), 1);
+    assert.equal(await service.notifyStartingMatches(new Date('2030-01-04T05:02:00Z')), 0);
+    const rows = await db.select().from(notifications).where(eq(notifications.userId, data.player.id));
+    const starts = rows.filter((row) => row.data && (row.data as { bookingId?: string }).bookingId === booking.id);
+    assert.equal(starts.length, 1);
+    assert.equal(starts[0]?.title, 'Your match is starting now');
   } finally { await cleanup({ playerId: data.player.id, ownerId: data.owner.id, vendorId: data.vendor.id, groundId: data.ground.id }); }
 });

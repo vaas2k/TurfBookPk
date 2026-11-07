@@ -7,11 +7,16 @@ export function createGroundRouter(controller: GroundController, tokenService: T
   const router = Router();
   router.get('/', controller.listPublic);
   router.get('/vendor/mine', requireAuth(tokenService), controller.listMine);
+  router.get('/vendor/mine/:id/slots', requireAuth(tokenService), controller.vendorSlots);
   router.get('/:id/metadata', controller.getPublicMetadata);
   router.get('/:id', controller.getPublic);
   router.get('/:id/slots', controller.listSlots);
   router.use(requireAuth(tokenService));
+  router.post('/location/resolve', controller.resolveLocation);
   router.get('/:id/verification', controller.verification);
+  router.get('/:id/pitches', controller.listPitches);
+  router.post('/:id/pitches', controller.createPitch);
+  router.patch('/:id/pitches/:pitchId', controller.updatePitch);
   router.put('/:id/verification', controller.saveVerification);
   router.post('/:id/verification/submit', controller.submitVerification);
   router.post('/', controller.create);

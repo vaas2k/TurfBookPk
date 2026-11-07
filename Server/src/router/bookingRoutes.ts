@@ -12,9 +12,15 @@ export function createBookingRouter(controller: BookingController, tokenService:
   router.post('/:id/mock-confirm', controller.confirmMock);
   router.post('/:id/recurring-reservation/mock-confirm', controller.confirmRecurringReservationMock);
   router.get('/notifications', controller.notifications);
+  router.get('/refund-bank-profile', controller.refundBankProfile);
+  router.put('/refund-bank-profile', controller.saveRefundBankProfile);
   router.get('/mine', controller.playerList);
   router.get('/vendor', controller.vendorList);
   router.get('/:id', controller.detail);
+  router.get('/:id/dispute', controller.dispute);
+  router.post('/:id/disputes', controller.openDispute);
+  router.post('/:id/disputes/:disputeId/respond', controller.respondToDispute);
+  router.post('/:id/disputes/:disputeId/appeal', controller.appealDispute);
   router.get('/:id/cancellation-preview', controller.cancellationPreview);
   router.patch('/:id/cancel', controller.cancel);
   router.patch('/:id/no-show', controller.markNoShow);

@@ -7,6 +7,7 @@ import * as Calendar from 'expo-calendar/legacy';
 import { appDialog } from '@/components/ui/app-dialog';
 import { useAppearanceStore } from '@/store/appearanceStore';
 import { playerThemes } from '@/theme/playerTheme';
+import { formatPitchSide } from '@/lib/pitch';
 
 export default function BookingConfirmation() {
   const appearance = useAppearanceStore((state) => state.appearance);
@@ -20,6 +21,7 @@ export default function BookingConfirmation() {
     endTime?: string;
     amount?: string;
     bookingNumber?: string;
+    pitchSide?: string;
   }>();
 
   const hasValidBooking = Boolean(params.bookingId || params.bookingNumber);
@@ -54,7 +56,7 @@ export default function BookingConfirmation() {
     location: params.address || 'Address unavailable',
     date: params.date || 'Date unavailable',
     time: formatTimeRange12(params.startTime, params.endTime),
-    type: 'Ground slot',
+    type: formatPitchSide(params.pitchSide ? Number(params.pitchSide) : null),
     amount: `PKR ${params.amount || '0'}`,
   };
 
@@ -130,7 +132,7 @@ export default function BookingConfirmation() {
           <View className="mt-5 pt-5 border-t border-[#30372C] space-y-3">
             <View className="flex-row"><Text className="text-[#AFAFA9] text-base w-20">Date</Text><Text className="text-[#F8F7F0] text-base font-bold flex-1">{bookingDetails.date}</Text></View>
             <View className="flex-row"><Text className="text-[#AFAFA9] text-base w-20">Time</Text><Text className="text-[#F8F7F0] text-base font-bold flex-1">{bookingDetails.time}</Text></View>
-            <View className="flex-row"><Text className="text-[#AFAFA9] text-base w-20">Type</Text><Text className="text-[#3DB54A] text-base font-bold flex-1">5-a-side</Text></View>
+            <View className="flex-row"><Text className="text-[#AFAFA9] text-base w-20">Type</Text><Text className="text-[#3DB54A] text-base font-bold flex-1">{bookingDetails.type}</Text></View>
             <View className="flex-row"><Text className="text-[#AFAFA9] text-base w-20">Amount</Text><Text className="text-[#F5A623] text-base font-bold flex-1">{bookingDetails.amount}</Text></View>
           </View>
         </View>

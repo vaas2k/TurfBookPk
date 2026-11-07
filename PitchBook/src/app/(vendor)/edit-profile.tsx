@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StatusBar,
   Text,
@@ -39,9 +41,9 @@ export default function EditVendorProfile() {
     setLogo(vendorProfile?.business_logo || null); setCover(vendorProfile?.business_cover_image || null);
   }, [vendorProfile]);
   const pickImage = async (purpose: 'vendor_logo' | 'vendor_cover') => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return setToast('Allow photo access to choose an image.');
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: purpose === 'vendor_logo' ? [1, 1] : [16, 9], quality: 0.8 });
+    let result;
+    try { result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: purpose === 'vendor_logo' ? [1, 1] : [16, 9], quality: 0.8 }); }
+    catch (error: any) { setToast(error?.message || 'Could not open photos.'); return; }
     if (result.canceled) return;
     setSaving(true);
     try {
@@ -80,9 +82,12 @@ export default function EditVendorProfile() {
   return (
     <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-[#10120F]">
       <StatusBar barStyle="light-content" />
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        className="px-6"
+        className="flex-1 px-6"
         contentContainerStyle={{ paddingBottom: 32 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <View className="flex-row items-center pt-5 pb-4">
           <TouchableOpacity
@@ -91,7 +96,7 @@ export default function EditVendorProfile() {
             onPress={() => goBackOrReplace("/(vendor)/profile")}
             className="w-10 h-10 items-center justify-center -ml-2"
           >
-            <Text className="text-[#1A1A2E] text-xl">‹</Text>
+            <Ionicons name="arrow-back" size={24} color="#F5F5F0" />
           </TouchableOpacity>
           <Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[20px] text-[#F5F5F0] flex-1 ml-2">
             EDIT BUSINESS
@@ -132,6 +137,7 @@ export default function EditVendorProfile() {
         </TouchableOpacity>
         <View className="mt-6 rounded-xl border border-[#30372B] bg-[#1B1F19] p-4"><Text className="font-bold text-[#F5F5F0]">Business visibility</Text><Text className="text-[#AFAFA9] mt-1">{vendorProfile?.is_active ? 'Active: players can discover and book your active grounds.' : 'Paused: your grounds are hidden from players.'}</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel={vendorProfile?.is_active ? 'Pause business' : 'Reactivate business'} disabled={saving || !vendorProfile} onPress={toggleActivation} className="min-h-[48px] justify-center mt-2"><Text className={vendorProfile?.is_active ? 'text-[#F58A7C] font-bold' : 'text-[#57CC63] font-bold'}>{vendorProfile?.is_active ? 'Pause business' : 'Reactivate business'}</Text></TouchableOpacity></View>
       </ScrollView>
+      </KeyboardAvoidingView>
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />
     </SafeAreaView>
   );

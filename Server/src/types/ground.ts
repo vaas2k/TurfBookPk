@@ -19,7 +19,7 @@ export interface GroundProfile {
   is_verified: boolean;
   rating: number;
   total_reviews: number;
-  operating_hours: { open: string; close: string };
+  operating_hours: { open: string; close: string; close_next_day?: boolean };
   rules: string[];
   cancellation_policy: string | null;
   created_at: string;

@@ -29,7 +29,7 @@ export function AppDialogHost() {
   const [request, setRequest] = useState<DialogRequest | null>(null);
   const [busy, setBusy] = useState(false);
   const sheetRef = useRef<BottomSheetModal>(null);
-  const snapPoints = useMemo(() => ['42%', '70%'], []);
+  const snapPoints = useMemo(() => ['58%', '88%'], []);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -42,6 +42,7 @@ export function AppDialogHost() {
   }, [request]);
 
   const actions = request?.actions?.length ? request.actions : [{ text: 'OK' }];
+  const initialIndex = actions.length > 2 || (request?.message?.length ?? 0) > 180 ? 1 : 0;
   const select = async (action: AppDialogAction) => {
     if (busy) return;
     setBusy(true);
@@ -58,7 +59,7 @@ export function AppDialogHost() {
 
   return <BottomSheetModal
     ref={sheetRef}
-    index={0}
+    index={initialIndex}
     snapPoints={snapPoints}
     enableDynamicSizing={false}
     enablePanDownToClose
@@ -70,7 +71,7 @@ export function AppDialogHost() {
     handleIndicatorStyle={{ backgroundColor: theme.muted, width: 48 }}
     topInset={insets.top}
   >
-    <BottomSheetView accessibilityRole="alert" className="flex-1 border-t px-6" style={{ paddingBottom: Math.max(insets.bottom, 16), borderTopColor: theme.border }}>
+    <BottomSheetView accessibilityRole="alert" className="flex-1 border-t px-6" style={{ paddingBottom: Math.max(insets.bottom, 24), borderTopColor: theme.border }}>
         <View className="mt-6 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: destructive ? (appearance === 'dark' ? '#3A211E' : '#FCE9E7') : theme.businessSurface }}>
           <Ionicons name={destructive ? 'warning-outline' : 'information-circle-outline'} size={27} color={destructive ? '#FF5A55' : '#3DB54A'} />
         </View>

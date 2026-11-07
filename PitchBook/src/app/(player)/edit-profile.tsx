@@ -19,6 +19,7 @@ import { deleteOwnedImageUrl, uploadImage } from "@/lib/api/media";
 import { goBackOrReplace } from "@/lib/navigation";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { playerThemes } from "@/theme/playerTheme";
+import { Ionicons } from "@expo/vector-icons";
 
 const input =
   "bg-[#181C16] border border-[#30372B] rounded-xl px-4 py-3 text-[#F8F7F0]";
@@ -74,7 +75,7 @@ export default function EditPlayerProfile() {
             onPress={() => goBackOrReplace("/(player)/profile")}
             className="w-10 h-10 rounded-xl border items-center justify-center mr-3" style={{ backgroundColor: theme.surfaceRaised, borderColor: theme.border }}
           >
-            <Text className="text-[#1A1A2E] text-xl">‹</Text>
+            <Ionicons name="arrow-back" size={22} color={theme.text} />
           </TouchableOpacity>
           <Text style={{ fontFamily: 'BigShouldersDisplay_800ExtraBold', fontSize: 26, color: theme.text }} className="flex-1">
             Edit Profile

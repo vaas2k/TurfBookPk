@@ -4,6 +4,7 @@ import {
   ScrollView,
   StatusBar,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
  Linking } from "react-native";
@@ -13,15 +14,22 @@ import { Ionicons } from "@expo/vector-icons";
 import { formatDuration, formatTime12, formatTimeRange12 } from "@/lib/time";
 import {
   BookingProfile,
+  BookingDispute,
   PaymentAttempt,
   cancelBooking,
+  confirmRecurringReservationBooking,
   generateClinkReference,
   getBooking,
+  getBookingDispute,
   getBookingPaymentAttempt,
   getCancellationPreview,
+  getPaymentConfiguration,
+  getRefundBankProfile,
   markBookingCompleted,
   markBookingNoShow,
   recordDelayedStart,
+  respondToBookingDispute,
+  appealBookingDispute,
 } from "@/lib/api/bookings";
 import { Toast } from "@/components/ui/toast";
 import { BookingStatusBadge } from "@/components/booking/BookingStatusBadge";
@@ -46,6 +54,8 @@ export function BookingDetails({
   const insets = useSafeAreaInsets();
   const [booking, setBooking] = useState<BookingProfile | null>(null);
   const [paymentAttempt, setPaymentAttempt] = useState<PaymentAttempt | null>(null);
+  const [dispute, setDispute] = useState<BookingDispute | null>(null);
+  const [disputeMessage, setDisputeMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -60,6 +70,7 @@ export function BookingDetails({
     try {
       const loadedBooking = await getBooking(id);
       setBooking(loadedBooking);
+      setDispute(await getBookingDispute(id).catch(() => null));
       if (!vendorView) setPaymentAttempt(await getBookingPaymentAttempt(id));
     } catch (error: any) {
       setToast(error?.message || "Unable to load this booking.");
@@ -92,6 +103,21 @@ export function BookingDetails({
       return;
     }
     setActionLoading(false);
+    if (!vendorView && preview.refund_required && preview.refund_amount > 0) {
+      try {
+        const refundProfile = await getRefundBankProfile();
+        if (!refundProfile) {
+          appDialog.alert('Refund bank details needed', 'Add the bank account where TurfBookPK should manually send this refund, then return here to cancel.', [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Add bank account', onPress: () => router.push('/(player)/refund-bank-details') },
+          ]);
+          return;
+        }
+      } catch (error: any) {
+        setToast(error?.message || 'Unable to check refund bank details.');
+        return;
+      }
+    }
     appDialog.alert(
       "Review cancellation",
       `${preview.cancellation_policy[0]!.toUpperCase() + preview.cancellation_policy.slice(1)} policy · ${preview.refund_percentage}% refund${preview.within_grace_window ? ` (within the ${preview.grace_window_minutes}-minute grace window)` : ""}\nCancellation fee: PKR ${preview.cancellation_fee.toLocaleString()}\n${preview.payment_status === "paid" ? `Refund due: PKR ${preview.refund_amount.toLocaleString()}` : "No payment has been recorded."}${preview.is_mock_payment ? "\nThis is a mock payment. No real money will move." : ""}\n\nThe slot will become available again.`,
@@ -188,6 +214,14 @@ export function BookingDetails({
   const handleRecurringPayment = async () => {
     setActionLoading(true);
     try {
+      const configuration = await getPaymentConfiguration();
+      if (configuration.test_payment_enabled) {
+        const confirmed = await confirmRecurringReservationBooking(id);
+        setBooking(confirmed);
+        setPaymentAttempt(null);
+        setToast('Test payment confirmed. No real money was collected.');
+        return;
+      }
       const existing = await getBookingPaymentAttempt(id);
       const payment = existing && ['pending', 'unknown', 'paid'].includes(existing.provider_status)
         ? existing
@@ -199,6 +233,19 @@ export function BookingDetails({
     } finally {
       setActionLoading(false);
     }
+  };
+  const submitVendorDisputeMessage = async (appeal: boolean) => {
+    if (!dispute || disputeMessage.trim().length < 10) { setToast('Please write at least 10 characters.'); return; }
+    setActionLoading(true);
+    try {
+      const updated = appeal
+        ? await appealBookingDispute(id, dispute.id, disputeMessage.trim())
+        : await respondToBookingDispute(id, dispute.id, disputeMessage.trim());
+      setDispute((current) => current ? { ...current, ...updated } : updated);
+      setDisputeMessage('');
+      setToast(appeal ? 'Appeal sent for admin review.' : 'Your response was sent for admin review.');
+    } catch (error: any) { setToast(error?.message || 'Unable to send your response.'); }
+    finally { setActionLoading(false); }
   };
 
   if (loading) {
@@ -247,6 +294,9 @@ export function BookingDetails({
     booking.status === "pending_payment" &&
     booking.reservation_expires_at &&
     new Date(booking.reservation_expires_at).getTime() > clockNow;
+  const matchStartsAt = new Date(`${booking.date}T${booking.start_time}+05:00`).getTime();
+  const matchEndsAt = new Date(`${booking.end_date || booking.date}T${booking.end_time}+05:00`).getTime();
+  const matchHubVisible = booking.payment_status === 'paid' && clockNow >= matchStartsAt - 30 * 60_000 && clockNow <= matchEndsAt + 2 * 60 * 60_000;
 
   if (!vendorView) {
     const isUpcoming =
@@ -403,6 +453,19 @@ export function BookingDetails({
             </View>
           )}
 
+          {matchHubVisible && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Open live match hub"
+              onPress={() => router.push({ pathname: '/(player)/match-hub/[id]', params: { id: booking.id } })}
+              className="rounded-[24px] border border-[#3DB54A] bg-[#17301B] px-5 py-5 mt-5 flex-row items-center"
+            >
+              <View className="w-12 h-12 rounded-2xl bg-[#3DB54A] items-center justify-center"><Ionicons name="football-outline" size={24} color="#102110" /></View>
+              <View className="flex-1 ml-4"><Text style={{ fontFamily: 'SpaceGrotesk_700Bold' }} className="text-[#F8F7F0] text-base">Match Hub</Text><Text className="text-[#A8C9AC] text-xs mt-1">Live booking details, directions and issue reporting</Text></View>
+              <Ionicons name="chevron-forward" size={22} color="#71D77A" />
+            </TouchableOpacity>
+          )}
+
           {booking.status === "cancelled" && (
             <View className="bg-[#2D1B19] border border-[#7C382E] rounded-[24px] p-5 mt-5">
               <Text
@@ -537,6 +600,7 @@ export function BookingDetails({
         {booking.status === "cancelled" && <View className="bg-[#38201E] border border-[#69332C] rounded-[18px] p-5 mt-5"><Text className="text-[#FFD1CB] font-bold">Booking cancelled</Text><Text className="text-[#E9A49B] text-sm mt-2">Refund due: PKR {booking.refund_amount.toLocaleString()}</Text>{booking.cancellation_reason && <Text className="text-[#E9A49B] text-xs mt-2">{booking.cancellation_reason}</Text>}</View>}
         {booking.turnaround_minutes > 0 && <Text className="text-[#92978F] text-xs mt-4">Playing time ends at {formatTime12(booking.end_time)}. Allow {booking.turnaround_minutes} minutes for pitch changeover.</Text>}
         {booking.actual_start_at && <Text className="text-[#F4B844] text-xs mt-2">Delayed start recorded at {new Date(booking.actual_start_at).toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Karachi' })} ({booking.start_delay_reason?.replaceAll('_', ' ')}).</Text>}
+        {dispute && <View className="bg-[#272017] border border-[#73562E] rounded-[18px] p-5 mt-5"><View className="flex-row items-center justify-between"><Text className="text-[#F4C978] font-bold">Player issue report</Text><Text className="text-[#F4C978] text-xs capitalize">{dispute.status.replaceAll('_', ' ')}</Text></View><Text className="text-[#E6DDCF] text-sm mt-3">{dispute.description}</Text>{dispute.resolution && <Text className="text-[#BDB4A5] text-xs mt-3">Admin decision: {dispute.resolution}</Text>}{((['open', 'waiting'].includes(dispute.status) && !dispute.vendor_response) || (['resolved', 'rejected'].includes(dispute.status) && !dispute.vendor_appeal)) && <><TextInput value={disputeMessage} onChangeText={setDisputeMessage} multiline maxLength={1000} textAlignVertical="top" placeholder={['resolved', 'rejected'].includes(dispute.status) ? 'Explain why this decision should be reviewed...' : 'Explain what happened from the venue side...'} placeholderTextColor="#81786B" className="h-28 bg-[#15130F] border border-[#4A4030] rounded-xl px-3 py-3 text-[#F5F5F0] mt-4"/><TouchableOpacity accessibilityRole="button" disabled={actionLoading} onPress={() => void submitVendorDisputeMessage(['resolved', 'rejected'].includes(dispute.status))} className="border border-[#F4C978] rounded-full py-3 items-center mt-3"><Text className="text-[#F4C978] font-bold">{['resolved', 'rejected'].includes(dispute.status) ? 'Appeal decision' : 'Send venue response'}</Text></TouchableOpacity></>}</View>}
         {booking.status === 'confirmed' && !booking.actual_start_at && !hasEnded && new Date(`${booking.date}T${booking.start_time}+05:00`).getTime() < clockNow && <TouchableOpacity accessibilityRole="button" disabled={actionLoading} onPress={handleDelayedStart} className="border border-[#F4B844] rounded-xl p-3 mt-4 items-center"><Text className="text-[#F4B844] font-bold">Record a delayed start</Text></TouchableOpacity>}
         {isOpen && <Text className="text-[#92978F] text-xs leading-5 text-center mt-5">Attendance can be marked once the booked slot has ended.</Text>}
       </ScrollView>
@@ -584,6 +648,7 @@ export function BookingDetails({
             <BookingStatusBadge
               status={booking.status}
               paymentStatus={booking.payment_status}
+              isRecurringReservation={booking.is_recurring_reservation}
             />
           </View>
 

@@ -9,7 +9,7 @@
     "worker": "node dist/worker.js",
     "worker:dev": "tsx watch src/worker.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "node scripts/run-tests.mjs",
     "test:e2e": "npm run build && node scripts/core-mvp-smoke.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate-locked.mjs"

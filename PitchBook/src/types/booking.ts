@@ -4,6 +4,10 @@ export interface BookingProfile {
   player_id: string;
   vendor_id: string;
   ground_id: string;
+  pitch_id?: string;
+  pitch_name?: string;
+  pitch_side?: number | null;
+  end_date?: string;
   slot_id: string;
   ground_title: string;
   ground_address: string;
