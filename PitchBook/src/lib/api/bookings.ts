@@ -22,8 +22,9 @@ export async function getManagerBookings(date: string): Promise<ManagerBooking[]
 export async function getManagerBooking(id: string): Promise<ManagerBooking> {
   return (await apiRequest<{ booking: ManagerBooking }>(`/bookings/manager/${id}`)).booking;
 }
-export async function getManagerBookingDispute(id: string): Promise<{ id: string; status: string; category: string; description: string; vendor_response: string | null } | null> {
-  return (await apiRequest<{ dispute: { id: string; status: string; category: string; description: string; vendor_response: string | null } | null }>(`/bookings/manager/${id}/dispute`)).dispute;
+export type ManagerBookingDispute = { id: string; status: string; category: string; description: string; vendor_response: string | null };
+export async function getManagerBookingDispute(id: string): Promise<ManagerBookingDispute | null> {
+  return (await apiRequest<{ dispute: ManagerBookingDispute | null }>(`/bookings/manager/${id}/dispute`)).dispute;
 }
 
 function pageQuery(page: number, limit: number): string {
