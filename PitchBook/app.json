@@ -73,6 +73,14 @@
           "defaultChannel": "bookings"
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow TurfBookPK to scan player check-in QR codes.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
       "expo-web-browser",
       "expo-secure-store"
     ],

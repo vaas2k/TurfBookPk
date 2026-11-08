@@ -90,6 +90,17 @@ export const vendors = pgTable('vendors', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const groundManagers = pgTable('ground_managers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id, { onDelete: 'cascade' }),
+  groundId: uuid('ground_id').notNull().references(() => grounds.id, { onDelete: 'cascade' }),
+  phone: text('phone').notNull(),
+  name: text('name').notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const grounds = pgTable('grounds', {
   id: uuid('id').defaultRandom().primaryKey(),
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id, { onDelete: 'cascade' }),
@@ -179,6 +190,12 @@ export const bookings = pgTable('bookings', {
   turnaroundMinutes: integer('turnaround_minutes').notNull().default(0),
   totalAmount: integer('total_amount').notNull(),
   actualStartAt: timestamp('actual_start_at', { withTimezone: true }),
+  checkedInAt: timestamp('checked_in_at', { withTimezone: true }),
+  checkedInBy: uuid('checked_in_by').references(() => users.id),
+  checkInTokenHash: text('check_in_token_hash'),
+  checkInTokenExpiresAt: timestamp('check_in_token_expires_at', { withTimezone: true }),
+  checkInCodeHash: text('check_in_code_hash'),
+  checkInCodeAttempts: integer('check_in_code_attempts').notNull().default(0),
   startDelayReason: text('start_delay_reason'),
   platformFee: integer('platform_fee').notNull().default(0),
   vendorAmount: integer('vendor_amount').notNull(),
@@ -203,6 +220,24 @@ export const bookings = pgTable('bookings', {
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const attendanceEvents = pgTable('attendance_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  bookingId: uuid('booking_id').notNull().references(() => bookings.id),
+  groundId: uuid('ground_id').notNull().references(() => grounds.id),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  action: text('action').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const managerSlotActions = pgTable('manager_slot_actions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  groundId: uuid('ground_id').notNull().references(() => grounds.id),
+  slotId: uuid('slot_id'),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  action: text('action').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const vendorVerifications = pgTable('vendor_verifications', {

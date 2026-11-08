@@ -4,6 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppearanceStore } from '@/store/appearanceStore';
 import { playerThemes } from '@/theme/playerTheme';
+import { useEffect } from 'react';
+import { useAuthStore } from '@/store/authStore';
+import { useManagerAccessStore } from '@/store/managerAccessStore';
 
 // Custom Tab Bar Component
 function BottomTabBar() {
@@ -12,6 +15,13 @@ function BottomTabBar() {
   const appearance = useAppearanceStore((state) => state.appearance);
   const theme = playerThemes[appearance];
   const bottomPadding = Math.max(insets.bottom, 8);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const hasManagerAccess = useManagerAccessStore((state) => state.hasAcceptedAssignment);
+  const refreshManagerAccess = useManagerAccessStore((state) => state.refresh);
+
+  useEffect(() => {
+    void refreshManagerAccess(userId);
+  }, [userId, pathname, refreshManagerAccess]);
 
   // Define which paths should show the tab bar
   const showTabBar = () => {
@@ -22,14 +32,16 @@ function BottomTabBar() {
         pathname === '/(player)/search' || 
         pathname === '/(player)/bookings' || 
         pathname === '/(player)/chat' || 
-        pathname === '/(player)/profile') {
+        pathname === '/(player)/profile' ||
+        pathname === '/(player)/manager-hub') {
       return true;
     }
     // Check if it's a main route without the full path
     if (pathname === '/search' || 
         pathname === '/bookings' || 
         pathname === '/chat' || 
-        pathname === '/profile') {
+        pathname === '/profile' ||
+        pathname === '/manager-hub') {
       return true;
     }
     return false;
@@ -55,6 +67,7 @@ function BottomTabBar() {
       icon: 'calendar', 
       route: '/(player)/bookings' 
     },
+    ...(hasManagerAccess ? [{ name: 'Manage', icon: 'grid', route: '/(player)/manager-hub' }] : []),
     { 
       name: 'Profile', 
       icon: 'person', 
@@ -83,7 +96,7 @@ function BottomTabBar() {
 
   return (
     <View 
-      className="border-t flex-row items-center justify-around px-5 pt-2"
+      className="border-t flex-row items-center justify-around px-2 pt-2"
       style={{ 
         backgroundColor: theme.surfaceRaised,
         borderTopColor: theme.border,
@@ -154,6 +167,11 @@ export default function PlayerLayout() {
         <Stack.Screen name="payment-processing" />
         <Stack.Screen name="booking-confirmation" />
         <Stack.Screen name="booking/[id]" />
+        <Stack.Screen name="check-in/[id]" />
+        <Stack.Screen name="manager-hub" />
+        <Stack.Screen name="manager-scan" />
+        <Stack.Screen name="manager-booking" />
+        <Stack.Screen name="manager-slots" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="edit-profile" />
         <Stack.Screen name="wallet" />

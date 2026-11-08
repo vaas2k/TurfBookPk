@@ -1,6 +1,6 @@
 import { and, eq, isNull, lte, or, sql as expression } from 'drizzle-orm';
 import { db } from '../database/client.js';
-import { bookings, ledgerEntries, notifications, slots, vendors } from '../database/schema.js';
+import { attendanceEvents, bookings, ledgerEntries, notifications, slots, users, vendors } from '../database/schema.js';
 import { bookingStart } from './cancellationPolicy.js';
 import { sendExpoPush } from './expoPushService.js';
 
@@ -71,12 +71,14 @@ export class BookingMaintenanceService {
     }
     return { opened, reminded, released };
   }
-  async finalizeBooking(bookingId: string, status: 'completed' | 'no_show', now = new Date()): Promise<boolean> {
+  async finalizeBooking(bookingId: string, status: 'completed' | 'no_show', now = new Date(), actorId?: string): Promise<boolean> {
     return db.transaction(async (tx) => {
-      const changed = await tx.update(bookings).set({ status, updatedAt: now })
-        .where(and(eq(bookings.id, bookingId), eq(bookings.status, 'confirmed'))).returning();
+      const changed = await tx.update(bookings).set({ status, updatedAt: now, checkInTokenHash: null, checkInTokenExpiresAt: null, checkInCodeHash: null })
+        .where(and(eq(bookings.id, bookingId), eq(bookings.status, 'confirmed'), status === 'no_show' ? isNull(bookings.checkedInAt) : undefined)).returning();
       const booking = changed[0];
       if (!booking) return false;
+      if (status === 'no_show') await tx.update(users).set({ noShowStrikes: expression`${users.noShowStrikes} + 1`, updatedAt: now }).where(eq(users.id, booking.playerId));
+      if (actorId) await tx.insert(attendanceEvents).values({ bookingId, groundId: booking.groundId, actorId, action: status });
       const posted = await tx.update(ledgerEntries).set({ status: 'posted', postedAt: now, updatedAt: now })
         .where(and(eq(ledgerEntries.bookingId, booking.id), eq(ledgerEntries.status, 'pending'), eq(ledgerEntries.type, 'booking_earning')))
         .returning({ amount: ledgerEntries.amount });
@@ -95,10 +97,11 @@ export class BookingMaintenanceService {
   async completeEndedBookings(now = new Date()): Promise<number> {
     await this.processRecurringReservations(now);
     await this.notifyStartingMatches(now);
-    const candidates = await db.select().from(bookings).where(and(eq(bookings.status, 'confirmed'), expression`((${bookings.endDate}::date + ${bookings.endTime}::time) AT TIME ZONE 'Asia/Karachi') <= ${now.toISOString()}::timestamptz`)).orderBy(bookings.date).limit(200);
+    const candidates = await db.select().from(bookings).where(and(eq(bookings.status, 'confirmed'), expression`((${bookings.endDate}::date + ${bookings.endTime}::time) AT TIME ZONE 'Asia/Karachi') <= ${now.toISOString()}::timestamptz`, or(expression`${bookings.checkedInAt} IS NOT NULL`, expression`((${bookings.endDate}::date + ${bookings.endTime}::time) AT TIME ZONE 'Asia/Karachi') <= ${new Date(now.getTime() - 2 * 60 * 60_000).toISOString()}::timestamptz`))).orderBy(bookings.date).limit(200);
     let completed = 0;
     for (const booking of candidates) {
-      if (bookingStart(booking.endDate || booking.date, booking.endTime) > now) continue;
+      const end = bookingStart(booking.endDate || booking.date, booking.endTime);
+      if (end > now || (!booking.checkedInAt && now.getTime() < end.getTime() + 2 * 60 * 60_000)) continue;
       if (await this.finalizeBooking(booking.id, 'completed', now)) completed += 1;
     }
     return completed;

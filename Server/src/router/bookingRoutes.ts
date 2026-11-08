@@ -16,6 +16,12 @@ export function createBookingRouter(controller: BookingController, tokenService:
   router.put('/refund-bank-profile', controller.saveRefundBankProfile);
   router.get('/mine', controller.playerList);
   router.get('/vendor', controller.vendorList);
+  router.get('/manager', controller.managerList);
+  router.get('/manager/:id', controller.managerDetail);
+  router.get('/manager/:id/dispute', controller.managerDispute);
+  router.post('/check-in/scan', controller.scanCheckIn);
+  router.post('/:id/check-in-token', controller.issueCheckInToken);
+  router.post('/manager/:id/check-in-code', controller.manualCheckIn);
   router.get('/:id', controller.detail);
   router.get('/:id/dispute', controller.dispute);
   router.post('/:id/disputes', controller.openDispute);

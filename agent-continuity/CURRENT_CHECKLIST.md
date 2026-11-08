@@ -233,3 +233,11 @@ This is the working backlog from the 2026-09-08 project audit. Complete tasks in
 - [x] Preserve existing slots/bookings through a default-pitch migration and support next-day closing hours.
 - [x] Add vendor/player pitch selection and show pitch identity on bookings.
 - [ ] Rehearse migration with a copy of existing production-sized data and verify vendor/player workflows on a physical device before deployment.
+
+## Ground manager and arrival check-in
+
+- [x] Let an approved vendor assign one manager role by phone and ground; the manager accepts in the same OTP app and retains player access.
+- [x] Let accepted managers view assigned bookings, scan a short-lived player QR or enter a fallback code, manage daily slots, and record match operations without financial access.
+- [x] Show an accepted manager a dedicated Manage tab in the player bottom navigation with assigned grounds, today's bookings, QR scanning, and per-ground slot access.
+- [x] Record attendance and manager slot actions; revoke access immediately and prevent duplicate check-ins and no-show strikes after check-in.
+- [ ] Verify camera permission, QR scan, fallback code, assignment, revocation, and multi-ground access on physical Android and iPhone devices after applying migrations 0042 and 0043 and rebuilding the native app.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ScrollView,
   StatusBar,
@@ -8,7 +8,7 @@ import {
   Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
 import { appDialog } from "@/components/ui/app-dialog";
@@ -17,6 +17,7 @@ import { useVendorStore } from "@/store/vendorStore";
 import VendorVerificationFlow, { VendorBaseData } from "@/components/vendor/VendorVerificationFlow";
 import { playerThemes } from "@/theme/playerTheme";
 import { IconButton } from "@/components/ui/icon-button";
+import { getMyManagerAssignments } from '@/lib/api/managers';
 
 export default function ProfileScreen() {
   const { openVendorVerification } = useLocalSearchParams<{ openVendorVerification?: string }>();
@@ -25,7 +26,9 @@ export default function ProfileScreen() {
   const { appearance } = useAppearanceStore();
   const theme = playerThemes.dark;
   const [showVendorModal, setShowVendorModal] = useState(false);
+  const [hasManagerAccess, setHasManagerAccess] = useState(false);
   useEffect(() => { if (openVendorVerification === '1') setShowVendorModal(true); }, [openVendorVerification]);
+  useFocusEffect(useCallback(() => { if (!user) return; void getMyManagerAssignments().then((items) => setHasManagerAccess(items.length > 0)).catch(() => undefined); }, [user]));
   const initials = (profile?.full_name || "User")
     .split(" ")
     .map((part) => part[0])
@@ -232,6 +235,7 @@ export default function ProfileScreen() {
           >
             BUSINESS
           </Text>
+          {hasManagerAccess ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open ground manager workspace" onPress={() => router.push('/(player)/manager-hub')} className="border rounded-[18px] min-h-[70px] px-4 flex-row items-center mb-3" style={{ backgroundColor: theme.businessSurface, borderColor: theme.businessBorder }}><Ionicons name="people-outline" size={23} color={theme.green} /><View className="flex-1 ml-4"><Text style={{ color: theme.text }} className="font-bold text-base">Ground manager</Text><Text style={{ color: theme.businessMuted }} className="text-xs">Check in players at assigned grounds</Text></View><Ionicons name="arrow-forward" size={20} color={theme.green} /></TouchableOpacity> : null}
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={

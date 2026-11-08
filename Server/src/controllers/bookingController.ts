@@ -1,10 +1,10 @@
-import { randomUUID } from 'crypto';
+import { createHash, createHmac, randomBytes, randomInt, randomUUID } from 'crypto';
 import { Response } from 'express';
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql as expression } from 'drizzle-orm';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../helpers/errors.js';
 import { db } from '../database/client.js';
-import { bookingOrders, bookings, financialDisputes, grounds, ledgerEntries, notifications, paymentAttempts, pitches, refundBankProfiles, refundCases, slots, users, vendors } from '../database/schema.js';
+import { attendanceEvents, bookingOrders, bookings, financialDisputes, groundManagers, grounds, ledgerEntries, notifications, paymentAttempts, pitches, refundBankProfiles, refundCases, slots, users, vendors } from '../database/schema.js';
 import { canCancelBooking, paymentStatusForCancellation } from '../services/bookingLifecycle.js';
 import { bookingStart, cancellationPolicy, cancellationQuote } from '../services/cancellationPolicy.js';
 import { MockPaymentProvider } from '../services/paymentProvider.js';
@@ -17,6 +17,7 @@ import { nextPaginationCursor, parsePaginationCursor } from '../services/paginat
 import { isInsideBookingCutoff } from '../services/bookingCutoff.js';
 import { encryptPayoutValue, identifierFingerprint, identifierLastFour, normalizedIdentifier } from '../services/sensitiveData.js';
 import { immediateRecurringSlotIds } from '../services/recurringPaymentPolicy.js';
+import { canOperateGround, managedGroundIds } from '../services/groundManagerAccess.js';
 
 function param(value: string | string[] | undefined, name: string): string {
   if (typeof value !== 'string' || !value) throw new AppError('invalid_request', `${name} is required`, 422);
@@ -64,6 +65,8 @@ function mapBooking(row: any) {
     player_name: row.player?.fullName || 'Player', player_phone: row.player?.phone || null,
     date: booking.date, end_date: booking.endDate || booking.date, start_time: booking.startTime, end_time: booking.endTime, turnaround_minutes: booking.turnaroundMinutes, actual_start_at: booking.actualStartAt?.toISOString() ?? null, start_delay_reason: booking.startDelayReason, total_amount: booking.totalAmount,
     platform_fee: booking.platformFee, vendor_amount: booking.vendorAmount, status: booking.status,
+    checked_in_at: booking.checkedInAt?.toISOString() ?? null,
+    checked_in_by: booking.checkedInBy ?? null,
     payment_status: booking.paymentStatus, payment_method: booking.paymentMethod, payment_reference: booking.paymentReference,
     hold_expires_at: booking.holdExpiresAt?.toISOString() ?? null, cancelled_at: booking.cancelledAt?.toISOString() ?? null,
     cancellation_reason: booking.cancellationReason, notes: booking.notes,
@@ -75,6 +78,16 @@ function mapBooking(row: any) {
     created_at: booking.createdAt.toISOString(), updated_at: booking.updatedAt.toISOString(),
   };
 }
+function mapManagerBooking(row: any) {
+  return { id: row.booking.id, booking_number: row.booking.bookingNumber, ground_id: row.booking.groundId, ground_title: row.ground.title, player_name: row.player?.fullName || 'Player', player_phone: row.player?.phone ?? null, date: row.booking.date, end_date: row.booking.endDate || row.booking.date, start_time: row.booking.startTime, end_time: row.booking.endTime, status: row.booking.status, payment_status: row.booking.paymentStatus, checked_in_at: row.booking.checkedInAt?.toISOString() ?? null, actual_start_at: row.booking.actualStartAt?.toISOString() ?? null };
+}
+function checkInCodeHash(bookingId: string, code: string): string {
+  return createHmac('sha256', env.jwtAccessSecret).update(`${bookingId}:${code}`).digest('hex');
+}
+async function operationalBookingResponse(userId: string, row: any) {
+  const owner = (await db.select({ id: vendors.id }).from(vendors).where(and(eq(vendors.id, row.booking.vendorId), eq(vendors.userId, userId))).limit(1))[0];
+  return owner ? mapBooking(row) : mapManagerBooking(row);
+}
 async function fetchBooking(id: string) {
   const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings)
     .innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id))
@@ -83,14 +96,71 @@ async function fetchBooking(id: string) {
 }
 
 export class BookingController {
+  issueCheckInToken = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const id = param(request.params.id, 'Booking id');
+    const booking = (await db.select().from(bookings).where(and(eq(bookings.id, id), eq(bookings.playerId, request.auth!.userId))).limit(1))[0];
+    if (!booking) throw new AppError('not_found', 'Booking was not found', 404);
+    const now = new Date();
+    const start = bookingStart(booking.date, booking.startTime);
+    const end = bookingStart(booking.endDate || booking.date, booking.endTime);
+    if (booking.status !== 'confirmed' || booking.paymentStatus !== 'paid' || booking.checkedInAt || now.getTime() < start.getTime() - 30 * 60_000 || now > end) throw new AppError('check_in_unavailable', 'Check-in opens 30 minutes before your paid match and closes when it ends', 409);
+    const token = randomBytes(32).toString('base64url');
+    const code = String(randomInt(10_000_000, 100_000_000));
+    const expiresAt = new Date(Math.min(now.getTime() + 2 * 60_000, end.getTime()));
+    const updated = (await db.update(bookings).set({ checkInTokenHash: createHash('sha256').update(token).digest('hex'), checkInTokenExpiresAt: expiresAt, checkInCodeHash: checkInCodeHash(booking.id, code), checkInCodeAttempts: 0 }).where(and(eq(bookings.id, booking.id), eq(bookings.status, 'confirmed'), isNull(bookings.checkedInAt))).returning({ id: bookings.id }))[0];
+    if (!updated) throw new AppError('check_in_unavailable', 'This booking is no longer available for check-in', 409);
+    response.json({ token, code, expires_at: expiresAt.toISOString(), booking_number: booking.bookingNumber });
+  };
+  manualCheckIn = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const id = param(request.params.id, 'Booking id');
+    const code = typeof request.body?.code === 'string' ? request.body.code.trim() : '';
+    if (!/^\d{8}$/.test(code)) throw new AppError('invalid_check_in_code', 'Enter the eight-digit code shown on the player phone', 422);
+    const now = new Date();
+    const result = await db.transaction(async (tx) => {
+      const row = (await tx.select().from(bookings).where(eq(bookings.id, id)).limit(1).for('update'))[0];
+      if (!row || !await canOperateGround(request.auth!.userId, row.vendorId, row.groundId)) throw new AppError('not_found', 'Booking was not found', 404);
+      if (row.status !== 'confirmed' || row.paymentStatus !== 'paid' || row.checkedInAt || !row.checkInTokenExpiresAt || row.checkInTokenExpiresAt <= now) return { error: 'Ask the player to refresh their check-in code.' };
+      if (now.getTime() < bookingStart(row.date, row.startTime).getTime() - 30 * 60_000 || now > bookingStart(row.endDate || row.date, row.endTime)) return { error: 'Check-in is outside the match arrival window.' };
+      if (row.checkInCodeAttempts >= 5) return { error: 'Too many attempts. Ask the player to refresh their code.' };
+      if (row.checkInCodeHash !== checkInCodeHash(row.id, code)) {
+        await tx.update(bookings).set({ checkInCodeAttempts: row.checkInCodeAttempts + 1 }).where(eq(bookings.id, row.id));
+        return { error: 'Code did not match. Check the player phone and try again.' };
+      }
+      await tx.update(bookings).set({ checkedInAt: now, checkedInBy: request.auth!.userId, checkInTokenHash: null, checkInTokenExpiresAt: null, checkInCodeHash: null, updatedAt: now }).where(eq(bookings.id, id));
+      await tx.insert(attendanceEvents).values({ bookingId: id, groundId: row.groundId, actorId: request.auth!.userId, action: 'checked_in' });
+      await tx.insert(notifications).values({ userId: row.playerId, type: 'booking', title: 'Arrival confirmed', message: 'Your ground manager checked you in for this match.', data: { bookingId: id } });
+      return { booking_number: row.bookingNumber, checked_in_at: now.toISOString() };
+    });
+    if ('error' in result) throw new AppError('invalid_check_in_code', result.error!, 409);
+    response.json(result);
+  };
+  scanCheckIn = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const token = typeof request.body?.token === 'string' ? request.body.token.trim() : '';
+    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new AppError('invalid_check_in', 'Scan a valid TurfBookPK check-in QR', 422);
+    const hash = createHash('sha256').update(token).digest('hex');
+    const now = new Date();
+    const result = await db.transaction(async (tx) => {
+      const row = (await tx.select().from(bookings).where(eq(bookings.checkInTokenHash, hash)).limit(1).for('update'))[0];
+      if (!row || row.status !== 'confirmed' || row.paymentStatus !== 'paid' || row.checkedInAt || !row.checkInTokenExpiresAt || row.checkInTokenExpiresAt <= now) throw new AppError('invalid_check_in', 'This check-in QR expired or has already been used. Ask the player to refresh it.', 409);
+      const start = bookingStart(row.date, row.startTime);
+      const end = bookingStart(row.endDate || row.date, row.endTime);
+      if (now.getTime() < start.getTime() - 30 * 60_000 || now > end) throw new AppError('check_in_unavailable', 'Check-in is outside the match arrival window', 409);
+      if (!await canOperateGround(request.auth!.userId, row.vendorId, row.groundId)) throw new AppError('forbidden', 'You are not assigned to this ground', 403);
+      const updated = (await tx.update(bookings).set({ checkedInAt: now, checkedInBy: request.auth!.userId, checkInTokenHash: null, checkInTokenExpiresAt: null, checkInCodeHash: null, updatedAt: now }).where(and(eq(bookings.id, row.id), isNull(bookings.checkedInAt))).returning())[0];
+      if (!updated) throw new AppError('already_checked_in', 'This booking is already checked in', 409);
+      await tx.insert(attendanceEvents).values({ bookingId: row.id, groundId: row.groundId, actorId: request.auth!.userId, action: 'checked_in' });
+      await tx.insert(notifications).values({ userId: row.playerId, type: 'booking', title: 'Arrival confirmed', message: 'Your ground manager checked you in for this match.', data: { bookingId: row.id } });
+      return updated;
+    });
+    response.json({ booking_id: result.id, booking_number: result.bookingNumber, checked_in_at: result.checkedInAt?.toISOString() });
+  };
   recordDelayedStart = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const id = param(request.params.id, 'Booking id');
     const reason = request.body?.reason;
     if (reason !== 'previous_team' && reason !== 'venue_delay' && reason !== 'other') throw new AppError('invalid_delay_reason', 'Choose why the pitch started late', 422);
-    const vendor = (await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
     const current = await fetchBooking(id);
-    if (!current || vendor?.id !== current.booking.vendorId) throw new AppError('not_found', 'Booking was not found', 404);
+    if (!current || !await canOperateGround(request.auth.userId, current.booking.vendorId, current.booking.groundId)) throw new AppError('not_found', 'Booking was not found', 404);
     const now = new Date();
     if (current.booking.status !== 'confirmed' || now < bookingStart(current.booking.date, current.booking.startTime) || now >= bookingStart(current.booking.endDate || current.booking.date, current.booking.endTime)) throw new AppError('delay_not_recordable', 'Record the actual start during a confirmed playing slot', 409);
     const saved = await db.transaction(async (tx) => {
@@ -101,7 +171,7 @@ export class BookingController {
     if (!saved) throw new AppError('delay_already_recorded', 'The actual start has already been recorded', 409);
     void sendExpoPush({ userIds: [saved.playerId], title: 'Delayed start recorded', body: `The venue recorded a delayed start for your match at ${current.ground.title}.`, data: { bookingId: id } });
     const result = await fetchBooking(id);
-    response.json({ booking: result ? mapBooking(result) : null });
+    response.json({ booking: result ? await operationalBookingResponse(request.auth.userId, result) : null });
   };
   confirmOrderMock = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     assertMockPaymentsEnabled();
@@ -367,6 +437,28 @@ export class BookingController {
     const pageRows = rows.slice(0, limit);
     response.json({ bookings: pageRows.map(mapBooking), pagination: { page, limit, total, has_more: rows.length > limit, next_cursor: rows.length > limit ? nextPaginationCursor(pageRows.at(-1)?.booking) : null } });
   };
+  managerList = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const groundIds = await managedGroundIds(request.auth!.userId);
+    if (!groundIds.length) { response.json({ bookings: [] }); return; }
+    const date = request.query.date;
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new AppError('invalid_date', 'Select a valid calendar date', 422);
+    const rows = await db.select({ booking: bookings, ground: grounds, player: users }).from(bookings)
+      .innerJoin(grounds, eq(bookings.groundId, grounds.id)).leftJoin(users, eq(bookings.playerId, users.id))
+      .where(and(inArray(bookings.groundId, groundIds), or(eq(bookings.date, date), eq(bookings.endDate, date)))).orderBy(bookings.startTime).limit(200);
+    response.json({ bookings: rows.map(mapManagerBooking) });
+  };
+  managerDetail = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const current = await fetchBooking(param(request.params.id, 'Booking id'));
+    if (!current || !await canOperateGround(request.auth!.userId, current.booking.vendorId, current.booking.groundId)) throw new AppError('not_found', 'Booking was not found', 404);
+    response.json({ booking: mapManagerBooking(current) });
+  };
+  managerDispute = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
+    const id = param(request.params.id, 'Booking id');
+    const current = await fetchBooking(id);
+    if (!current || !await canOperateGround(request.auth!.userId, current.booking.vendorId, current.booking.groundId)) throw new AppError('not_found', 'Booking was not found', 404);
+    const row = (await db.select().from(financialDisputes).where(eq(financialDisputes.bookingId, id)).limit(1))[0];
+    response.json({ dispute: row ? { id: row.id, status: row.status, category: row.category, description: row.description, vendor_response: row.vendorResponse } : null });
+  };
   detail = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const current = await fetchBooking(param(request.params.id, 'Booking id'));
@@ -414,10 +506,11 @@ export class BookingController {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const bookingId = param(request.params.id, 'Booking id');
     const disputeId = param(request.params.disputeId, 'Dispute id');
-    const vendor = (await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
+    const current = await fetchBooking(bookingId);
     const message = typeof request.body?.response === 'string' ? request.body.response.trim().slice(0, 1000) : '';
-    if (!vendor || message.length < 10) throw new AppError('invalid_dispute_response', 'Provide a response of at least 10 characters', 422);
-    const [updated] = await db.update(financialDisputes).set({ status: 'under_review', vendorResponse: message, vendorRespondedAt: new Date(), updatedAt: new Date() }).where(and(eq(financialDisputes.id, disputeId), eq(financialDisputes.bookingId, bookingId), eq(financialDisputes.vendorId, vendor.id), inArray(financialDisputes.status, ['open', 'waiting']))).returning();
+    if (!current || !await canOperateGround(request.auth.userId, current.booking.vendorId, current.booking.groundId)) throw new AppError('not_found', 'Booking was not found', 404);
+    if (message.length < 10) throw new AppError('invalid_dispute_response', 'Provide a response of at least 10 characters', 422);
+    const [updated] = await db.update(financialDisputes).set({ status: 'under_review', vendorResponse: message, vendorRespondedAt: new Date(), updatedAt: new Date() }).where(and(eq(financialDisputes.id, disputeId), eq(financialDisputes.bookingId, bookingId), eq(financialDisputes.vendorId, current.booking.vendorId), inArray(financialDisputes.status, ['open', 'waiting']))).returning();
     if (!updated) throw new AppError('dispute_not_respondable', 'This issue is not waiting for a vendor response', 409);
     await db.insert(notifications).values({ userId: updated.playerId, type: 'dispute', title: 'Venue responded to your issue', message: 'The TurfBookPK team can now review both sides.', data: { bookingId, disputeId, destination: 'booking_details' } });
     response.json({ dispute: { id: updated.id, status: updated.status, vendor_response: updated.vendorResponse } });
@@ -448,26 +541,25 @@ export class BookingController {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const id = param(request.params.id, 'Booking id');
     const current = await fetchBooking(id);
-    const vendor = (await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
-    if (!current || vendor?.id !== current.booking.vendorId) throw new AppError('not_found', 'Booking was not found', 404);
+    if (!current || !await canOperateGround(request.auth.userId, current.booking.vendorId, current.booking.groundId)) throw new AppError('not_found', 'Booking was not found', 404);
     if (bookingStart(current.booking.endDate || current.booking.date, current.booking.endTime) > new Date()) throw new AppError('booking_not_ended', 'A no-show can only be recorded after the slot ends', 409);
-    if (!await new BookingMaintenanceService().finalizeBooking(id, 'no_show')) throw new AppError('booking_not_updatable', 'Only confirmed bookings can be marked as no-show', 409);
-    const [player] = await db.update(users).set({ noShowStrikes: expression`${users.noShowStrikes} + 1`, updatedAt: new Date() }).where(eq(users.id, current.booking.playerId)).returning({ noShowStrikes: users.noShowStrikes });
+    if (current.booking.checkedInAt) throw new AppError('already_checked_in', 'This player was checked in and cannot be marked as a no-show', 409);
+    if (!await new BookingMaintenanceService().finalizeBooking(id, 'no_show', new Date(), request.auth.userId)) throw new AppError('booking_not_updatable', 'Only confirmed bookings can be marked as no-show', 409);
+    const player = (await db.select({ noShowStrikes: users.noShowStrikes }).from(users).where(eq(users.id, current.booking.playerId)).limit(1))[0];
     const strikeMessage = `Your booking at ${current.ground.title} was marked as a no-show.${player && player.noShowStrikes >= 3 ? ' Your account has been flagged for review after three no-shows.' : ''}`;
     await db.insert(notifications).values({ userId: current.booking.playerId, type: 'booking', title: 'Booking marked as no-show', message: strikeMessage, data: { bookingId: id } });
     void sendExpoPush({ userIds: [current.booking.playerId], title: 'Booking marked as no-show', body: `Your booking at ${current.ground.title} was marked as a no-show.`, data: { bookingId: id } });
     const result = await fetchBooking(id);
-    response.json({ booking: result ? mapBooking(result) : null });
+    response.json({ booking: result ? await operationalBookingResponse(request.auth.userId, result) : null });
   };
   markCompleted = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);
     const id = param(request.params.id, 'Booking id'); const current = await fetchBooking(id);
-    const vendor = (await db.select({ id: vendors.id }).from(vendors).where(eq(vendors.userId, request.auth.userId)).limit(1))[0];
-    if (!current || vendor?.id !== current.booking.vendorId) throw new AppError('not_found', 'Booking was not found', 404);
+    if (!current || !await canOperateGround(request.auth.userId, current.booking.vendorId, current.booking.groundId)) throw new AppError('not_found', 'Booking was not found', 404);
     if (bookingStart(current.booking.endDate || current.booking.date, current.booking.endTime) > new Date()) throw new AppError('booking_not_ended', 'Attendance can only be recorded after the slot ends', 409);
-    if (!await new BookingMaintenanceService().finalizeBooking(id, 'completed')) throw new AppError('booking_not_updatable', 'Only confirmed bookings can be marked as attended', 409);
+    if (!await new BookingMaintenanceService().finalizeBooking(id, 'completed', new Date(), request.auth.userId)) throw new AppError('booking_not_updatable', 'Only confirmed bookings can be marked as attended', 409);
     await db.insert(notifications).values({ userId: current.booking.playerId, type: 'booking', title: 'Booking completed', message: `Your booking at ${current.ground.title} was marked as completed.`, data: { bookingId: id } });
-    const result = await fetchBooking(id); response.json({ booking: result ? mapBooking(result) : null });
+    const result = await fetchBooking(id); response.json({ booking: result ? await operationalBookingResponse(request.auth.userId, result) : null });
   };
   cancel = async (request: AuthenticatedRequest, response: Response): Promise<void> => {
     if (!request.auth) throw new AppError('unauthorized', 'Authentication is required', 401);

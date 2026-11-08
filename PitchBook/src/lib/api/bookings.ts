@@ -15,6 +15,16 @@ export type BookingOrder = {
 
 export type Pagination = { page: number; limit: number; total: number; has_more: boolean };
 export type BookingList = { bookings: BookingProfile[]; pagination: Pagination };
+export type ManagerBooking = Pick<BookingProfile, 'id' | 'booking_number' | 'ground_id' | 'ground_title' | 'player_name' | 'player_phone' | 'date' | 'end_date' | 'start_time' | 'end_time' | 'status' | 'payment_status' | 'checked_in_at' | 'actual_start_at'>;
+export async function getManagerBookings(date: string): Promise<ManagerBooking[]> {
+  return (await apiRequest<{ bookings: ManagerBooking[] }>(`/bookings/manager?date=${encodeURIComponent(date)}`)).bookings;
+}
+export async function getManagerBooking(id: string): Promise<ManagerBooking> {
+  return (await apiRequest<{ booking: ManagerBooking }>(`/bookings/manager/${id}`)).booking;
+}
+export async function getManagerBookingDispute(id: string): Promise<{ id: string; status: string; category: string; description: string; vendor_response: string | null } | null> {
+  return (await apiRequest<{ dispute: { id: string; status: string; category: string; description: string; vendor_response: string | null } | null }>(`/bookings/manager/${id}/dispute`)).dispute;
+}
 
 function pageQuery(page: number, limit: number): string {
   return `?page=${page}&limit=${limit}`;
@@ -88,6 +98,17 @@ export async function saveRefundBankProfile(input: { bank_name: string; account_
 export async function getBooking(id: string): Promise<BookingProfile> {
   const result = await apiRequest<{ booking: BookingProfile }>(`/bookings/${id}`);
   return result.booking;
+}
+
+export async function getCheckInToken(id: string): Promise<{ token: string; code: string; expires_at: string; booking_number: string }> {
+  return apiRequest(`/bookings/${id}/check-in-token`, { method: 'POST', data: {} });
+}
+
+export async function scanCheckIn(token: string): Promise<{ booking_id: string; booking_number: string; checked_in_at: string }> {
+  return apiRequest('/bookings/check-in/scan', { method: 'POST', data: { token } });
+}
+export async function manualCheckIn(id: string, code: string): Promise<{ booking_number: string; checked_in_at: string }> {
+  return apiRequest(`/bookings/manager/${id}/check-in-code`, { method: 'POST', data: { code } });
 }
 
 export async function markBookingNoShow(id: string): Promise<BookingProfile> {

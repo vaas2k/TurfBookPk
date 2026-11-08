@@ -432,26 +432,11 @@ export function BookingDetails({
           )}
 
           {booking.status === "confirmed" && (
-            <View className="bg-white rounded-[28px] mt-5 px-5 py-7 items-center">
-              <Text
-                style={{
-                  fontFamily: "BigShouldersDisplay_700Bold",
-                  fontSize: 19,
-                }}
-                className="text-[#10120F]"
-              >
-                GROUND CHECK-IN CODE
-              </Text>
-              <View className="w-40 h-40 border-[7px] border-[#10120F] rounded-md mt-5 items-center justify-center">
-                <Ionicons name="qr-code" size={120} color="#10120F" />
-              </View>
-              <Text
-                style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                className="text-[#10120F] text-[21px] mt-5"
-              >
-                {shortBookingReference(booking.booking_number)}
-              </Text>
-            </View>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open ground check-in QR" onPress={() => router.push({ pathname: '/(player)/check-in/[id]', params: { id: booking.id } })} className="bg-[#17301B] border border-[#42B84F] rounded-[24px] p-5 mt-5 flex-row items-center">
+              <Ionicons name="qr-code-outline" size={32} color="#75D67E" />
+              <View className="flex-1 ml-4"><Text className="text-[#F5F5F0] font-bold">Ground check-in</Text><Text className="text-[#A8C9AC] text-xs mt-1">{booking.checked_in_at ? 'Arrival confirmed' : 'QR opens 30 minutes before kickoff'}</Text></View>
+              <Ionicons name="chevron-forward" size={20} color="#75D67E" />
+            </TouchableOpacity>
           )}
 
           {matchHubVisible && (
@@ -601,12 +586,13 @@ export function BookingDetails({
         {booking.status === "cancelled" && <View className="bg-[#38201E] border border-[#69332C] rounded-[18px] p-5 mt-5"><Text className="text-[#FFD1CB] font-bold">Booking cancelled</Text><Text className="text-[#E9A49B] text-sm mt-2">Refund due: PKR {booking.refund_amount.toLocaleString()}</Text>{booking.cancellation_reason && <Text className="text-[#E9A49B] text-xs mt-2">{booking.cancellation_reason}</Text>}</View>}
         {booking.turnaround_minutes > 0 && <Text className="text-[#92978F] text-xs mt-4">Playing time ends at {formatTime12(booking.end_time)}. Allow {booking.turnaround_minutes} minutes for pitch changeover.</Text>}
         {booking.actual_start_at && <Text className="text-[#F4B844] text-xs mt-2">Delayed start recorded at {new Date(booking.actual_start_at).toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Karachi' })} ({booking.start_delay_reason?.replaceAll('_', ' ')}).</Text>}
+        {booking.status === 'confirmed' && <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/(player)/manager-scan')} className="bg-[#42B84F] rounded-full py-4 items-center mt-5"><Text className="text-[#102110] font-bold">Scan player check-in QR</Text></TouchableOpacity>}
         {dispute && <View className="bg-[#272017] border border-[#73562E] rounded-[18px] p-5 mt-5"><View className="flex-row items-center justify-between"><Text className="text-[#F4C978] font-bold">Player issue report</Text><Text className="text-[#F4C978] text-xs capitalize">{dispute.status.replaceAll('_', ' ')}</Text></View><Text className="text-[#E6DDCF] text-sm mt-3">{dispute.description}</Text>{dispute.resolution && <Text className="text-[#BDB4A5] text-xs mt-3">Admin decision: {dispute.resolution}</Text>}{((['open', 'waiting'].includes(dispute.status) && !dispute.vendor_response) || (['resolved', 'rejected'].includes(dispute.status) && !dispute.vendor_appeal)) && <><TextInput value={disputeMessage} onChangeText={setDisputeMessage} multiline maxLength={1000} textAlignVertical="top" placeholder={['resolved', 'rejected'].includes(dispute.status) ? 'Explain why this decision should be reviewed...' : 'Explain what happened from the venue side...'} placeholderTextColor="#81786B" className="h-28 bg-[#15130F] border border-[#4A4030] rounded-xl px-3 py-3 text-[#F5F5F0] mt-4"/><TouchableOpacity accessibilityRole="button" disabled={actionLoading} onPress={() => void submitVendorDisputeMessage(['resolved', 'rejected'].includes(dispute.status))} className="border border-[#F4C978] rounded-full py-3 items-center mt-3"><Text className="text-[#F4C978] font-bold">{['resolved', 'rejected'].includes(dispute.status) ? 'Appeal decision' : 'Send venue response'}</Text></TouchableOpacity></>}</View>}
         {booking.status === 'confirmed' && !booking.actual_start_at && !hasEnded && new Date(`${booking.date}T${booking.start_time}+05:00`).getTime() < clockNow && <TouchableOpacity accessibilityRole="button" disabled={actionLoading} onPress={handleDelayedStart} className="border border-[#F4B844] rounded-xl p-3 mt-4 items-center"><Text className="text-[#F4B844] font-bold">Record a delayed start</Text></TouchableOpacity>}
         {isOpen && <Text className="text-[#92978F] text-xs leading-5 text-center mt-5">Attendance can be marked once the booked slot has ended.</Text>}
       </ScrollView>
       {(isCancellable || canComplete) && <View className="absolute bottom-0 left-0 right-0 bg-[#10120F] border-t border-[#30372B] px-6 pt-5" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-        {canComplete && <><TouchableOpacity accessibilityRole="button" accessibilityLabel="Mark player attendance complete" disabled={actionLoading} onPress={handleCompleted} className="bg-[#42B84F] rounded-full py-4 items-center">{actionLoading ? <ActivityIndicator color="#102110" /> : <Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#102110] text-base">Mark as checked in</Text>}</TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Mark player as no-show" disabled={actionLoading} onPress={handleNoShow} className="py-4 items-center"><Text className="text-[#F26666] font-bold">Mark as no-show</Text></TouchableOpacity></>}
+        {canComplete && <><TouchableOpacity accessibilityRole="button" accessibilityLabel="Mark match completed" disabled={actionLoading} onPress={handleCompleted} className="bg-[#42B84F] rounded-full py-4 items-center">{actionLoading ? <ActivityIndicator color="#102110" /> : <Text style={{ fontFamily: "SpaceGrotesk_700Bold" }} className="text-[#102110] text-base">Mark match completed</Text>}</TouchableOpacity>{!booking.checked_in_at && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mark player as no-show" disabled={actionLoading} onPress={handleNoShow} className="py-4 items-center"><Text className="text-[#F26666] font-bold">Mark as no-show</Text></TouchableOpacity>}</>}
         {isCancellable && !canComplete && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel booking" disabled={actionLoading} onPress={handleCancel} className="py-3 items-center"><Text className="text-[#F26666] font-bold">Cancel booking</Text></TouchableOpacity>}
       </View>}
       <Toast message={toast} tone="error" onHide={() => setToast(null)} />

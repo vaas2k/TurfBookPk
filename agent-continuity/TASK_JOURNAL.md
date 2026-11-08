@@ -1921,3 +1921,12 @@
 - Vendor booking cards now distinguish unpaid recurring reservations with a `Reserved · Unpaid` badge and show the exact Pakistan-local payment deadline; player status badges use the same clear state.
 - Applied the migration locally and verified server/mobile typechecks plus all 78 backend tests.
 - Added migration `0041_booking_pitch_side_snapshot.sql` so every new booking preserves its actual pitch size; existing bookings are backfilled from their linked pitch for accurate confirmations and history.
+
+## 2026-11-08 — Ground managers and arrival check-in
+
+- Added one ground-scoped manager role assigned by vendor using name and phone. The manager accepts in the existing OTP account, remains a player, and only sees assigned grounds. Approval, account activity, and revocation are checked on operational requests.
+- Added player check-in QR with a two-minute token and eight-digit fallback code. Only paid, confirmed bookings can issue a code within 30 minutes of kickoff. A scan records attendance once, invalidates the code, and notifies the player. Manual entry is limited to five attempts per code.
+- Added manager booking and daily slot screens plus owner assignment controls. Manager responses omit payment amounts and payout details; attendance and slot actions are audited. Unchecked bookings receive a two-hour post-match window before automatic completion/no-show handling.
+- Migrations `0042_ground_manager_checkin.sql` and `0043_manager_slot_actions.sql` applied locally. Server typecheck/build, mobile typecheck/lint, and all 79 backend tests pass. Physical camera and multi-device flow remain to be tested after a native rebuild with `expo-camera`.
+- Added a dedicated Manage tab to the player bottom bar after a manager accepts an assignment. It links to assigned grounds, today's bookings, QR scanning, and daily slot controls. The tab refreshes access when routes change, appears immediately on acceptance, and disappears after revocation is reported by the API.
+- Manager slot API now returns each pitch with its name, size, and kind plus each slot's pitch identity. The manager's slot screen selects one pitch at a time, so slots from different pitches are no longer mixed. A focused database integration test verifies the pitch mapping; server and mobile typechecks and targeted mobile lint pass.

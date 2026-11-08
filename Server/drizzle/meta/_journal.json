@@ -295,6 +295,20 @@
       "when": 1794182401000,
       "tag": "0041_booking_pitch_side_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794268800000,
+      "tag": "0042_ground_manager_checkin",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794268801000,
+      "tag": "0043_manager_slot_actions",
+      "breakpoints": true
     }
   ]
 }
